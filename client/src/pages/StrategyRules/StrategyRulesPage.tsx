@@ -1,3 +1,16 @@
+/**
+ * @file pages/StrategyRules/StrategyRulesPage.tsx
+ * @description Route `/settings/rules`: manage multi-agent strategy rules.
+ *
+ * Rules are grouped by category (position concentration, stop-loss/take-profit,
+ * buy conditions, cash management, risk gates). Each rule has a `hard`/`soft`
+ * type and a `warning`/`hard_block` severity. The page supports:
+ *  - create / edit / delete via dialogs
+ *  - per-rule enable toggle (optimistic update with rollback)
+ *  - inline threshold editing
+ *  - drag-and-drop reordering within a category (optimistic, rolled back on error)
+ *  - resetting to the system-default rule set
+ */
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { toast } from 'sonner';
 import {
@@ -69,7 +82,8 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 
-// ── 分组定义 ──────────────────────────────────────────────
+// ── Category definitions ─────────────────────────────────
+/** Ordered list of rule categories for grouping and rendering. */
 const CATEGORY_ORDER: Array<{
   key: RuleCategory | 'other';
   label: string;
@@ -83,6 +97,7 @@ const CATEGORY_ORDER: Array<{
   { key: 'other', label: '其他' },
 ];
 
+/** Display labels for each category. */
 const CATEGORY_LABELS: Record<RuleCategory | 'other', string> = {
   position_concentration: '仓位与集中度',
   stop_loss_take_profit: '止损止盈',
@@ -92,17 +107,22 @@ const CATEGORY_LABELS: Record<RuleCategory | 'other', string> = {
   other: '其他',
 };
 
+/** Severity label map. */
 const SEVERITY_LABELS: Record<RuleSeverity, string> = {
   hard_block: '硬阻断',
   warning: '警告',
 };
 
+/** Rule-type label map (hard = blocks auto-rating, soft = advisory only). */
 const RULE_TYPE_LABELS: Record<RuleType, string> = {
   hard: '硬性',
   soft: '软性',
 };
 
-// ── 工具函数 ──────────────────────────────────────────────
+// ── Helpers ──────────────────────────────────────────────
+/**
+ * Resolve a rule's category bucket, defaulting unknown values to `other`.
+ */
 function getCategoryKey(rule: StrategyRule): RuleCategory | 'other' {
   if (!rule.category) return 'other';
   const defined = CATEGORY_ORDER.slice(0, -1).some(
@@ -111,6 +131,9 @@ function getCategoryKey(rule: StrategyRule): RuleCategory | 'other' {
   return defined ? rule.category : 'other';
 }
 
+/**
+ * Bucket rules into the fixed category order, sorted by each rule's `sort`.
+ */
 function groupRules(rules: StrategyRule[]): Record<string, StrategyRule[]> {
   const groups: Record<string, StrategyRule[]> = {};
   for (const cat of CATEGORY_ORDER) {
@@ -126,6 +149,10 @@ function groupRules(rules: StrategyRule[]): Record<string, StrategyRule[]> {
   return groups;
 }
 
+/**
+ * Pretty-print a threshold value with its unit.
+ * Recognizes `pct/%`, `days`, `usd`; other units are appended verbatim.
+ */
 function formatThreshold(
   threshold: string | number | null,
   unit: string | null,
@@ -142,7 +169,15 @@ function formatThreshold(
   return `${numStr} ${unit}`;
 }
 
-// ── 主组件 ────────────────────────────────────────────────
+// ── Main page component ────────────────────────────────────
+/**
+ * Strategy rules management page.
+ *
+ * State groups: list loading, create/edit dialog, delete confirmation, reset
+ * confirmation, drag-and-drop, and inline threshold editing. Mutations use
+ * optimistic updates where cheap (toggle, reorder, threshold) and roll back on
+ * failure; create/delete/reset refetch the whole list.
+ */
 function StrategyRulesPage() {
   const [rules, setRules] = useState<StrategyRule[]>([]);
   const [loading, setLoading] = useState(true);
@@ -192,7 +227,8 @@ function StrategyRulesPage() {
   );
   const [thresholdValue, setThresholdValue] = useState('');
 
-  // ── 数据加载 ────────────────────────────────────────────
+  // ── Data loading ────────────────────────────────────────────
+  /** Fetch all strategy rules and populate state. */
   const loadRules = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -218,7 +254,10 @@ function StrategyRulesPage() {
   const hardCount = rules.filter((r) => r.ruleType === 'hard').length;
   const softCount = rules.filter((r) => r.ruleType === 'soft').length;
 
-  // ── 启停切换 ────────────────────────────────────────────
+  // ── Enable/disable toggle ────────────────────────────────────
+  /**
+   * Optimistically flip a rule's `enabled` flag; reverts on API failure.
+   */
   const handleToggle = useCallback(
     async (rule: StrategyRule, nextEnabled: boolean) => {
       const previous = rule.enabled;
@@ -244,7 +283,8 @@ function StrategyRulesPage() {
     [],
   );
 
-  // ── 新增规则 ────────────────────────────────────────────
+  // ── Create rule ────────────────────────────────────────────
+  /** Open the create dialog with a blank form. */
   const openCreateDialog = useCallback(() => {
     setEditingRule(null);
     setFormData({
@@ -260,7 +300,8 @@ function StrategyRulesPage() {
     setDialogOpen(true);
   }, []);
 
-  // ── 编辑规则 ────────────────────────────────────────────
+  // ── Edit rule ────────────────────────────────────────────
+  /** Open the edit dialog, pre-filling the form from the given rule. */
   const openEditDialog = useCallback((rule: StrategyRule) => {
     setEditingRule(rule);
     setFormData({
@@ -276,6 +317,10 @@ function StrategyRulesPage() {
     setDialogOpen(true);
   }, []);
 
+  /**
+   * Validate and submit the create/edit dialog. Re-runs the list on success.
+   * Threshold must be a finite number when provided.
+   */
   const handleSaveDialog = useCallback(async () => {
     if (!formData.ruleKey.trim() || !formData.ruleName.trim()) {
       toast.error('请填写规则 Key 和规则名称');
@@ -328,7 +373,8 @@ function StrategyRulesPage() {
     }
   }, [formData, editingRule, loadRules]);
 
-  // ── 删除规则 ────────────────────────────────────────────
+  // ── Delete rule ────────────────────────────────────────────
+  /** Confirm-and-delete the rule held in `deleteTarget`. */
   const handleDelete = useCallback(async () => {
     if (!deleteTarget) return;
     setDeleting(true);
@@ -347,7 +393,8 @@ function StrategyRulesPage() {
     }
   }, [deleteTarget, loadRules]);
 
-  // ── 恢复默认 ────────────────────────────────────────────
+  // ── Reset to defaults ────────────────────────────────────
+  /** Reset all rules to the system default set, then refetch. */
   const handleReset = useCallback(async () => {
     setResetting(true);
     try {
@@ -364,7 +411,8 @@ function StrategyRulesPage() {
     }
   }, [loadRules]);
 
-  // ── 拖拽排序 ────────────────────────────────────────────
+  // ── Drag-and-drop reordering ────────────────────────────────────
+  /** Track the dragged rule id + its category bucket. */
   const handleDragStart = useCallback(
     (e: React.DragEvent<HTMLDivElement>, rule: StrategyRule) => {
       dragIdRef.current = rule.id;
@@ -375,6 +423,7 @@ function StrategyRulesPage() {
     [],
   );
 
+  /** Highlight the drop target row. */
   const handleDragOver = useCallback(
     (e: React.DragEvent<HTMLDivElement>, ruleId: string) => {
       e.preventDefault();
@@ -386,6 +435,7 @@ function StrategyRulesPage() {
     [dragOverId],
   );
 
+  /** Clear the drop highlight when leaving the row (ignoring child enter/leave). */
   const handleDragLeave = useCallback(
     (e: React.DragEvent<HTMLDivElement>) => {
       const related = e.relatedTarget as Node | null;
@@ -396,6 +446,11 @@ function StrategyRulesPage() {
     [],
   );
 
+  /**
+   * Reorder within a single category. Cross-category drops are rejected.
+   * Applies an optimistic splice, persists the new `sort` to the backend, and
+   * rolls the UI back if the API call fails.
+   */
   const handleDrop = useCallback(
     async (
       e: React.DragEvent<HTMLDivElement>,
@@ -454,23 +509,30 @@ function StrategyRulesPage() {
     [grouped, rules],
   );
 
+  /** Clear drag refs after the drag ends. */
   const handleDragEnd = useCallback(() => {
     dragIdRef.current = null;
     dragCatRef.current = null;
     setDragOverId(null);
   }, []);
 
-  // ── 行内阈值编辑 ────────────────────────────────────────
+  // ── Inline threshold editing ────────────────────────────────────
+  /** Enter inline edit mode for a rule's threshold. */
   const startThresholdEdit = useCallback((rule: StrategyRule) => {
     setEditingThresholdId(rule.id);
     setThresholdValue(rule.threshold ?? '');
   }, []);
 
+  /** Exit inline edit mode without saving. */
   const cancelThresholdEdit = useCallback(() => {
     setEditingThresholdId(null);
     setThresholdValue('');
   }, []);
 
+  /**
+   * Persist an inline threshold edit. No-ops when the value is unchanged.
+   * Optimistically updates the row and rolls back on API failure.
+   */
   const saveThreshold = useCallback(
     async (rule: StrategyRule) => {
       if (thresholdValue === (rule.threshold ?? '')) {
@@ -921,7 +983,8 @@ function StrategyRulesPage() {
   );
 }
 
-// ── 规则卡片子组件 ────────────────────────────────────────
+// ── Rule card sub-component ────────────────────────────────
+/** Props for {@link RuleCard}. */
 interface RuleCardProps {
   rule: StrategyRule;
   editingThresholdId: string | null;
@@ -948,6 +1011,12 @@ interface RuleCardProps {
   isReordering: boolean;
 }
 
+/**
+ * A single draggable rule row.
+ * Renders the name/key/description, threshold (click-to-edit), severity and
+ * rule-type badges, enable switch, edit/delete actions, and the drag handle.
+ * Drag wiring is delegated to the parent via callbacks.
+ */
 function RuleCard({
   rule,
   editingThresholdId,

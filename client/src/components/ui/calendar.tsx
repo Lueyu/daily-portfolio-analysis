@@ -1,5 +1,11 @@
 "use client"
 
+/**
+ * Month/year calendar picker grid used for date selection.
+ *
+ * Vendored shadcn-style UI primitive (Radix UI + Tailwind CSS).
+ */
+
 import * as React from "react"
 import {
   ChevronDownIcon,
@@ -11,6 +17,7 @@ import { DayButton, DayPicker, getDefaultClassNames } from "react-day-picker"
 import { cn } from "@/lib/utils"
 import { Button, buttonVariants } from "@/components/ui/button"
 
+/** Calendar month/year picker. */
 function Calendar({
   className,
   classNames,
@@ -172,6 +179,7 @@ function Calendar({
   )
 }
 
+/** Individual selectable day cell in the calendar. */
 function CalendarDayButton({
   className,
   day,

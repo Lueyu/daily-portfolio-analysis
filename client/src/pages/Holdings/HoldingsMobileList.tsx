@@ -1,3 +1,12 @@
+/**
+ * @file pages/Holdings/HoldingsMobileList.tsx
+ * @description Mobile card list for holdings (hidden at `md` and up).
+ *
+ * Each holding is a tap-to-expand card: the header shows ticker, rating badge,
+ * company name, current price and return %; the collapsed grid shows shares,
+ * market value, cost and P/L; the expanded section adds buy price, action
+ * recommendation, AI rating, group, and a "view detail" button.
+ */
 import { useState } from 'react';
 import { ChevronRight, Briefcase, Plus, Eye } from 'lucide-react';
 import type { Group, Market, Currency, AgentRating, AgentConfidence } from '@shared/api.interface';
@@ -26,6 +35,7 @@ import {
   EmptyTitle,
 } from '@/components/ui/empty';
 
+/** Holding shape used by the mobile list (raw fields + derived numerics). */
 interface DerivedHolding {
   id: string;
   ticker: string;
@@ -44,6 +54,7 @@ interface DerivedHolding {
   returnPct: number;
 }
 
+/** AI rating info attached to a holding row. */
 interface AiRatingInfo {
   rating: AgentRating;
   confidence: AgentConfidence;
@@ -52,6 +63,7 @@ interface AiRatingInfo {
   bearSummary?: string | null;
 }
 
+/** Props for {@link HoldingsMobileList}. */
 interface HoldingsMobileListProps {
   loading: boolean;
   error: string | null;
@@ -63,6 +75,9 @@ interface HoldingsMobileListProps {
   onViewAiAnalysis?: (ticker: string, runId: string) => void;
 }
 
+/**
+ * Render the mobile holdings card list with tap-to-expand rows.
+ */
 export default function HoldingsMobileList({
   loading,
   error,

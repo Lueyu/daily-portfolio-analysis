@@ -1,3 +1,9 @@
+/**
+ * Top navigation menu with link items, dropdown panels, and active-item indicators.
+ *
+ * Vendored shadcn-style UI primitive (Radix UI + Tailwind CSS).
+ */
+
 import * as React from "react"
 import * as NavigationMenuPrimitive from "@radix-ui/react-navigation-menu"
 import { cva } from "class-variance-authority"
@@ -5,6 +11,7 @@ import { ChevronDownIcon } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 
+/** Navigation menu root. */
 function NavigationMenu({
   className,
   children,
@@ -29,6 +36,7 @@ function NavigationMenu({
   )
 }
 
+/** Row of navigation entries. */
 function NavigationMenuList({
   className,
   ...props
@@ -45,6 +53,7 @@ function NavigationMenuList({
   )
 }
 
+/** One navigation entry. */
 function NavigationMenuItem({
   className,
   ...props
@@ -58,10 +67,12 @@ function NavigationMenuItem({
   )
 }
 
+/** navigationMenuTriggerStyle component. */
 const navigationMenuTriggerStyle = cva(
   "group inline-flex h-9 w-max items-center justify-center rounded-md bg-background px-4 py-2 text-sm font-medium enabled:hover:bg-accent enabled:hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50 enabled:data-[state=open]:hover:bg-accent data-[state=open]:text-accent-foreground data-[state=open]:focus:bg-accent data-[state=open]:bg-accent/50 focus-visible:ring-ring/20 outline-none transition-[color,box-shadow] focus-visible:ring-[3px] focus-visible:outline-1"
 )
 
+/** Button that opens a navigation dropdown. */
 function NavigationMenuTrigger({
   className,
   children,
@@ -82,6 +93,7 @@ function NavigationMenuTrigger({
   )
 }
 
+/** Floating navigation panel. */
 function NavigationMenuContent({
   className,
   ...props
@@ -99,6 +111,7 @@ function NavigationMenuContent({
   )
 }
 
+/** Viewport hosting the active dropdown panel. */
 function NavigationMenuViewport({
   className,
   ...props
@@ -121,6 +134,7 @@ function NavigationMenuViewport({
   )
 }
 
+/** A navigation link. */
 function NavigationMenuLink({
   className,
   ...props
@@ -137,6 +151,7 @@ function NavigationMenuLink({
   )
 }
 
+/** Active-item indicator beneath the trigger. */
 function NavigationMenuIndicator({
   className,
   ...props

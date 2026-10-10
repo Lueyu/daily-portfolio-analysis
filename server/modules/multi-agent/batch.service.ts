@@ -1,3 +1,23 @@
+/**
+ * BatchService — creates and schedules multi-agent runs in bulk, with two
+ * independent concurrency-limited queues (one per runMode).
+ *
+ * Why two queues? "full" runs (full debate + critique + rating) are expensive
+ * on LLM tokens; "summary" runs are cheaper. We allow more concurrent summary
+ * runs than full runs to keep throughput up without blowing the LLM budget.
+ *
+ * Flow:
+ *  - createBatch: resolve target tickers (holdings / watchlist / custom list),
+ *    create a pending run row for each, then either start it immediately (if a
+ *    slot is free) or push it onto the per-mode queue.
+ *  - PipelineService.onRunComplete fires when a run finishes; BatchService
+ *    releases a slot and calls processQueue to dequeue the next item.
+ *  - Tiered mode: when `tiered=true`, high-conviction targets (holdings >5%
+ *    weight, or watchlist tickers with a buy/strong signal) get `full` runs;
+ *    everything else gets `summary`.
+ *  - createDailyBatch: convenience that runs all holdings + buy-signal watchlist
+ *    items in tiered mode.
+ */
 import { Injectable, Inject, Logger, OnModuleInit } from '@nestjs/common';
 import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '@lark-apaas/fullstack-nestjs-core';
 import { eq, and } from 'drizzle-orm';
@@ -13,6 +33,7 @@ import type {
   AgentRunStatus,
 } from '@shared/api.interface';
 
+/** A single pending run waiting in the in-memory queue. */
 interface QueueItem {
   runId: string;
   userId: string;
@@ -23,11 +44,15 @@ interface QueueItem {
 @Injectable()
 export class BatchService implements OnModuleInit {
   private readonly logger = new Logger(BatchService.name);
+  /** Max concurrent full (expensive) runs. */
   private readonly MAX_FULL_CONCURRENT = 3;
+  /** Max concurrent summary (cheap) runs. */
   private readonly MAX_SUMMARY_CONCURRENT = 5;
 
+  /** Live counters of in-flight runs per mode. */
   private fullRunning = 0;
   private summaryRunning = 0;
+  /** FIFO queues of not-yet-started runs per mode. */
   private fullQueue: QueueItem[] = [];
   private summaryQueue: QueueItem[] = [];
 
@@ -38,6 +63,10 @@ export class BatchService implements OnModuleInit {
     private readonly portfolioContextService: PortfolioContextService,
   ) {}
 
+  /**
+   * On module init, subscribe to pipeline completion so we can free slots and
+   * drain the queue. Registered once here rather than per-request.
+   */
   onModuleInit(): void {
     this.pipelineService.onRunComplete((runId, userId, mode) => {
       this.releaseSlot(mode);
@@ -45,6 +74,12 @@ export class BatchService implements OnModuleInit {
     });
   }
 
+  /**
+   * Create runs for a batch request. Resolves targets, creates a pending run
+   * row per target, then either starts it immediately or enqueues it.
+   * Errors on individual targets are collected and returned rather than
+   * aborting the whole batch.
+   */
   async createBatch(userId: string, req: BatchRunRequest): Promise<BatchRunResult> {
     const targets = await this.resolveTargets(userId, req);
     const result: BatchRunResult = {
@@ -102,6 +137,10 @@ export class BatchService implements OnModuleInit {
     return result;
   }
 
+  /**
+   * Daily routine: tiered run over all holdings, plus a tiered run over
+   * watchlist tickers that carry a buy/strong-buy signal.
+   */
   async createDailyBatch(userId: string): Promise<{
     holdingsRuns: BatchRunItem[];
     watchlistRuns: BatchRunItem[];
@@ -133,6 +172,11 @@ export class BatchService implements OnModuleInit {
     };
   }
 
+  /**
+   * Drain as many queued runs as the current concurrency caps allow, starting
+   * the pipeline for each dequeued item. Called after a run completes and
+   * after a new batch is created.
+   */
   processQueue(): void {
     while (this.fullRunning < this.MAX_FULL_CONCURRENT && this.fullQueue.length > 0) {
       const item = this.fullQueue.shift();
@@ -151,6 +195,16 @@ export class BatchService implements OnModuleInit {
     }
   }
 
+  /**
+   * Translate a BatchRunRequest into a concrete list of tickers to run.
+   *  - scope='holdings': all holdings rows.
+   *  - scope='watchlist': all watchlist rows.
+   *  - scope='all': both.
+   *  - scope='custom': explicit ticker list; looks up company/market from
+   *    holdings or watchlist rows.
+   * When tiered=true, picks runMode per ticker: holdings >5% weight or
+   * watchlist buy/strong signal → full; otherwise summary.
+   */
   private async resolveTargets(
     userId: string,
     req: BatchRunRequest,
@@ -245,6 +299,7 @@ export class BatchService implements OnModuleInit {
     return targets;
   }
 
+  /** Fetch just ticker+signal for the caller's watchlist. */
   private async getWatchlistTargets(userId: string): Promise<Array<{ ticker: string; signal: string | null }>> {
     const rows = await this.db
       .select({ ticker: watchlist.ticker, signal: watchlist.signal })
@@ -253,21 +308,25 @@ export class BatchService implements OnModuleInit {
     return rows;
   }
 
+  /** @returns true if a new run of the given mode can start immediately. */
   private canStart(mode: AgentRunMode): boolean {
     if (mode === 'full') return this.fullRunning < this.MAX_FULL_CONCURRENT;
     return this.summaryRunning < this.MAX_SUMMARY_CONCURRENT;
   }
 
+  /** Reserve a concurrency slot for the given mode. */
   private acquireSlot(mode: AgentRunMode): void {
     if (mode === 'full') this.fullRunning += 1;
     else this.summaryRunning += 1;
   }
 
+  /** Release a concurrency slot after a run finishes (floored at 0). */
   private releaseSlot(mode: AgentRunMode): void {
     if (mode === 'full') this.fullRunning = Math.max(0, this.fullRunning - 1);
     else this.summaryRunning = Math.max(0, this.summaryRunning - 1);
   }
 
+  /** Append an item to the appropriate per-mode queue. */
   private enqueue(item: QueueItem): void {
     if (item.runMode === 'full') this.fullQueue.push(item);
     else this.summaryQueue.push(item);

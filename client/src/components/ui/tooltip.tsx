@@ -1,10 +1,17 @@
 "use client"
 
+/**
+ * Hover tooltip that shows extra info near a trigger (Radix Tooltip).
+ *
+ * Vendored shadcn-style UI primitive (Radix UI + Tailwind CSS).
+ */
+
 import * as React from "react"
 import * as TooltipPrimitive from "@radix-ui/react-tooltip"
 
 import { cn } from "@/lib/utils"
 
+/** Provider that wraps tooltip triggers/content. */
 function TooltipProvider({
   delayDuration = 0,
   ...props
@@ -18,6 +25,7 @@ function TooltipProvider({
   )
 }
 
+/** Tooltip root. */
 function Tooltip({
   ...props
 }: React.ComponentProps<typeof TooltipPrimitive.Root>) {
@@ -28,12 +36,14 @@ function Tooltip({
   )
 }
 
+/** Element that shows the tooltip on hover. */
 function TooltipTrigger({
   ...props
 }: React.ComponentProps<typeof TooltipPrimitive.Trigger>) {
   return <TooltipPrimitive.Trigger data-slot="tooltip-trigger" {...props} />
 }
 
+/** Floating tooltip bubble. */
 function TooltipContent({
   className,
   sideOffset = 0,

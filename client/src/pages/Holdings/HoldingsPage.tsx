@@ -1,3 +1,12 @@
+/**
+ * @file pages/Holdings/HoldingsPage.tsx
+ * @description Route `/holdings`: list, filter, sort and manage open positions.
+ *
+ * Composes the holdings table (desktop), mobile card list, detail dialog, add
+ * dialog, and the AI run-detail modal. Subscribes to live quotes via
+ * `useMarketQuotes`, enriches each row with derived market value / P/L, and
+ * supports search, group filter, multi-market filter, and column sorting.
+ */
 import { useState, useEffect, useMemo } from 'react';
 import { toast } from 'sonner';
 import {
@@ -48,6 +57,7 @@ import {
   AlertDescription,
 } from '@/components/ui/alert';
 
+/** Columns that the holdings table can sort by. */
 type SortKey =
   | 'ticker'
   | 'company'
@@ -59,6 +69,7 @@ type SortKey =
   | 'pl'
   | 'returnPct';
 
+/** Holding record augmented with derived numeric values used by the table. */
 interface DerivedHolding extends Holding {
   marketValue: number;
   cost: number;
@@ -66,6 +77,11 @@ interface DerivedHolding extends Holding {
   returnPct: number;
 }
 
+/**
+ * Compute derived market value, cost, P/L and return % from a raw holding.
+ * @param h - Raw holding with string-encoded numeric fields.
+ * @returns The holding with numeric derived fields attached.
+ */
 function computeDerived(h: Holding): DerivedHolding {
   const shares = parseFloat(h.shares || '0');
   const buyPrice = parseFloat(h.buyPrice || '0');
@@ -77,6 +93,13 @@ function computeDerived(h: Holding): DerivedHolding {
   return { ...h, marketValue, cost, pl, returnPct };
 }
 
+/**
+ * Holdings list page.
+ *
+ * State groups: raw holdings/groups/cash/overview, filter/sort controls,
+ * selected holding for the detail dialog, add-dialog open state, market
+ * multi-select, AI ratings map, and the pending-human run count.
+ */
 export default function HoldingsPage() {
   const [holdings, setHoldings] = useState<DerivedHolding[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
@@ -107,6 +130,10 @@ export default function HoldingsPage() {
 
   const { quotes, marketStatus, marketErrors, lastUpdated, refresh: refreshQuotes } = useMarketQuotes(tickers);
 
+  /**
+   * Load the latest published AI ratings for all tickers. Failures are silent
+   * because ratings are an enhancement, not required for the list to render.
+   */
   const loadAiRatings = async () => {
     setAiRatingsLoading(true);
     try {
@@ -124,6 +151,7 @@ export default function HoldingsPage() {
     }
   };
 
+  /** Count runs awaiting human decision (drives the risk-alert banner). */
   const loadAwaitingHuman = async () => {
     try {
       const result = await getAgentRuns({ status: 'awaiting_human', limit: 10 });
@@ -134,6 +162,7 @@ export default function HoldingsPage() {
     }
   };
 
+  /** Parallel-fetch holdings, groups, cash accounts and the dashboard overview. */
   const loadData = async () => {
     setLoading(true);
     setError(null);
@@ -156,11 +185,13 @@ export default function HoldingsPage() {
     }
   };
 
+  /** Open the AI run-detail modal for a given ticker's latest run. */
   const handleViewAiAnalysis = (ticker: string, runId: string) => {
     setAiDetailRunId(runId);
     setAiDetailOpen(true);
   };
 
+  /** Open the AI run-detail modal for a specific run id. */
   const handleViewFullAnalysis = (runId: string) => {
     setAiDetailRunId(runId);
     setAiDetailOpen(true);
@@ -179,6 +210,7 @@ export default function HoldingsPage() {
     return () => window.removeEventListener('portfolio-updated', handleUpdate);
   }, []);
 
+  /** Toggle sort on a column; switches direction when clicking the same column. */
   const handleSort = (key: SortKey) => {
     if (sortKey === key) {
       setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
@@ -197,6 +229,10 @@ export default function HoldingsPage() {
     }
   };
 
+  /**
+   * Re-derive market value / P/L using the latest live quote price, overriding
+   * the stored `currentPrice`. Falls back to the stored price when no quote.
+   */
   const enrichedHoldings = useMemo<DerivedHolding[]>(() => {
     return holdings.map((h) => {
       const q: QuoteResponse | undefined = quotes[h.ticker];
@@ -213,6 +249,7 @@ export default function HoldingsPage() {
     });
   }, [holdings, quotes]);
 
+  /** Apply search, group filter and market filter, then sort by the active column. */
   const filtered = useMemo(() => {
     let list = [...enrichedHoldings];
     if (search.trim()) {
@@ -243,6 +280,7 @@ export default function HoldingsPage() {
     return list;
   }, [enrichedHoldings, search, groupId, selectedMarkets, sortKey, sortDir]);
 
+  /** Open the holding detail dialog for the given row. */
   const openDetail = (h: DerivedHolding) => {
     setSelected(h);
     setDetailOpen(true);

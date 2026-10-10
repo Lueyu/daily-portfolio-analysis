@@ -1,3 +1,10 @@
+/**
+ * Alpha-picks service.
+ *
+ * Business logic and PostgreSQL (Drizzle) data access for the user's curated alpha
+ * picks. Rows are owner-scoped; numeric fields are stored as Postgres `numeric`
+ * and round-tripped as strings.
+ */
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { eq, desc, and } from 'drizzle-orm';
 import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '@lark-apaas/fullstack-nestjs-core';
@@ -9,6 +16,7 @@ import type {
   ListResponse,
 } from '@shared/api.interface';
 
+/** Partial update payload for an alpha pick (all fields optional). */
 export interface UpdateAlphaPickDto {
   company?: string;
   sector?: string;
@@ -18,12 +26,20 @@ export interface UpdateAlphaPickDto {
   weightPct?: number;
 }
 
+/**
+ * Provides alpha-pick CRUD. Depends on the Drizzle database connection.
+ */
 @Injectable()
 export class AlphaPicksService {
   constructor(
     @Inject(DRIZZLE_DATABASE) private readonly db: PostgresJsDatabase,
   ) {}
 
+  /**
+   * Lists all alpha picks for a user, newest pick first.
+   *
+   * @param userId Owner id.
+   */
   async findAll(userId: string): Promise<ListResponse<AlphaPick>> {
     const rows = await this.db
       .select()
@@ -33,6 +49,12 @@ export class AlphaPicksService {
     return { items: rows.map((r) => this.mapRow(r)) };
   }
 
+  /**
+   * Creates a new alpha pick owned by the user.
+   *
+   * @param dto    Pick payload.
+   * @param userId Owner id.
+   */
   async create(dto: CreateAlphaPickDto, userId: string): Promise<AlphaPick> {
     const rows = await this.db
       .insert(alphaPicks)
@@ -52,6 +74,14 @@ export class AlphaPicksService {
     return this.mapRow(rows[0]);
   }
 
+  /**
+   * Updates an owned alpha pick.
+   *
+   * @param id     Pick primary key.
+   * @param dto    Partial update payload.
+   * @param userId Owner id.
+   * @throws NotFoundException if the pick does not belong to the user.
+   */
   async update(id: string, dto: UpdateAlphaPickDto, userId: string): Promise<AlphaPick> {
     const patch: Partial<typeof alphaPicks.$inferInsert> = {};
     if (dto.company !== undefined) patch.company = dto.company;
@@ -69,19 +99,35 @@ export class AlphaPicksService {
       .set(patch)
       .where(and(eq(alphaPicks.id, id), eq(alphaPicks.owner, userId)))
       .returning();
-    if (rows.length === 0) throw new NotFoundException('推荐记录不存在');
+    if (rows.length === 0)
+      // NOTE: Chinese user-facing message (existing behavior; not mojibake).
+      throw new NotFoundException('推荐记录不存在');
     return this.mapRow(rows[0]);
   }
 
+  /**
+   * Deletes an owned alpha pick.
+   *
+   * @param id     Pick primary key.
+   * @param userId Owner id.
+   * @throws NotFoundException if the pick does not belong to the user.
+   */
   async remove(id: string, userId: string): Promise<{ success: true }> {
     const rows = await this.db
       .delete(alphaPicks)
       .where(and(eq(alphaPicks.id, id), eq(alphaPicks.owner, userId)))
       .returning({ id: alphaPicks.id });
-    if (rows.length === 0) throw new NotFoundException('推荐记录不存在');
+    if (rows.length === 0)
+      // NOTE: Chinese user-facing message (existing behavior; not mojibake).
+      throw new NotFoundException('推荐记录不存在');
     return { success: true };
   }
 
+  /**
+   * Maps a raw alpha-picks row to the API `AlphaPick` shape.
+   *
+   * @param row Raw alphaPicks table row.
+   */
   private mapRow(row: typeof alphaPicks.$inferSelect): AlphaPick {
     return {
       id: row.id,

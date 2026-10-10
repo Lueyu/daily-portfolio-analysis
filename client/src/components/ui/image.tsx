@@ -1,5 +1,11 @@
 'use client';
 
+/**
+ * Responsive image with loading/fallback states and aspect-ratio support.
+ *
+ * Vendored shadcn-style UI primitive (Radix UI + Tailwind CSS).
+ */
+
 import * as React from 'react';
 import { cn } from '@/lib/utils';
 type ImageFormat = 'jpg' | 'png' | 'webp' | 'bmp' | 'gif' | 'tiff';
@@ -12,24 +18,28 @@ export interface ImageProps extends NativeImgProps {
   breakpoints?: Array<number>;
 }
 
+/** DEFAULT_QUALITY component. */
 const DEFAULT_QUALITY = 80;
 const DEFAULT_RESOLUTIONS: number[] = [
   16, 32, 48, 64, 96, 128, 256, 384, 640, 750, 828, 1080, 1200, 1920, 2048,
   3840,
 ];
 
+/** SRC_ALLOWLIST component. */
 const SRC_ALLOWLIST = [
   '/runtime/api/v1/storage/object/',
   '/aily/api/v1/feisuda/attachments/',
   '/aily/api/v1/files/static/',
 ];
 
+/** getClosestResolution component. */
 function getClosestResolution(target: number): number {
   return DEFAULT_RESOLUTIONS.reduce((prev, curr) => {
     return Math.abs(curr - target) < Math.abs(prev - target) ? curr : prev;
   });
 }
 
+/** applyParamsToUrl component. */
 function applyParamsToUrl(
   src: string,
   params: Record<string, string | number | undefined>,
@@ -50,10 +60,12 @@ function applyParamsToUrl(
   return `${base}?${urlParams.toString()}${hash ? '#' + hash : ''}`;
 }
 
+/** isTargetSrc component. */
 function isTargetSrc(originSrc: string) {
   return SRC_ALLOWLIST.some((item) => originSrc.includes(item));
 }
 
+/** supportWebp component. */
 function supportWebp() {
   try {
     return (
@@ -67,6 +79,7 @@ function supportWebp() {
   }
 }
 
+/** buildSrcSet component. */
 function buildSrcSet(
   src: string,
   widths: number[],
@@ -93,6 +106,7 @@ function buildSrcSet(
     .join(', ');
 }
 
+/** Responsive image. */
 export const Image = React.forwardRef<HTMLImageElement, ImageProps>(
   (
     {
@@ -116,7 +130,7 @@ export const Image = React.forwardRef<HTMLImageElement, ImageProps>(
       [],
     );
 
-    // 当 src 不在白名单时，直接渲染原生 img，保留所有原生属性
+    // When src is not on the allow-list, render a plain native <img>, preserving all native props
     if (typeof src !== 'string' || !isTargetSrc(src)) {
       return (
         <img
@@ -137,10 +151,10 @@ export const Image = React.forwardRef<HTMLImageElement, ImageProps>(
       );
     }
 
-    // 只有当 width 是数字类型时才进行 srcSet 优化
+    // Only optimize srcSet when width is a numeric value
     const numericWidth = typeof width === 'number' ? width : undefined;
 
-    // 用户传入的 srcSet 优先，否则生成优化的 srcSet
+    // Prefer the caller-supplied srcSet; otherwise build an optimized one
     const srcSet =
       userSrcSet ??
       buildSrcSet(

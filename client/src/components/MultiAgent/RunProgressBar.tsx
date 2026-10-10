@@ -1,16 +1,35 @@
+/**
+ * RunProgressBar - horizontal stepper showing progress through the multi-agent
+ * analysis pipeline (fetch evidence -> bull/bear debate -> critic review ->
+ * risk-gate check -> final rating).
+ *
+ * Each step is a circle whose visual state is derived from the run's current
+ * status via getStepState():
+ *   done     -> emerald circle with check icon
+ *   active   -> primary-colored pulsing circle (the stage currently running)
+ *   failed   -> rose circle with X icon (run failed/cancelled)
+ *   awaiting -> amber circle (pipeline finished, waiting on human decision)
+ *   pending  -> muted gray circle (not reached yet)
+ */
 import { Check, X } from 'lucide-react';
 import type { AgentRunStatus } from '@shared/api.interface';
 
 interface RunProgressBarProps {
+  /** Current pipeline status of the agent run being visualized */
   status: AgentRunStatus;
 }
 
+/** A single pipeline step shown in the stepper */
 interface StepDef {
+  /** Unique step key */
   key: string;
+  /** Short label rendered under the circle */
   label: string;
+  /** AgentRunStatus value that means "this step is the active one" */
   statusKey: AgentRunStatus;
 }
 
+/** Ordered pipeline stages (left to right) rendered as stepper circles */
 const steps: StepDef[] = [
   { key: 'fetching', label: '取证', statusKey: 'fetching' },
   { key: 'debating', label: '辩论', statusKey: 'debating' },
@@ -19,6 +38,11 @@ const steps: StepDef[] = [
   { key: 'completed', label: '评级', statusKey: 'completed' },
 ];
 
+/**
+ * Canonical ordering of statuses along the pipeline. A step is "done" once the
+ * run's status has advanced past that step's own statusKey in this list.
+ * Note: 'failed'/'cancelled' are terminal and handled specially below.
+ */
 const statusOrder: AgentRunStatus[] = [
   'pending',
   'fetching',
@@ -29,6 +53,11 @@ const statusOrder: AgentRunStatus[] = [
   'completed',
 ];
 
+/**
+ * Derives the visual state of one stepper circle from the current run status.
+ * 'awaiting_human' means all analytical stages finished but a human must approve
+ * the rating before it can be published.
+ */
 function getStepState(
   stepIndex: number,
   status: AgentRunStatus,
@@ -58,6 +87,7 @@ function getStepState(
   return 'pending';
 }
 
+/** Renders the 5-step stepper circles plus the connector lines between them. */
 function RunProgressBar({ status }: RunProgressBarProps) {
   return (
     <div className="w-full">
@@ -115,6 +145,8 @@ function RunProgressBar({ status }: RunProgressBarProps) {
           );
         })}
       </div>
+      {/* Connector lines row: pulled up with -mt-9 to sit between the circles;
+          a line is emerald once the transition from step idx to idx+1 is underway/done */}
       <div className="-mt-9 flex">
         {steps.slice(0, -1).map((_step, idx) => {
           const state = getStepState(idx, status);

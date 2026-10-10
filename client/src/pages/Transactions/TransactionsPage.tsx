@@ -1,3 +1,18 @@
+/**
+ * @file pages/Transactions/TransactionsPage.tsx
+ * @description Route `/transactions`: buy/sell/deposit/withdrawal ledger and
+ * realized P/L summary.
+ *
+ * Two tabs:
+ *  - Transactions: filterable ledger with buy/sell totals and a desktop table +
+ *    mobile card list. Supports delete (with confirm) and a "reconcile" action
+ *    that recomputes holdings/closed positions server-side.
+ *  - Realized P/L: aggregate realized P/L across currencies, per-ticker rows,
+ *    and winner/loser counts.
+ *
+ * Mutations dispatch a `portfolio-updated` window event so Dashboard/Holdings
+ * refetch.
+ */
 import { useState, useEffect, useMemo } from 'react';
 import { toast } from 'sonner';
 import {
@@ -69,6 +84,9 @@ import AddTransactionDialog from './AddTransactionDialog';
 import AddClosedDialog from './AddClosedDialog';
 import TransactionList from './TransactionList';
 
+/**
+ * Transactions page component.
+ */
 export default function TransactionsPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [closed, setClosed] = useState<ClosedPosition[]>([]);
@@ -86,10 +104,12 @@ export default function TransactionsPage() {
   const [deleting, setDeleting] = useState(false);
   const [reconciling, setReconciling] = useState(false);
 
+  /** Notify other pages that portfolio data changed (triggers refetch). */
   const notifyPortfolioUpdate = () => {
     window.dispatchEvent(new CustomEvent('portfolio-updated'));
   };
 
+  /** Load transactions, optionally filtered by ticker, sorted by date desc. */
   const loadTransactions = async () => {
     setTxLoading(true);
     setTxError(null);
@@ -110,6 +130,7 @@ export default function TransactionsPage() {
     }
   };
 
+  /** Load closed positions (realized trades). */
   const loadClosed = async () => {
     setClosedLoading(true);
     setClosedError(null);
@@ -124,6 +145,7 @@ export default function TransactionsPage() {
     }
   };
 
+  /** Load the realized P/L aggregate summary. */
   const loadRealizedPl = async () => {
     setRealizedPlLoading(true);
     setRealizedPlError(null);
@@ -151,6 +173,7 @@ export default function TransactionsPage() {
     return () => clearTimeout(timer);
   }, [tickerFilter]);
 
+  /** Delete the selected transaction, then refresh closed/realized and notify. */
   const handleDelete = async () => {
     if (!deleteTarget) return;
     setDeleting(true);
@@ -172,6 +195,10 @@ export default function TransactionsPage() {
     }
   };
 
+  /**
+   * Trigger a server-side reconciliation that recomputes holdings and closed
+   * positions from the raw transaction ledger.
+   */
   const handleReconcile = async () => {
     setReconciling(true);
     try {
@@ -190,6 +217,10 @@ export default function TransactionsPage() {
     }
   };
 
+  /**
+   * Aggregate buy/sell totals across the filtered transactions. Fees are added
+   * to buys (cost) and subtracted from sells (proceeds).
+   */
   const txStats = useMemo(() => {
     const buyTotal = transactions
       .filter((t) => t.txType === 'Buy')
@@ -551,6 +582,10 @@ export default function TransactionsPage() {
   );
 }
 
+/**
+ * Realized P/L tab content: total P/L banner, per-currency breakdown, and a
+ * per-ticker table/card list sorted by realized P/L desc.
+ */
 function RealizedPlContent({
   summary,
   onAddClosed,

@@ -1,19 +1,31 @@
+/**
+ * useExternalScript: lazily injects an external <script> (appended to <body>) for
+ * the lifetime of the component and tracks its load status. Avoids double-injection
+ * and supports CSP nonce and optional cleanup.
+ * Part of the vendored business-ui component library.
+ */
 import { useEffect, useState } from 'react';
 
+/** Lifecycle status of an injected external script. */
 export type ExternalScriptStatus = 'idle' | 'loading' | 'ready' | 'error';
 
+/** Options for useExternalScript. */
 export interface UseExternalScriptOptions {
+  /** Remove the script tag on unmount. */
   removeOnUnmount?: boolean;
+  /** Extra attributes to set on the script tag. */
   attributes?: Record<string, string>;
+  /** CSP nonce to attach to the script. */
   nonce?: string;
+  /** Callback fired once the script finishes loading. */
   onloadCallback?: () => void;
 }
 
 /**
- * 在组件生命周期内按需注入外链脚本（追加到 <body> 末尾），并返回加载状态。
- * - 避免重复注入：如果页面已存在同 src 的脚本，直接标记为 ready。
- * - 支持 CSP：可通过 nonce 传入。
- * - 可选清理：removeOnUnmount=true 时卸载时移除脚本。
+ * Injects an external script on demand and returns its load status.
+ * - Avoids duplicate injection: if a script with the same src already exists, it is marked ready.
+ * - CSP aware: pass a nonce.
+ * - Optional cleanup: when removeOnUnmount is true, the script is removed on unmount.
  */
 export function useExternalScript(
   src: string,
@@ -24,7 +36,7 @@ export function useExternalScript(
   useEffect(() => {
     if (!src) return;
 
-    // 如果已经存在同 src 的脚本，直接认为已就绪
+    // If a script with the same src already exists, treat it as ready.
     const existing = document.querySelector<HTMLScriptElement>(
       `script[src="${src}"]`,
     );
@@ -34,7 +46,8 @@ export function useExternalScript(
       });
       return;
     }
-    // 在 effect 中避免同步 setState，使用微任务调度，防止级联渲染警告
+    // Avoid synchronous setState inside the effect; schedule via a microtask
+    // to prevent cascading-render warnings.
     let cancelled = false;
     queueMicrotask(() => {
       if (!cancelled) setStatus('loading');

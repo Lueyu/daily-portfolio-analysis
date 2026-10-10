@@ -1,3 +1,8 @@
+/**
+ * Props and context-value types for the EntityCombobox state container and
+ * BaseCombobox, plus the i18n text shape. Re-exports the shared value/trigger types.
+ * Part of the vendored business-ui component library.
+ */
 import type { ReactNode } from 'react';
 
 import type {
@@ -9,7 +14,7 @@ import type {
   TriggerType,
 } from '@client/src/components/business-ui/entity-combobox/shared-types';
 
-// 重新导出共享类型
+// Re-export the shared types.
 export type {
   ItemValue,
   TriggerType,
@@ -19,37 +24,35 @@ export type {
   ComboboxSize,
 };
 
-/**
- * EntityCombobox 组件的 Props
- */
+/** Props for the EntityCombobox state container. */
 export type EntityComboboxProps<
   T = unknown,
   TRaw = unknown,
   TValue extends ItemValue<TRaw> = ItemValue<TRaw>,
 > = {
-  // 尺寸
+  // Size
   size?: ComboboxSize;
 
-  // 数据获取
+  // Data fetching
   fetchFn: (search: string) => Promise<{ items: T[] }>;
 
-  // 受控/非受控
+  // Controlled / uncontrolled value
   multiple?: boolean;
   value?: TValue | TValue[] | null;
   defaultValue?: TValue | TValue[] | null;
   onChange?: (value: TValue | TValue[] | null) => void;
 
-  // 弹层控制
+  // Popover open state
   open?: boolean;
   defaultOpen?: boolean;
   onOpenChange?: (open: boolean) => void;
 
-  // 配置
+  // Configuration
   pageSize?: number;
   debounce?: number;
   disabled?: boolean;
 
-  // 回调
+  // Callbacks
   onSelect?: (value: TValue) => void;
   onDeselect?: (value: TValue) => void;
   onSearch?: (value: string) => void;
@@ -57,19 +60,17 @@ export type EntityComboboxProps<
 
   children: ReactNode;
 
-  // 转换函数
+  // Item -> value conversion
   getItemValue: (item: T) => TValue;
 };
 
-/**
- * EntityCombobox Context 值
- */
+/** Value exposed through the EntityCombobox context provider. */
 export type EntityComboboxContextValue<
   T = unknown,
   TRaw = unknown,
   TValue extends ItemValue<TRaw> = ItemValue<TRaw>,
 > = {
-  // 状态
+  // State
   open: boolean;
   setOpen: (open: boolean) => void;
   searchValue: string;
@@ -77,19 +78,19 @@ export type EntityComboboxContextValue<
   selectedValue: TValue | TValue[] | null;
   debouncedSearch: string;
 
-  // 方法
+  // Actions
   handleSelect: (value: TValue) => void;
   handleDeselect: (value: TValue) => void;
   handleClear: () => void;
 
-  // 数据
+  // Data
   data: T[];
   isFetching: boolean;
   isPending: boolean;
   isError: boolean;
   refetch: () => void;
 
-  // 配置
+  // Configuration
   multiple: boolean;
   disabled: boolean;
   size: ComboboxSize;
@@ -97,40 +98,38 @@ export type EntityComboboxContextValue<
   fetchStatus?: string;
   isPlaceholderData?: boolean;
 
-  // 转换函数
+  // Item -> value conversion
   getItemValue: (item: T) => TValue;
 };
 
-/**
- * BaseCombobox 组件的 Props
- */
+/** Props for the BaseCombobox public component. */
 export type BaseComboboxProps<
   T = unknown,
   TRaw = unknown,
   TValue extends ItemValue<TRaw> = ItemValue<TRaw>,
 > = {
-  // 尺寸
+  // Size
   size?: ComboboxSize;
 
-  // 数据获取
+  // Data fetching
   fetchFn: (search: string) => Promise<{ items: T[] }>;
 
-  // 触发器
+  // Trigger
   triggerType?: TriggerType;
   renderTrigger?: (props: TriggerRenderProps<TRaw>) => ReactNode;
 
-  // 受控/非受控
+  // Controlled / uncontrolled value
   multiple?: boolean;
   value?: TValue | TValue[] | null;
   defaultValue?: TValue | TValue[] | null;
   onChange?: (value: TValue | TValue[] | null) => void;
 
-  // 弹层控制
+  // Popover open state
   open?: boolean;
   defaultOpen?: boolean;
   onOpenChange?: (open: boolean) => void;
 
-  // 配置
+  // Configuration
   debounce?: number;
   disabled?: boolean;
   showSearch?: boolean;
@@ -138,7 +137,7 @@ export type BaseComboboxProps<
   required?: boolean;
   name?: string;
 
-  // 渲染函数
+  // Renderers
   renderItem: (
     item: T,
     isSelected: boolean,
@@ -151,34 +150,34 @@ export type BaseComboboxProps<
     disabled?: boolean,
   ) => ReactNode;
   /**
-   * 判断选项是否禁用
-   * @param value 选项值
-   * @returns 如果返回 true，该选项将被禁用
+   * Returns whether an option should be disabled.
+   * @param value The option value.
+   * @returns If true, the option is disabled.
    */
   getOptionDisabled?: (value: TValue) => boolean;
   getItemLabel?: (item: T) => string;
 
-  // Placeholder
+  // Placeholders
   placeholder?: string;
   searchPlaceholder?: string;
   emptyText?: string;
   loadingText?: string;
 
-  // 样式
+  // Styling
   className?: string;
   classNames?: ClassNamesConfig;
 
-  // 标签（多选）
+  // Tags (multi-select)
   tagClosable?: boolean;
   maxTagCount?: number | 'responsive';
   maxTagTextLength?: number;
 
-  // Popover 配置
+  // Popover placement
   placement?: 'top' | 'bottom' | 'left' | 'right';
   align?: 'start' | 'center' | 'end';
   sideOffset?: number;
 
-  // 回调
+  // Callbacks
   onSelect?: (value: TValue) => void;
   onDeselect?: (value: TValue) => void;
   onSearch?: (value: string) => void;
@@ -186,16 +185,14 @@ export type BaseComboboxProps<
   onFocus?: (event: React.FocusEvent<HTMLElement>) => void;
   onBlur?: (event: React.FocusEvent<HTMLElement>) => void;
 
-  // 转换函数
+  // Item -> value conversion
   getItemValue?: (item: T) => TValue;
 
   slotProps?: PopoverSlotProps;
   children?: ReactNode;
 };
 
-/**
- * PopoverWrapper 组件的 Props
- */
+/** Props for the PopoverWrapper. */
 export type PopoverWrapperProps<
   T = unknown,
   TRaw = unknown,
@@ -236,9 +233,7 @@ export type PopoverWrapperProps<
   children?: ReactNode;
 };
 
-/**
- * 国际化文本类型
- */
+/** Internationalized text shape (Chinese primary, English/Japanese optional). */
 export type I18nText = {
   zh_cn: string;
   en_us?: string;

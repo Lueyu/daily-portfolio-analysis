@@ -1,12 +1,18 @@
+/**
+ * Conversion helpers for user-display: re-exports the shared user normalizers and
+ * adds user-display-specific converters (raw API user info to User, and unknown-user
+ * placeholders).
+ * Part of the vendored business-ui component library.
+ */
 import { normalizeUser, isValidUserId } from '@client/src/components/business-ui/utils/user';
 import type { User } from '@client/src/components/business-ui/types/user';
 import type { UserInfo } from '@lark-apaas/client-toolkit/tools/services';
 import type { AccountType } from '@client/src/components/business-ui/api/users/service';
 
-// 直接导出统一的函数
+// Re-export the shared normalizers.
 export { normalizeUser, isValidUserId };
 
-// user-display 专用的转换函数
+/** user-display-specific converter: turns raw API user info into a User. */
 export function userInfoToUser(
   userInfo: (UserInfo & { avatar?: any }) | any,
   accountType: AccountType,
@@ -29,6 +35,7 @@ export function userInfoToUser(
   };
 }
 
+/** Creates an "unknown user" placeholder for an ID that cannot be resolved. */
 export function createUnknownUser(user_id: string): User {
   return {
     user_id,

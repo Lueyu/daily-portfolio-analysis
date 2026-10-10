@@ -1,5 +1,10 @@
 'use client';
 
+/**
+ * UserPill: a selected-user chip (avatar + name) used as the UserSelect tag. The
+ * avatar can open a popover showing the full UserProfile card on click.
+ * Part of the vendored business-ui component library.
+ */
 import React from 'react';
 
 import {
@@ -16,63 +21,66 @@ import {
   PopoverTrigger,
 } from '@client/src/components/ui/popover';
 
+/** Props for UserPill. */
 export type UserPillProps = {
   /**
-   * 用户 ID，用于 UserProfile 展示
+   * User ID, used by the UserProfile popover.
    */
   userId: string;
 
   /**
-   * 账户类型
+   * Account type.
    * @default "apaas"
    */
   accountType?: AccountType;
 
   /**
-   * 显示的用户名
+   * Displayed user name.
    */
   label: string;
 
   /**
-   * 头像 URL
+   * Avatar URL.
    */
   avatarUrl?: string;
 
   /**
-   * 尺寸
+   * Size.
    * @default "medium"
    */
   size?: ComboboxSize;
 
   /**
-   * 是否禁用
+   * Whether disabled.
    */
   disabled?: boolean;
 
   /**
-   * 最大文本长度
+   * Maximum text length before truncation.
    */
   maxTextLength?: number;
 
   /**
-   * 后缀（如关闭按钮）
+   * Suffix node (e.g. a close button).
    */
   suffix?: React.ReactNode;
 
   /**
-   * 自定义样式
+   * Custom class names.
    */
   className?: string;
 
   /**
-   * 是否启用点击头像弹出 UserProfile
+   * Whether clicking the avatar opens the UserProfile popover.
    * @default true
    */
   enableProfile?: boolean;
 
+  /** Whether to render a fallback initial when no avatar is available. */
   avatarFallback?: boolean;
 };
 
+/** Renders a selected-user chip, optionally with a UserProfile popover on the avatar. */
 export const UserPill: React.FC<UserPillProps> = ({
   userId,
   accountType = 'apaas',

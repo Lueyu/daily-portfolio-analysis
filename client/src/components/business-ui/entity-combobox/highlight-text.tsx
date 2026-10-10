@@ -1,7 +1,13 @@
 'use client';
 
+/**
+ * Text component that highlights the portion of a string matching the given
+ * search keyword (used to emphasize matched text in dropdown rows).
+ * Part of the vendored business-ui component library.
+ */
 import { useMemo } from 'react';
 
+/** Props for HighlightText. */
 export type HighlightTextProps = {
   text: string;
   highlight?: string;
@@ -10,8 +16,7 @@ export type HighlightTextProps = {
 };
 
 /**
- * 高亮文本组件
- * 将文本中匹配的部分用高亮样式标记
+ * Renders text with the matched substring highlighted using a distinct style.
  */
 export const HighlightText = ({
   text,

@@ -1,3 +1,8 @@
+/**
+ * Thin service wrapper around the platform ChatService for searching and
+ * batch-fetching chats, used by the ChatSelect component.
+ * Part of the vendored business-ui component library.
+ */
 import {
   ChatService,
   type BatchGetChatsResponse,
@@ -8,18 +13,14 @@ import {
 
 const chatService = new ChatService();
 
-/**
- * 搜索群组
- */
+/** Searches chats matching the given query string. */
 export async function searchChats(
   params: SearchChatsParams,
 ): Promise<SearchChatsResponse> {
   return chatService.searchChats(params);
 }
 
-/**
- * 批量根据群组 ID 查询群组信息
- */
+/** Batch-fetches chat info for a list of chat IDs. */
 export async function listChatsByIds(
   chatIds: string[],
 ): Promise<BatchGetChatsResponse> {

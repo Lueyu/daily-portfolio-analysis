@@ -1,3 +1,23 @@
+/**
+ * Shared API contracts — TypeScript types used by both the NestJS server and
+ * the React client. Kept in the `shared/` directory so both sides import the
+ * same definitions (no duplication, no drift).
+ *
+ * Sections:
+ *  - Domain enums: Rating, Action, Signal, Market, Currency, TxType.
+ *  - Core entities: Holding, WatchItem, Analysis, Transaction, ClosedPosition,
+ *    JournalEntry, Snapshot, AlphaPick, CashAccount, FxRate.
+ *  - Dashboard / search types: DashboardOverview, GroupSummary, QuoteResponse,
+ *    StockSearchResult, AgentStateResponse, ReconcileResult.
+ *  - DTOs: Create/Update request bodies for each entity.
+ *  - Multi-agent pipeline types: AgentRun*, Evidence, BullBearArgument,
+ *    DebateRecord, AgentRating, RiskGateResult, StrategyRule, DeepReport and
+ *    all its sub-interfaces, HumanDecisionDto, BatchRunRequest/Result,
+ *    PortfolioContext, LatestRating, DailyBatchResult.
+ *
+ * Numeric money/price fields are stored as strings in the DB (numeric type)
+ * and surfaced as strings here to avoid float-precision issues on the client.
+ */
 export type Rating = 'Strong Buy' | 'Buy' | 'Hold' | 'Sell' | 'Strong Sell';
 export type Action = '加仓' | '买入' | '持有' | '减仓' | '卖出' | '观望';
 export type Signal = '强烈买入' | '买入' | '观望' | '回避';

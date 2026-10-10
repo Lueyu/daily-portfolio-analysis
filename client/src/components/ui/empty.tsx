@@ -1,7 +1,14 @@
+/**
+ * Empty-state placeholder layout: header, media/icon, title, description, and content slots.
+ *
+ * Vendored shadcn-style UI primitive (Radix UI + Tailwind CSS).
+ */
+
 import { cva, type VariantProps } from "class-variance-authority"
 
 import { cn } from "@/lib/utils"
 
+/** Empty-state container. */
 function Empty({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
@@ -15,6 +22,7 @@ function Empty({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
+/** Header row of the empty state. */
 function EmptyHeader({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
@@ -28,6 +36,7 @@ function EmptyHeader({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
+/** Cva variant classes for EmptyMedia. */
 const emptyMediaVariants = cva(
   "flex shrink-0 items-center justify-center mb-3 [&_svg]:pointer-events-none [&_svg]:shrink-0",
   {
@@ -43,6 +52,7 @@ const emptyMediaVariants = cva(
   }
 )
 
+/** Media/icon area of the empty state. */
 function EmptyMedia({
   className,
   variant = "default",
@@ -58,6 +68,7 @@ function EmptyMedia({
   )
 }
 
+/** Title text of the empty state. */
 function EmptyTitle({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
@@ -68,6 +79,7 @@ function EmptyTitle({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
+/** Supporting text of the empty state. */
 function EmptyDescription({ className, ...props }: React.ComponentProps<"p">) {
   return (
     <div
@@ -81,6 +93,7 @@ function EmptyDescription({ className, ...props }: React.ComponentProps<"p">) {
   )
 }
 
+/** Action/content area of the empty state. */
 function EmptyContent({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div

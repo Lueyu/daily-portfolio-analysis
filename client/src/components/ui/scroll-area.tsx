@@ -1,10 +1,17 @@
 "use client"
 
+/**
+ * Custom-styled scrollable area with a themed scrollbar (Radix ScrollArea).
+ *
+ * Vendored shadcn-style UI primitive (Radix UI + Tailwind CSS).
+ */
+
 import * as React from "react"
 import * as ScrollAreaPrimitive from "@radix-ui/react-scroll-area"
 
 import { cn } from "@/lib/utils"
 
+/** Custom scrollable area. */
 function ScrollArea({
   className,
   children,
@@ -28,6 +35,7 @@ function ScrollArea({
   )
 }
 
+/** Themed scrollbar track/thumb. */
 function ScrollBar({
   className,
   orientation = "vertical",

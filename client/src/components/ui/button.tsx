@@ -1,9 +1,16 @@
+/**
+ * Clickable button trigger with variant (default/outline/ghost/secondary/destructive) and size presets.
+ *
+ * Vendored shadcn-style UI primitive (Radix UI + Tailwind CSS).
+ */
+
 import * as React from "react"
 import { Slot } from "@radix-ui/react-slot"
 import { cva, type VariantProps } from "class-variance-authority"
 
 import { cn } from "@/lib/utils"
 
+/** Cva variant classes for Button. */
 const buttonVariants = cva(
   // Base button styles with elevate system for hover/active states.
   // hover-elevate: applies subtle dark overlay on hover
@@ -45,6 +52,7 @@ const buttonVariants = cva(
   }
 )
 
+/** Clickable button trigger. */
 function Button({
   className,
   variant,

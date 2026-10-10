@@ -1,5 +1,12 @@
+/**
+ * Colorful Wiki PowerPoint file-type icon.
+ *
+ * Vendored colorful file-type SVG icon component.
+ */
+
 import * as React from 'react';
 
+/** FileWikiPptColorfulIcon component. */
 export function FileWikiPptColorfulIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
     <svg {...props} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">

@@ -1,11 +1,18 @@
 "use client"
 
+/**
+ * Single-choice radio group with styled radio items (Radix RadioGroup).
+ *
+ * Vendored shadcn-style UI primitive (Radix UI + Tailwind CSS).
+ */
+
 import * as React from "react"
 import * as RadioGroupPrimitive from "@radix-ui/react-radio-group"
 import { CircleIcon } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 
+/** Radio group root. */
 function RadioGroup({
   className,
   ...props
@@ -19,6 +26,7 @@ function RadioGroup({
   )
 }
 
+/** One selectable radio option. */
 function RadioGroupItem({
   className,
   ...props

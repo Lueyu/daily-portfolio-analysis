@@ -1,24 +1,30 @@
+/**
+ * Type definitions for UserSelect: value-mode discriminator, the normalized user
+ * item, the inferred value type, and the discriminated union of component props.
+ * Part of the vendored business-ui component library.
+ */
 import type {
   BaseEntitySelectProps,
   ItemValue,
 } from '@client/src/components/business-ui/entity-combobox/shared-types';
 import type { User, I18nText, UserType, Department } from '@client/src/components/business-ui/types/user';
 
-// 统一从 @lark-apaas/client-toolkit 导入 AccountType
+// Import AccountType uniformly from @lark-apaas/client-toolkit.
 export type { AccountType } from '@lark-apaas/client-toolkit/tools/services';
 import type { AccountType } from '@lark-apaas/client-toolkit/tools/services';
 
-// 重新导出统一的类型
+// Re-export the shared types.
 export type { User, I18nText, UserType, Department };
 
 /**
- * 值类型
- * - 'string': value 为 string 或 string[]（与 multiple 联动）
- * - 'object': value 为 User 或 User[]（与 multiple 联动）
+ * External value mode.
+ * - 'string': value is a string or string[] (driven by multiple)
+ * - 'object': value is a User or User[] (driven by multiple)
  * @default 'string'
  */
 export type ValueType = 'string' | 'object';
 
+/** Raw avatar shape from the user search API. */
 export type SearchAvatar = {
   avatar: {
     image: {
@@ -27,14 +33,10 @@ export type SearchAvatar = {
   };
 };
 
-/**
- * UserSelect 的值类型（包装 User）
- */
+/** Normalized user item used by the combobox (wraps a User). */
 export type UserSelectItemValue = ItemValue<User>;
 
-/**
- * 根据 valueType 和 multiple 推断 value 类型
- */
+/** Infers the external value type from valueType and multiple flags. */
 export type InferValue<
   V extends ValueType,
   M extends boolean,
@@ -43,8 +45,8 @@ export type InferValue<
     ? string[]
     : string | null
   : M extends true
-    ? User[]              // ✅ 直接返回标准 User 类型
-    : User | null;        // ✅ 直接返回标准 User 类型
+    ? User[]              // Returns the standard User type directly.
+    : User | null;        // Returns the standard User type directly.
 
 type UserSelectBaseProps<
   V extends ValueType = 'string',
@@ -54,41 +56,41 @@ type UserSelectBaseProps<
   'value' | 'defaultValue' | 'onChange'
 > & {
   /**
-   * 值类型
-   * - 'string': value 为 string 或 string[]（与 multiple 联动）
-   * - 'object': value 为 User 或 User[]（与 multiple 联动）
+   * External value mode.
+   * - 'string': value is a string or string[] (driven by multiple)
+   * - 'object': value is a User or User[] (driven by multiple)
    * @default 'string'
    */
   valueType?: V;
   /**
-   * 是否多选
+   * Whether multi-select is enabled.
    * @default false
    */
   multiple?: M;
   /**
-   * 账户类型，决定 value 中 id 字段的来源
+   * Account type; determines which field feeds the value's id.
    * @default 'apaas'
    */
   accountType?: AccountType;
   /**
-   * 当前值
+   * Current controlled value.
    */
   value?: InferValue<V, M>;
   /**
-   * 默认值
+   * Uncontrolled default value.
    */
   defaultValue?: InferValue<V, M>;
   /**
-   * 值变化回调
+   * Callback fired when the value changes.
    */
   onChange?: (value: InferValue<V, M>) => void;
 };
 
 /**
- * UserSelect 组件 Props
+ * UserSelect component props.
  *
- * 类型组合：
- * | valueType | multiple | value 类型 |
+ * Type combinations:
+ * | valueType | multiple | value type |
  * |-----------|----------|------------|
  * | 'string'  | false    | string \| null |
  * | 'string'  | true     | string[] |

@@ -1,13 +1,33 @@
+/**
+ * @file utils/agent-api.ts
+ * @brief Embedded multi-agent bridge exposed on `window.__pt`.
+ *
+ * When this SPA runs inside the Lark aPaaS container, external agent runtimes
+ * (LLM workflows, scheduled jobs) need a stable, versioned surface to read/
+ * write portfolio data without knowing backend URLs. `initAgentAPI` installs
+ * that surface on `window.__pt`, merging over any pre-existing fields so it is
+ * safe to call more than once.
+ *
+ * The methods here intentionally mirror backend `/api/agent/*` routes and are
+ * called out-of-process; the UI itself should prefer the typed functions in
+ * `api/index.ts`.
+ */
 import { axiosForBackend } from '@lark-apaas/client-toolkit/utils/getAxiosForBackend';
 import { resolveAppUrl } from '@lark-apaas/client-toolkit/utils/resolveAppUrl';
 import { logger } from '@lark-apaas/client-toolkit/logger';
 
 declare global {
   interface Window {
+    /** Bridge surface exposed to the embedded agent runtime. */
     __pt?: PortfolioTerminalAPI;
   }
 }
 
+/**
+ * Shape of the agent bridge installed on `window.__pt`.
+ * All methods are async and reject on backend error; read methods return the
+ * raw backend payload, write methods return the persisted record.
+ */
 interface PortfolioTerminalAPI {
   getState: () => Promise<unknown>;
   getHistory: () => Promise<unknown>;
@@ -38,6 +58,11 @@ interface PortfolioTerminalAPI {
   };
 }
 
+/**
+ * Install the agent bridge on `window.__pt`.
+ * Safe to call multiple times: existing fields on `window.__pt` are preserved
+ * and merged under the API surface. No-op during SSR.
+ */
 export function initAgentAPI() {
   if (typeof window === 'undefined') return;
 

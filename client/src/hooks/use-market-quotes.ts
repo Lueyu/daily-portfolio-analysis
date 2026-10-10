@@ -1,20 +1,39 @@
+/**
+ * @file hooks/use-market-quotes.ts
+ * @brief Live market-quote subscription with per-market polling.
+ *
+ * Exposes `useMarketQuotes(tickers)` to any component. Under the hood a module-
+ * level `QuoteScheduler` singleton merges all subscribers' tickers, batches
+ * quotes per market (US/HK/CN), and polls on a phase-aware cadence:
+ *   - 60s while the market is in continuous trading
+ *   - 5min during pre/post market
+ *   - 10min while closed
+ * It also pauses timers when the tab is hidden and refreshes immediately on
+ * visibility change, so background tabs do not hammer the quote API.
+ */
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { axiosForBackend } from '@lark-apaas/client-toolkit/utils/getAxiosForBackend';
 import { logger } from '@lark-apaas/client-toolkit/logger';
 import type { QuoteResponse, Market } from '@shared/api.interface';
 
+/**
+ * Market session state used to choose the polling cadence.
+ */
 export type MarketPhase = 'trading' | 'pre' | 'post' | 'closed';
 
+// Poll intervals per phase (ms).
 const TRADING_INTERVAL = 60 * 1000;         // 60s during trading
 const PRE_POST_INTERVAL = 5 * 60 * 1000;    // 5min pre/post
 const IDLE_INTERVAL = 10 * 60 * 1000;       // 10min closed
 
+/** IANA time zones used to convert UTC into each market's local wall clock. */
 const MARKET_TIMEZONES: Record<Market, string> = {
   US: 'America/New_York',
   HK: 'Asia/Hong_Kong',
   CN: 'Asia/Shanghai',
 };
 
+/** A single trading-session window expressed in minutes-of-day (market-local). */
 type TimeSession = { start: number; end: number; phase: MarketPhase };
 
 // Minute-of-day ranges (market-local time) for each market.
@@ -34,9 +53,17 @@ const MARKET_SESSIONS: Record<Market, TimeSession[]> = {
   ],
 };
 
+/** All markets the scheduler tracks. */
 const ALL_MARKETS: Market[] = ['US', 'HK', 'CN'];
 
-// Infer market from ticker: .HK / 5-digit numeric -> HK; 6-digit -> CN; else US.
+/**
+ * Infer the market a ticker belongs to from its shape.
+ *  - `.HK` suffix or 5-digit number -> Hong Kong
+ *  - 6-digit number -> China A-shares
+ *  - anything else -> US-listed
+ * @param ticker - Raw ticker string as stored on a holding/watch item.
+ * @returns The resolved `Market`.
+ */
 export function inferMarket(ticker: string): Market {
   const clean = ticker.trim().toUpperCase();
   if (/\.HK$/.test(clean)) return 'HK';
@@ -44,10 +71,15 @@ export function inferMarket(ticker: string): Market {
   return 'US';
 }
 
-// Normalize a quote symbol to match local holding ticker format.
-// - HK: "1810.HK" -> "01810" (5-digit, zero-padded); already 5-digit numeric -> as-is
-// - US: pass through (e.g. "TQQQ", "MSFT")
-// - CN: 6-digit numeric -> as-is
+/**
+ * Normalize a quote symbol to match the local holding ticker format.
+ *  - HK: "1810.HK" -> "01810" (5-digit, zero-padded); already 5-digit numeric -> as-is
+ *  - US: pass through (e.g. "TQQQ", "MSFT")
+ *  - CN: 6-digit numeric -> as-is
+ * @param symbol - Symbol returned by the quote provider.
+ * @param market - Market the quote belongs to.
+ * @returns The normalized symbol used as the cache key.
+ */
 function normalizeQuoteSymbol(symbol: string, market: Market): string {
   const s = symbol.trim().toUpperCase();
   if (market === 'HK') {
@@ -60,6 +92,14 @@ function normalizeQuoteSymbol(symbol: string, market: Market): string {
   return s;
 }
 
+/**
+ * Convert a UTC Date into the market-local weekday/hour/minute.
+ * Uses `Intl.DateTimeFormat` with the market's IANA zone so the math stays
+ * correct across DST changes.
+ * @param market - Target market.
+ * @param date - UTC Date to convert.
+ * @returns Local weekday (0=Sun), 24h hour and minute.
+ */
 function getMarketLocalTime(market: Market, date: Date): {
   weekday: number; hour: number; minute: number;
 } {
@@ -79,7 +119,12 @@ function getMarketLocalTime(market: Market, date: Date): {
   };
 }
 
-// Returns the current market phase (trading/pre/post/closed) for `market`.
+/**
+ * Compute the current market phase for a given market.
+ * @param market - Market to evaluate.
+ * @param date - Optional date (defaults to now); mainly used for tests.
+ * @returns One of `trading | pre | post | closed`.
+ */
 export function isMarketTrading(market: Market, date?: Date): MarketPhase {
   const now = date ?? new Date();
   const { weekday, hour, minute } = getMarketLocalTime(market, now);
@@ -98,12 +143,18 @@ export function isMarketTrading(market: Market, date?: Date): MarketPhase {
   return 'closed';
 }
 
+/**
+ * Pick the polling interval appropriate for a market phase.
+ * @param phase - Current market phase.
+ * @returns Interval in milliseconds.
+ */
 function intervalForPhase(phase: MarketPhase): number {
   if (phase === 'trading') return TRADING_INTERVAL;
   if (phase === 'pre' || phase === 'post') return PRE_POST_INTERVAL;
   return IDLE_INTERVAL;
 }
 
+/** Payload handed to every subscriber callback on each quote refresh. */
 type SubscribeCallback = (data: {
   quotes: Record<string, QuoteResponse>;
   marketStatus: Record<Market, MarketPhase>;
@@ -111,7 +162,11 @@ type SubscribeCallback = (data: {
   lastUpdated: Date | null;
 }) => void;
 
-// Singleton quote scheduler: all subscribers share tickers, quote cache, per-market timers.
+/**
+ * Singleton quote scheduler shared by all `useMarketQuotes` consumers.
+ * It deduplicates tickers across subscribers, batches requests per market,
+ * and drives phase-aware timers with tab-visibility awareness.
+ */
 class QuoteScheduler {
   private tickers = new Set<string>();
   private subscribers = new Map<SubscribeCallback, string[]>();
@@ -132,6 +187,14 @@ class QuoteScheduler {
   private visible = true;
   private marketFetching: Record<Market, boolean> = { US: false, HK: false, CN: false };
 
+  /**
+   * Register a subscriber for the given tickers.
+   * Immediately emits the current cache so the caller renders synchronously,
+   * kicks off a first fetch for any newly-covered market, and (lazily) starts
+   * the visibility listener.
+   * @param tickers - Tickers this consumer cares about.
+   * @param callback - Invoked on every subsequent quote refresh.
+   */
   subscribe(tickers: string[], callback: SubscribeCallback): void {
     const prevSize = this.tickers.size;
     const uniqueTickers = Array.from(new Set(tickers));
@@ -161,6 +224,11 @@ class QuoteScheduler {
     }
   }
 
+  /**
+   * Remove a subscriber. If no subscribers remain, all timers and the
+   * visibility listener are torn down and the ticker set is cleared.
+   * @param callback - The callback previously passed to `subscribe`.
+   */
   unsubscribe(callback: SubscribeCallback): void {
     this.subscribers.delete(callback);
     if (this.subscribers.size === 0) {
@@ -174,6 +242,7 @@ class QuoteScheduler {
     this.scheduleAllMarkets();
   }
 
+  /** Rebuild the global ticker union from the active subscribers' ticker lists. */
   private rebuildTickers(): void {
     this.tickers.clear();
     for (const ts of this.subscribers.values()) {
@@ -181,6 +250,7 @@ class QuoteScheduler {
     }
   }
 
+  /** Force an immediate refresh of every market that currently has subscribers. */
   refresh(): void {
     const grouped = this.groupTickersByMarket();
     for (const m of ALL_MARKETS) {
@@ -190,18 +260,25 @@ class QuoteScheduler {
 
   // ---- internals ----
 
+  /** Group the global ticker union into per-market buckets. */
   private groupTickersByMarket(): Record<Market, string[]> {
     const result: Record<Market, string[]> = { US: [], HK: [], CN: [] };
     for (const t of this.tickers) result[inferMarket(t)].push(t);
     return result;
   }
 
+  /** Re-evaluate every market's trading phase (used on subscription/refresh). */
   private refreshMarketStatus(): void {
     for (const m of ALL_MARKETS) {
       this.marketStatus[m] = isMarketTrading(m);
     }
   }
 
+  /**
+   * Start the `visibilitychange` listener. When the tab becomes visible we
+   * immediately refresh all markets and reschedule timers; when hidden we
+   * stop timers to avoid background polling.
+   */
   private startVisibilityListener(): void {
     if (typeof document === 'undefined') return;
     this.visibilityHandler = () => {
@@ -225,6 +302,7 @@ class QuoteScheduler {
     this.visible = document.visibilityState === 'visible';
   }
 
+  /** Detach the `visibilitychange` listener (called when subscribers drain). */
   private stopVisibilityListener(): void {
     if (this.visibilityHandler && typeof document !== 'undefined') {
       document.removeEventListener('visibilitychange', this.visibilityHandler);
@@ -232,6 +310,7 @@ class QuoteScheduler {
     }
   }
 
+  /** Clear all per-market pending timers. */
   private stopAllTimers(): void {
     for (const m of ALL_MARKETS) {
       if (this.marketTimers[m] !== null) {
@@ -241,6 +320,7 @@ class QuoteScheduler {
     }
   }
 
+  /** Clear the pending timer for a single market (if any). */
   private stopMarketTimer(market: Market): void {
     if (this.marketTimers[market] !== null) {
       window.clearTimeout(this.marketTimers[market]);
@@ -248,6 +328,7 @@ class QuoteScheduler {
     }
   }
 
+  /** (Re)start timers for every market that currently has at least one ticker. */
   private scheduleAllMarkets(): void {
     if (!this.visible) return;
     const grouped = this.groupTickersByMarket();
@@ -260,6 +341,11 @@ class QuoteScheduler {
     }
   }
 
+  /**
+   * Schedule the next poll for a single market based on its current phase.
+   * After the fetch resolves, this method re-schedules itself so the cadence
+   * adapts as the market moves between pre/trading/post/closed.
+   */
   private scheduleMarket(market: Market): void {
     this.stopMarketTimer(market);
     if (!this.visible) return;
@@ -275,6 +361,13 @@ class QuoteScheduler {
     }, interval);
   }
 
+  /**
+   * Fetch a batch of quotes for one market. Concurrent calls are collapsed by
+   * the `marketFetching` guard. On success the cache is updated for both the
+   * raw provider symbol and the normalized local symbol; on failure the last
+   * known prices are kept and `marketErrors` is raised so the UI can show a
+   * stale-data indicator.
+   */
   private async fetchMarketBatch(market: Market): Promise<void> {
     if (!this.visible) return;
     if (this.marketFetching[market]) return;
@@ -324,6 +417,7 @@ class QuoteScheduler {
     }
   }
 
+  /** Roll the global `lastUpdated` up from the per-market last-success timestamps. */
   private updateGlobalLastUpdated(): void {
     let latest: Date | null = null;
     for (const m of ALL_MARKETS) {
@@ -333,6 +427,7 @@ class QuoteScheduler {
     this.lastUpdated = latest;
   }
 
+  /** Broadcast a snapshot of the current cache to every subscriber. */
   private emit(): void {
     if (this.subscribers.size === 0) return;
     const payload = {
@@ -352,6 +447,11 @@ class QuoteScheduler {
 
   // ---- diagnostic ----
 
+  /**
+   * Return a diagnostic snapshot of every market's phase, local time, next
+   * refresh, last update and error state. Exposed on `window.__pt.getMarketStatus`
+   * for troubleshooting live quote behavior in production.
+   */
   getMarketStatus(): {
     utcNow: string;
     markets: Record<Market, {
@@ -386,11 +486,18 @@ class QuoteScheduler {
   }
 }
 
+/** All markets (re-exported for callers that need to iterate). */
 const ALL_MARKETS_EXPORT: Market[] = ['US', 'HK', 'CN'];
 
-// Module-level singleton.
+// Module-level singleton shared by every useMarketQuotes consumer.
 const scheduler = new QuoteScheduler();
 
+/**
+ * Compute the current phase of every market without subscribing to quotes.
+ * Useful for badges that only need to know whether "any market" is open.
+ * @returns `anyTrading` (true if at least one market is in continuous trading)
+ *          and a per-market phase map.
+ */
 export function getAggregateMarketStatus(): {
   anyTrading: boolean;
   statuses: Record<Market, MarketPhase>;
@@ -405,6 +512,10 @@ export function getAggregateMarketStatus(): {
   return { anyTrading, statuses };
 }
 
+/**
+ * Force an immediate quote refresh across all subscribed markets.
+ * Bound to the "Refresh" button on quote-bearing pages.
+ */
 export function forceRefreshAllQuotes(): void {
   scheduler.refresh();
 }
@@ -418,6 +529,19 @@ if (typeof window !== 'undefined') {
 
 // ---- Hook ----
 
+/**
+ * React hook that subscribes the calling component to live quotes for the
+ * given tickers. All consumers share the module-level `QuoteScheduler`, so
+ * N components rendering the same tickers produce exactly one network batch.
+ *
+ * The subscription is re-created whenever the ordered ticker list changes
+ * (joined into a string for the dep array to avoid referential churn).
+ *
+ * @param tickers - Tickers to stream quotes for.
+ * @returns Cached quotes map (keyed by raw and normalized symbols), per-market
+ *          phase and error maps, the last-success timestamp, and a `refresh`
+ *          callback that forces an immediate refetch.
+ */
 export function useMarketQuotes(tickers: string[]): {
   quotes: Record<string, QuoteResponse>;
   marketStatus: Record<Market, MarketPhase>;

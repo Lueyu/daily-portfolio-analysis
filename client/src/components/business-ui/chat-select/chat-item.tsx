@@ -1,5 +1,10 @@
 'use client';
 
+/**
+ * Renders a single chat row inside the ChatSelect dropdown list: avatar,
+ * highlighted name, member count and an "external chat" badge.
+ * Part of the vendored business-ui component library.
+ */
 import React from 'react';
 
 import type { Chat } from '@client/src/components/business-ui/chat-select/types';
@@ -16,12 +21,18 @@ import {
 import { cn } from '@/lib/utils';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 
+/** Small inline badge marking a chat as external. */
 const ExternalChatTag = () => (
   <span className="inline-flex shrink-0 items-center rounded-sm bg-blue-500/20 px-1.5 py-0.5 text-xs leading-4 text-blue-900 dark:text-blue-200">
     外部
   </span>
 );
 
+/**
+ * One selectable chat row. Shows the chat avatar (image or colored fallback),
+ * the name with the active search keyword highlighted, member count and an
+ * external-chat badge when applicable.
+ */
 export const ChatItem = ({
   chatValue,
   isSelected,

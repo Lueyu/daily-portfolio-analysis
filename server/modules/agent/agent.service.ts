@@ -1,3 +1,14 @@
+/**
+ * Agent service.
+ *
+ * Backing service for the LLM-driven analysis agent. It aggregates the user's
+ * entire portfolio state (holdings, watchlist, groups, analysis, transactions,
+ * closed positions, journal, snapshots, alpha picks, cash) into a single payload
+ * for the agent, and persists agent-driven writes: daily analysis notes, holding
+ * ratings, watchlist add/remove, journal, snapshots, and deep research reports
+ * (each tied to an `agentRuns` row to preserve historical versions). All reads
+ * and writes are owner-scoped.
+ */
 import { BadRequestException, Inject, Injectable, Logger } from '@nestjs/common';
 import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '@lark-apaas/fullstack-nestjs-core';
 import { eq, and, desc, gte, inArray, ne, notIlike } from 'drizzle-orm';
@@ -35,6 +46,7 @@ import type {
 } from '@shared/api.interface';
 import { SnapshotsService } from '../snapshots/snapshots.service';
 
+/** A single analysis item within a daily-analysis payload. */
 interface AnalysisItemDto {
   ticker: string;
   rating?: string;
@@ -45,11 +57,13 @@ interface AnalysisItemDto {
   risks?: string;
 }
 
+/** Payload for saving a day's analysis notes. */
 interface DailyAnalysisDto {
   date: string;
   items: AnalysisItemDto[];
 }
 
+/** A single holding-rating update item. */
 interface HoldingRatingItem {
   ticker: string;
   rating?: string;
@@ -58,18 +72,25 @@ interface HoldingRatingItem {
   targetPrice?: number;
 }
 
+/** Payload for applying ratings to holdings. */
 interface HoldingRatingsDto {
   items: HoldingRatingItem[];
 }
 
+/** Payload for adding/upserting watchlist items. */
 interface WatchItemAddDto {
   items: Array<Omit<WatchItem, 'id' | 'dateAdded' | 'updatedAt'> & { dateAdded?: string }>;
 }
 
+/** Payload for removing watchlist items by ticker. */
 interface WatchItemRemoveDto {
   tickers: string[];
 }
 
+/**
+ * Provides portfolio aggregation and agent-driven writes. Depends on the Drizzle
+ * database and `SnapshotsService` (for snapshot upsert/list).
+ */
 @Injectable()
 export class AgentService {
   private readonly logger = new Logger(AgentService.name);
@@ -79,6 +100,12 @@ export class AgentService {
     private readonly snapshotsService: SnapshotsService,
   ) {}
 
+  /**
+   * Builds the full portfolio state for the agent: loads all owner-scoped tables
+   * in parallel and maps them to API DTOs.
+   *
+   * @param userId Owner id.
+   */
   async getState(userId: string): Promise<AgentStateResponse> {
     const [
       holdingRows,
@@ -128,6 +155,12 @@ export class AgentService {
     };
   }
 
+  /**
+   * Returns recent history for the agent: analysis and snapshots from the last 180
+   * days, all transactions, and all holdings.
+   *
+   * @param userId Owner id.
+   */
   async getHistory(userId: string): Promise<{
     analysis: Analysis[];
     transactions: Transaction[];
@@ -165,6 +198,13 @@ export class AgentService {
     };
   }
 
+  /**
+   * Saves a batch of analysis notes for a date, upserting each ticker on
+   * (owner, date, ticker).
+   *
+   * @param userId Owner id.
+   * @param dto    Day's analysis payload.
+   */
   async saveDailyAnalysis(userId: string, dto: DailyAnalysisDto): Promise<{ saved: number }> {
     let saved = 0;
 
@@ -201,6 +241,13 @@ export class AgentService {
     return { saved };
   }
 
+  /**
+   * Applies ratings/actions/targets to the user's existing holdings. Items with
+   * no updatable fields, or matching no holding, are skipped.
+   *
+   * @param userId Owner id.
+   * @param dto    Holdings ratings payload.
+   */
   async applyHoldingRatings(
     userId: string,
     dto: HoldingRatingsDto,
@@ -239,6 +286,13 @@ export class AgentService {
     return { updated, skipped };
   }
 
+  /**
+   * Adds or updates watchlist items. Existing tickers are patched; new ones are
+   * inserted (dateAdded defaults to today).
+   *
+   * @param userId Owner id.
+   * @param dto    Watchlist items payload.
+   */
   async addWatchItems(
     userId: string,
     dto: WatchItemAddDto,
@@ -293,6 +347,12 @@ export class AgentService {
     return { added, updated };
   }
 
+  /**
+   * Removes owned watchlist items by ticker.
+   *
+   * @param userId Owner id.
+   * @param dto    Tickers to remove.
+   */
   async removeWatchItems(userId: string, dto: WatchItemRemoveDto): Promise<{ removed: number }> {
     if (dto.tickers.length === 0) return { removed: 0 };
 
@@ -304,6 +364,13 @@ export class AgentService {
     return { removed: rows.length };
   }
 
+  /**
+   * Creates or updates (upserts) the journal entry for a date on
+   * (owner, journalDate).
+   *
+   * @param userId Owner id.
+   * @param dto    Journal payload.
+   */
   async saveJournal(userId: string, dto: CreateJournalDto): Promise<JournalEntry> {
     const rows = await this.db
       .insert(journal)
@@ -333,6 +400,11 @@ export class AgentService {
     return this.mapJournal(rows[0]);
   }
 
+  /**
+   * Returns all journal entries for the user, newest first.
+   *
+   * @param userId Owner id.
+   */
   async getJournal(userId: string): Promise<JournalEntry[]> {
     const rows = await this.db
       .select()
@@ -343,15 +415,36 @@ export class AgentService {
     return rows.map((row) => this.mapJournal(row));
   }
 
+  /**
+   * Creates or updates the snapshot for a date (delegated to SnapshotsService,
+   * which also recomputes net deposits and daily P&L).
+   *
+   * @param userId Owner id.
+   * @param dto    Snapshot payload.
+   */
   async saveSnapshot(userId: string, dto: CreateSnapshotDto): Promise<Snapshot> {
     return this.snapshotsService.upsert(userId, dto);
   }
 
+  /**
+   * Returns up to 365 snapshots, newest first.
+   *
+   * @param userId Owner id.
+   */
   async getSnapshots(userId: string): Promise<Snapshot[]> {
     const result = await this.snapshotsService.list(userId, 365);
     return result.items;
   }
 
+  /**
+   * Saves a deep research report. Validates the ticker (rejects malformed or
+   * TESTDEEP tickers), always creates a new `agentRuns` row to preserve historical
+   * versions, then upserts the `deepReport` row keyed by runId.
+   *
+   * @param userId Owner id.
+   * @param input  Deep report fields (without id/runId timestamps).
+   * @throws BadRequestException if the ticker is invalid.
+   */
   async saveDeepReport(
     userId: string,
     input: Omit<DeepReport, 'id' | 'runId' | 'createdAt' | 'updatedAt'> & { reportDate?: string },
@@ -499,6 +592,11 @@ export class AgentService {
     };
   }
 
+  /**
+   * Returns the user's strategy rules, ordered by sort then rule key.
+   *
+   * @param userId Owner id.
+   */
   async getStrategyRules(userId: string): Promise<StrategyRule[]> {
     const rows = await this.db
       .select()
@@ -523,6 +621,13 @@ export class AgentService {
     }));
   }
 
+  /**
+   * Returns the latest completed full deep report for a ticker (excluding test
+   * runs), joined from agentRuns + deepReport.
+   *
+   * @param userId Owner id.
+   * @param ticker Target ticker.
+   */
   async getLatestDeepReport(
     userId: string,
     ticker: string,
@@ -578,6 +683,12 @@ export class AgentService {
     };
   }
 
+  /**
+   * Lists the user's completed full deep reports, newest first (excluding test
+   * runs).
+   *
+   * @param userId Owner id.
+   */
   async listDeepReports(
     userId: string,
   ): Promise<Array<{
@@ -633,12 +744,17 @@ export class AgentService {
      }));
   }
 
+  /**
+   * Returns today's date (YYYY-MM-DD) in the Shanghai (UTC+8) timezone, used as
+   * the default report date.
+   */
   private getTodayInShanghai(): string {
     const now = new Date();
     const shanghaiTime = new Date(now.getTime() + 8 * 60 * 60 * 1000);
     return shanghaiTime.toISOString().slice(0, 10);
   }
 
+  /** Maps a raw holdings row to the API `Holding` DTO. */
   private mapHolding(row: typeof holdings.$inferSelect): Holding {
     return {
       id: row.id,
@@ -662,6 +778,7 @@ export class AgentService {
     };
   }
 
+  /** Maps a raw watchlist row to the API `WatchItem` DTO. */
   private mapWatchItem(row: typeof watchlist.$inferSelect): WatchItem {
     return {
       id: row.id,
@@ -681,6 +798,7 @@ export class AgentService {
     };
   }
 
+  /** Maps a raw groups row to the API `Group` DTO. */
   private mapGroup(row: typeof groups.$inferSelect): Group {
     return {
       id: row.id,
@@ -690,6 +808,7 @@ export class AgentService {
     };
   }
 
+  /** Maps a raw analysis row to the API `Analysis` DTO. */
   private mapAnalysis(row: typeof analysis.$inferSelect): Analysis {
     return {
       id: row.id,
@@ -705,6 +824,7 @@ export class AgentService {
     };
   }
 
+  /** Maps a raw transactions row to the API `Transaction` DTO. */
   private mapTransaction(row: typeof transactions.$inferSelect): Transaction {
     return {
       id: row.id,
@@ -719,6 +839,7 @@ export class AgentService {
     };
   }
 
+  /** Maps a raw closed-positions row to the API `ClosedPosition` DTO. */
   private mapClosed(row: typeof closed.$inferSelect): ClosedPosition {
     return {
       id: row.id,
@@ -735,6 +856,7 @@ export class AgentService {
     };
   }
 
+  /** Maps a raw journal row to the API `JournalEntry` DTO. */
   private mapJournal(row: typeof journal.$inferSelect): JournalEntry {
     return {
       id: row.id,
@@ -748,6 +870,7 @@ export class AgentService {
     };
   }
 
+  /** Maps a raw snapshots row to the API `Snapshot` DTO. */
   private mapSnapshot(row: typeof snapshots.$inferSelect): Snapshot {
     const dateStr =
       typeof row.snapshotDate === 'string'
@@ -769,6 +892,7 @@ export class AgentService {
     };
   }
 
+  /** Maps a raw alpha-picks row to the API `AlphaPick` DTO. */
   private mapAlphaPick(row: typeof alphaPicks.$inferSelect): AlphaPick {
     return {
       id: row.id,

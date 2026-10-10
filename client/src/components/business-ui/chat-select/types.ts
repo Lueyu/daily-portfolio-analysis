@@ -1,3 +1,8 @@
+/**
+ * Shared type definitions for ChatSelect: raw chat info, the normalized chat
+ * item, value-mode discriminators, and the discriminated union of component props.
+ * Part of the vendored business-ui component library.
+ */
 import type {
   BaseEntitySelectProps,
   ItemValue,
@@ -6,38 +11,32 @@ import type { I18nText } from '@client/src/components/business-ui/entity-combobo
 
 export type { I18nText };
 
-/**
- * 群组原始信息（对应 SearchChatEntity）
- */
+/** Raw chat info as returned by the search API (corresponds to SearchChatEntity). */
 export type ChatInfo = {
-  /** 群组 ID */
+  /** Chat ID. */
   chatID: string;
-  /** 群组名称（国际化文本） */
+  /** Chat name (internationalized text). */
   name: I18nText;
-  /** 头像：URL 或 16 进制 RGB 颜色 */
+  /** Avatar: an image URL or a hex RGB color. */
   avatar: string;
-  /** 是否是外部群 */
+  /** Whether this is an external chat. */
   isExternal?: boolean;
-  /** 群成员数量（不包括机器人） */
+  /** Number of members in the chat (excluding bots). */
   userCount?: number;
 };
 
-/**
- * 标准化后的群组数据（用于 BaseCombobox）
- */
+/** Normalized chat item used internally by BaseCombobox. */
 export type Chat = ItemValue<ChatInfo>;
 
 /**
- * 值类型
- * - 'string': value 为 chatID 字符串
- * - 'object': value 为 Chat 对象
+ * External value mode.
+ * - 'string': value is a chatID string
+ * - 'object': value is a Chat object
  * @default 'string'
  */
 export type ValueType = 'string' | 'object';
 
-/**
- * 根据 valueType 和 multiple 推断 value 类型
- */
+/** Infers the external value type from valueType and multiple flags. */
 export type InferValue<
   V extends ValueType,
   M extends boolean,
@@ -57,36 +56,36 @@ type ChatSelectBaseProps<
   'value' | 'defaultValue' | 'onChange'
 > & {
   /**
-   * 值类型
-   * - 'string': value 为 chatID 字符串
-   * - 'object': value 为 Chat 对象
+   * External value mode.
+   * - 'string': value is a chatID string
+   * - 'object': value is a Chat object
    * @default 'string'
    */
   valueType?: V;
   /**
-   * 是否多选
+   * Whether multi-select is enabled.
    * @default false
    */
   multiple?: M;
   /**
-   * 当前值
+   * Current controlled value.
    */
   value?: InferValue<V, M>;
   /**
-   * 默认值
+   * Uncontrolled default value.
    */
   defaultValue?: InferValue<V, M>;
   /**
-   * 值变化回调
+   * Callback fired when the value changes.
    */
   onChange?: (value: InferValue<V, M>) => void;
 };
 
 /**
- * ChatSelect 组件 Props
+ * ChatSelect component props.
  *
- * 类型组合：
- * | valueType | multiple | value 类型 |
+ * Type combinations:
+ * | valueType | multiple | value type |
  * |-----------|----------|------------|
  * | 'string'  | false    | string \| null |
  * | 'string'  | true     | string[] |

@@ -1,4 +1,23 @@
 #!/usr/bin/env node
+/**
+ * dev-local.js — local development launcher for the miaoda/fullstack stack.
+ *
+ * Steps:
+ *   1. env pull — fetch sandbox credentials to .env.local via lark-cli.
+ *   2. skills sync — sync agent skills to the local flat layout.
+ *   3. Load .env / .env.local into process.env (dotenv; .env.local takes
+ *      precedence over .env; shell env wins over both).
+ *   4. Spawn `npm run dev:server` and `npm run dev:client` concurrently via
+ *      `concurrently`, inheriting process.env so the SDKs don't need their
+ *      own dotenv require.
+ *
+ * SUDA_WEBUSER quirk: sandbox env-pull writes SUDA_WEBUSER as shell-quoted JSON
+ * with escaped inner quotes; dotenv@17 doesn't unescape them. This script
+ * detects that case and unescapes before handing off to child processes.
+ *
+ * NOTE: this file is maintained by `miaoda app sync`; the original Chinese
+ * header below is preserved for reference.
+ */
 // ============================================================================
 // 本地开发启动脚本（由 miaoda app sync 维护，请勿手改）
 // Stack: nestjs-react-fullstack

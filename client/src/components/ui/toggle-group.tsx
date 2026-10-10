@@ -1,5 +1,11 @@
 "use client"
 
+/**
+ * Exclusive/multi toggle button group built on the Toggle primitive.
+ *
+ * Vendored shadcn-style UI primitive (Radix UI + Tailwind CSS).
+ */
+
 import * as React from "react"
 import * as ToggleGroupPrimitive from "@radix-ui/react-toggle-group"
 import { type VariantProps } from "class-variance-authority"
@@ -7,6 +13,7 @@ import { type VariantProps } from "class-variance-authority"
 import { cn } from "@/lib/utils"
 import { toggleVariants } from "@/components/ui/toggle"
 
+/** ToggleGroupContext component. */
 const ToggleGroupContext = React.createContext<
   VariantProps<typeof toggleVariants> & {
     spacing?: number
@@ -17,6 +24,7 @@ const ToggleGroupContext = React.createContext<
   spacing: 0,
 })
 
+/** Toggle button group root. */
 function ToggleGroup({
   className,
   variant,
@@ -48,6 +56,7 @@ function ToggleGroup({
   )
 }
 
+/** One toggle button in the group. */
 function ToggleGroupItem({
   className,
   children,

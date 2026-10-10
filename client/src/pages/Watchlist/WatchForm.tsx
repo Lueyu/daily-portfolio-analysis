@@ -1,3 +1,11 @@
+/**
+ * @file pages/Watchlist/WatchForm.tsx
+ * @description Controlled form shared by the add-watch and detail-edit dialogs.
+ *
+ * All fields are strings; numeric inputs are parsed by the parent on submit.
+ * The ticker field is optional (hidden) when editing an existing watch item,
+ * since the ticker is immutable after creation.
+ */
 import { Input } from '@/components/ui/input';
 import {
   Select,
@@ -8,6 +16,7 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 
+/** Controlled form model for a watch item. */
 export interface WatchFormData {
   ticker: string;
   company: string;
@@ -21,16 +30,26 @@ export interface WatchFormData {
   analysis: string;
 }
 
+/** Selectable signal values. */
 const SIGNAL_OPTIONS = ['强烈买入', '买入', '观望', '回避'];
+/** Selectable rating values. */
 const RATING_OPTIONS = ['Strong Buy', 'Buy', 'Hold', 'Sell', 'Strong Sell'];
 
+/** Props for {@link WatchForm}. */
 interface WatchFormProps {
+  /** Current form values (controlled). */
   data: WatchFormData;
+  /** Change handler receiving the next form state. */
   onChange: (d: WatchFormData) => void;
+  /** When true, show the ticker input (used by the create dialog). */
   includeTicker?: boolean;
 }
 
+/**
+ * Render the watch-item form grid.
+ */
 function WatchForm({ data, onChange, includeTicker }: WatchFormProps) {
+  /** Merge a single field update into the controlled form state. */
   const update = (k: keyof WatchFormData, v: string) =>
     onChange({ ...data, [k]: v });
 

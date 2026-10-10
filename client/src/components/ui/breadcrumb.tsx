@@ -1,13 +1,21 @@
+/**
+ * Breadcrumb navigation trail with links, separators, and an ellipsis overflow item.
+ *
+ * Vendored shadcn-style UI primitive (Radix UI + Tailwind CSS).
+ */
+
 import * as React from "react"
 import { Slot } from "@radix-ui/react-slot"
 import { ChevronRight, MoreHorizontal } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 
+/** Breadcrumb root. */
 function Breadcrumb({ ...props }: React.ComponentProps<"nav">) {
   return <nav aria-label="breadcrumb" data-slot="breadcrumb" {...props} />
 }
 
+/** Ordered list of breadcrumb items. */
 function BreadcrumbList({ className, ...props }: React.ComponentProps<"ol">) {
   return (
     <ol
@@ -21,6 +29,7 @@ function BreadcrumbList({ className, ...props }: React.ComponentProps<"ol">) {
   )
 }
 
+/** One breadcrumb entry. */
 function BreadcrumbItem({ className, ...props }: React.ComponentProps<"li">) {
   return (
     <li
@@ -31,6 +40,7 @@ function BreadcrumbItem({ className, ...props }: React.ComponentProps<"li">) {
   )
 }
 
+/** A clickable breadcrumb link. */
 function BreadcrumbLink({
   asChild,
   className,
@@ -49,6 +59,7 @@ function BreadcrumbLink({
   )
 }
 
+/** The current (non-link) page entry. */
 function BreadcrumbPage({ className, ...props }: React.ComponentProps<"span">) {
   return (
     <span
@@ -62,6 +73,7 @@ function BreadcrumbPage({ className, ...props }: React.ComponentProps<"span">) {
   )
 }
 
+/** Separator between breadcrumb items. */
 function BreadcrumbSeparator({
   children,
   className,
@@ -80,6 +92,7 @@ function BreadcrumbSeparator({
   )
 }
 
+/** Overflow ellipsis for collapsed items. */
 function BreadcrumbEllipsis({
   className,
   ...props

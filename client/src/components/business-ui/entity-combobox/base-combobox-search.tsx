@@ -1,16 +1,23 @@
 'use client';
 
+/**
+ * Search input field inside the combobox dropdown, bound to the shared search
+ * value in context.
+ * Part of the vendored business-ui component library.
+ */
 import { useEntityComboboxContext } from '@client/src/components/business-ui/entity-combobox/context';
 import { searchInputVariants } from '@client/src/components/business-ui/entity-combobox/size-variants';
 import { cn } from '@/lib/utils';
 import { CommandInput } from '@client/src/components/ui/command';
 
+/** Props for BaseComboboxSearch. */
 export type BaseComboboxSearchProps = {
   placeholder?: string;
   className?: string;
   ref?: React.Ref<HTMLInputElement>;
 };
 
+/** Renders the dropdown search input. */
 export const BaseComboboxSearch = ({
   placeholder = '搜索...',
   className,

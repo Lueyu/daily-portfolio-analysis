@@ -1,9 +1,15 @@
 'use client';
 
+/**
+ * React Query hook and cache keys for batch user lookups used by UserSelect
+ * and the UserDisplay components.
+ * Part of the vendored business-ui component library.
+ */
 import { useQuery, queryOptions, type QueryClient } from '@tanstack/react-query';
 
 import { listUsersByIds, type AccountType } from './service';
 
+/** Centralized React Query cache keys and query options for user lookups. */
 export const userQueries = {
   all: () => ['users'] as const,
   byIds: (userIds: string[], accountType: AccountType = 'apaas') =>
@@ -16,9 +22,7 @@ export const userQueries = {
     }),
 };
 
-/**
- * 批量获取用户信息的 hook
- */
+/** Hook that batch-loads user info for the given user IDs. */
 export function useUsersByIds(
   userIds: string[],
   accountType: AccountType = 'apaas',
@@ -26,9 +30,7 @@ export function useUsersByIds(
   return useQuery(userQueries.byIds(userIds, accountType));
 }
 
-/**
- * 清除用户缓存
- */
+/** Invalidates all cached user queries so they are refetched. */
 export function clearUserCache(queryClient: QueryClient): void {
   queryClient.invalidateQueries({ queryKey: userQueries.all() });
 }

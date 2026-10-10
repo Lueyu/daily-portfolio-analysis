@@ -1,3 +1,9 @@
+/**
+ * @file pages/Journal/JournalSectionCard.tsx
+ * @description One of the five journal sections (market, portfolio, actions,
+ * plan, lessons). Switches between a read-only card and an editable textarea
+ * based on the page's editing flag.
+ */
 import {
   Globe,
   Target,
@@ -14,12 +20,17 @@ import {
 } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 
+/** Metadata describing one journal section. */
 export interface JournalSection {
+  /** Which JournalEntry field this section maps to. */
   key: keyof Pick<JournalEntry, 'marketSummary' | 'portfolioSummary' | 'actions' | 'plan' | 'lessons'>;
+  /** Display label. */
   label: string;
+  /** Lucide icon component. */
   icon: typeof Globe;
 }
 
+/** The five journal sections, in display order. */
 export const sections: JournalSection[] = [
   { key: 'marketSummary', label: '市场与宏观', icon: Globe },
   { key: 'portfolioSummary', label: '组合表现归因', icon: Target },
@@ -28,14 +39,22 @@ export const sections: JournalSection[] = [
   { key: 'lessons', label: '心得纪律', icon: Lightbulb },
 ];
 
+/** Props for {@link JournalSectionCard}. */
 interface JournalSectionCardProps {
   section: JournalSection;
+  /** Current saved content (read mode). */
   content: string | null | undefined;
+  /** Whether the page is in edit mode. */
   editing: boolean;
+  /** Current draft value (edit mode). */
   editValue: string;
+  /** Draft change handler. */
   onEditChange: (value: string) => void;
 }
 
+/**
+ * Render a journal section card; textarea when editing, otherwise read-only.
+ */
 export function JournalSectionCard({
   section,
   content,

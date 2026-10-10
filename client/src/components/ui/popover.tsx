@@ -1,22 +1,31 @@
 "use client"
 
+/**
+ * Lightweight floating popover anchored to a trigger (Radix Popover).
+ *
+ * Vendored shadcn-style UI primitive (Radix UI + Tailwind CSS).
+ */
+
 import * as React from "react"
 import * as PopoverPrimitive from "@radix-ui/react-popover"
 
 import { cn } from "@/lib/utils"
 
+/** Popover root. */
 function Popover({
   ...props
 }: React.ComponentProps<typeof PopoverPrimitive.Root>) {
   return <PopoverPrimitive.Root data-slot="popover" {...props} />
 }
 
+/** Element that opens the popover. */
 function PopoverTrigger({
   ...props
 }: React.ComponentProps<typeof PopoverPrimitive.Trigger>) {
   return <PopoverPrimitive.Trigger data-slot="popover-trigger" {...props} />
 }
 
+/** Floating popover panel. */
 function PopoverContent({
   className,
   align = "center",
@@ -39,6 +48,7 @@ function PopoverContent({
   )
 }
 
+/** Anchor point for an un-triggered popover. */
 function PopoverAnchor({
   ...props
 }: React.ComponentProps<typeof PopoverPrimitive.Anchor>) {

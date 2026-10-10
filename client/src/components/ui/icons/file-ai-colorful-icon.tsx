@@ -1,5 +1,12 @@
+/**
+ * Colorful AI (Adobe Illustrator) file-type icon.
+ *
+ * Vendored colorful file-type SVG icon component.
+ */
+
 import * as React from 'react';
 
+/** FileAiColorfulIcon component. */
 export function FileAiColorfulIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
     <svg

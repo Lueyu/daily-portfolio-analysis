@@ -1,3 +1,9 @@
+/**
+ * @file client/src/typography.css
+ * @description Typography layer: registers the Tailwind typography plugin and
+ * maps its prose color variables to the theme's foreground/background tokens
+ * so rendered long-form content (e.g. LLM reports) matches the app theme.
+ */
 @plugin "@tailwindcss/typography";
 
 @utility prose {

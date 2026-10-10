@@ -1,5 +1,12 @@
+/**
+ * Colorful Wiki image file-type icon.
+ *
+ * Vendored colorful file-type SVG icon component.
+ */
+
 import * as React from 'react';
 
+/** FileWikiImageColorfulIcon component. */
 export function FileWikiImageColorfulIcon(
   props: React.SVGProps<SVGSVGElement>,
 ) {

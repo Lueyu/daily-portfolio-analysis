@@ -1,3 +1,19 @@
+/**
+ * @file pages/Dashboard/DashboardPage.tsx
+ * @description Route `/`: portfolio overview landing page.
+ *
+ * Sections:
+ *  - Top metric cards (account value, market value, cost, cash, cumulative P/L, return %)
+ *  - AI analysis status card (running / awaiting-human / completed counts,
+ *    latest rating, hard-rule risk-gate failures)
+ *  - Daily P/L chart + per-holding P/L breakdown (DailyPlChart / DailyPnLBreakdown)
+ *  - Holdings grouped by market (table on desktop, cards on mobile)
+ *  - Cash balances by currency
+ *
+ * Data: parallel-fetches overview, holdings and daily P/L; subscribes to live
+ * quotes via `useMarketQuotes`; reloads on the global `portfolio-updated` event
+ * so any mutating page can trigger a refresh.
+ */
 import { useMemo, useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import {
@@ -73,6 +89,13 @@ import DailyPlChart from './DailyPlChart';
 import DailyPnLBreakdown from './DailyPnLBreakdown';
 import { Badge } from '@/components/ui/badge';
 
+/**
+ * Pick a display company name, returning null when the name is effectively
+ * the same as the ticker (case-insensitive, before any dot suffix).
+ * @param company - Company name from the holding record.
+ * @param ticker - Holding ticker.
+ * @returns The display name, or null when it duplicates the ticker.
+ */
 function displayCompany(
   company: string | null | undefined,
   ticker: string,
@@ -84,6 +107,7 @@ function displayCompany(
   return name;
 }
 
+/** Shape of a dashboard metric card config. */
 interface MetricCard {
   label: string;
   icon: typeof Wallet;
@@ -97,17 +121,23 @@ interface MetricCard {
   percent?: boolean;
 }
 
+/** Selectable base (reporting) currencies for converted amounts. */
 const CURRENCY_OPTIONS: { value: Currency; label: string }[] = [
   { value: 'USD', label: 'USD / 美元' },
   { value: 'HKD', label: 'HKD / 港币' },
   { value: 'CNY', label: 'CNY / 人民币' },
 ];
 
+/** Props for {@link RealtimeBadge}. */
 interface RealtimeBadgeProps {
   marketStatus: Record<string, string>;
   holdings: Holding[];
 }
 
+/**
+ * Show "实时" (live, pulsing green) when any held market is in pre/regular/post
+ * trading, otherwise "已收盘" (closed).
+ */
 function RealtimeBadge({ marketStatus, holdings }: RealtimeBadgeProps) {
   const heldMarkets = new Set(holdings.map((h: Holding) => h.market));
   const heldActive = Array.from(heldMarkets).filter(
@@ -133,6 +163,12 @@ function RealtimeBadge({ marketStatus, holdings }: RealtimeBadgeProps) {
   );
 }
 
+/**
+ * Dashboard landing component.
+ *
+ * State: overview payload, holdings list, daily P/L series, selected base
+ * currency, P/L window length, today's agent runs, and hard-rule failure count.
+ */
 export default function DashboardPage() {
   const [dashboard, setDashboard] = useState<DashboardOverview | null>(null);
   const [holdings, setHoldings] = useState<Holding[]>([]);
@@ -154,6 +190,10 @@ export default function DashboardPage() {
 
   const { quotes, marketStatus, marketErrors, lastUpdated } = useMarketQuotes(tickers);
 
+  /**
+   * Parallel-fetch overview, holdings and daily P/L for the given currency and
+   * window. Errors surface a toast; `loading` is cleared in `finally`.
+   */
   const loadData = async (currency: Currency, range: number) => {
     try {
       const [dashData, holdingsData, plData] = await Promise.all([
@@ -239,6 +279,7 @@ export default function DashboardPage() {
     []
   );
 
+  /** Group-level summaries sorted by market value (desc) for the market table. */
   const sortedMarkets = useMemo<GroupSummary[]>(() => {
     if (!dashboard?.groups) return [];
     return [...dashboard.groups].sort(
@@ -246,12 +287,14 @@ export default function DashboardPage() {
     );
   }, [dashboard]);
 
+  /** Most recent day's P/L and percent from the daily series. */
   const dailyPlTotal = useMemo(() => {
     if (!dailyPl || dailyPl.length === 0) return { pl: '0', pct: '0' };
     const latest = dailyPl[dailyPl.length - 1];
     return { pl: latest.dailyPl, pct: latest.dailyPct };
   }, [dailyPl]);
 
+  /** Bucket holdings by their market, used to render per-market mobile cards. */
   const holdingsByMarket = useMemo(() => {
     const map = new Map<string, Holding[]>();
     for (const h of holdings) {
@@ -263,6 +306,7 @@ export default function DashboardPage() {
     return map;
   }, [holdings]);
 
+  /** Tally today's agent runs into running / awaiting-human / completed buckets. */
   const runStats = useMemo(() => {
     const stats = {
       running: 0,
@@ -287,6 +331,7 @@ export default function DashboardPage() {
     return stats;
   }, [agentRuns]);
 
+  /** Pick the first completed run that has a rating, for the "latest" card. */
   const latestCompletedRun = useMemo(() => {
     const completed = agentRuns.filter(
       (r: AgentRunWithRating) => r.status === 'completed' && r.rating
@@ -294,6 +339,7 @@ export default function DashboardPage() {
     return completed.length > 0 ? completed[0] : null;
   }, [agentRuns]);
 
+  // Load today's agent runs and tally hard-rule risk-gate failures.
   useEffect(() => {
     let mounted = true;
     const today = new Date().toISOString().split('T')[0];

@@ -1,11 +1,18 @@
 "use client"
 
+/**
+ * Styled boolean checkbox control (Radix Checkbox).
+ *
+ * Vendored shadcn-style UI primitive (Radix UI + Tailwind CSS).
+ */
+
 import * as React from "react"
 import * as CheckboxPrimitive from "@radix-ui/react-checkbox"
 import { CheckIcon } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 
+/** Styled checkbox input. */
 function Checkbox({
   className,
   ...props

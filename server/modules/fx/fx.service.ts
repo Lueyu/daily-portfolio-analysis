@@ -1,3 +1,12 @@
+/**
+ * FX service.
+ *
+ * Stores and serves currency exchange rates (USD->HKD, USD->CNY) and converts
+ * amounts between currencies. Rates are cached in the `fxRates` table and refreshed
+ * from exchangerate.host. Lookups support both the direct pair and the inverse
+ * (taking 1/rate), falling back to the latest rate when a date-specific one is
+ * missing.
+ */
 import { Injectable, Inject, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '@lark-apaas/fullstack-nestjs-core';
@@ -6,6 +15,10 @@ import { firstValueFrom } from 'rxjs';
 import { fxRates } from '@server/database/schema';
 import type { FxRate, Currency } from '@shared/api.interface';
 
+/**
+ * Provides FX rate lookup and currency conversion. Depends on the Drizzle database
+ * and the Axios `HttpService`.
+ */
 @Injectable()
 export class FxService {
   private readonly logger = new Logger(FxService.name);
@@ -15,13 +28,21 @@ export class FxService {
     private readonly httpService: HttpService,
   ) {}
 
+  /**
+   * Returns the latest rate for a base/quote pair. Same-currency returns '1'.
+   * Tries the direct pair first, then the inverse pair (1/rate).
+   *
+   * @param base  Base currency.
+   * @param quote Quote currency.
+   * @returns Rate string, or null if none is stored.
+   */
   async getLatestRate(base: string, quote: string): Promise<string | null> {
     const baseUpper = base.toUpperCase();
     const quoteUpper = quote.toUpperCase();
 
     if (baseUpper === quoteUpper) return '1';
 
-    // Try direct pair
+    // Try the direct pair (base -> quote).
     const directRow = await this.db
       .select({ rate: fxRates.rate })
       .from(fxRates)
@@ -33,7 +54,7 @@ export class FxService {
       return String(directRow[0].rate);
     }
 
-    // Try reverse pair
+    // Try the reverse pair (quote -> base) and invert.
     const reverseRow = await this.db
       .select({ rate: fxRates.rate })
       .from(fxRates)
@@ -51,6 +72,11 @@ export class FxService {
     return null;
   }
 
+  /**
+   * Lists all FX rates recorded for a given date.
+   *
+   * @param date Rate date (YYYY-MM-DD).
+   */
   async getRatesForDate(date: string): Promise<FxRate[]> {
     const rows = await this.db
       .select({
@@ -71,6 +97,12 @@ export class FxService {
     }));
   }
 
+  /**
+   * Fetches today's USD->HKD and USD->CNY rates from exchangerate.host and upserts
+   * them into `fxRates` (keyed by date+base+quote). Failures are logged and return 0.
+   *
+   * @returns The number of rates successfully upserted.
+   */
   async refreshRates(): Promise<number> {
     try {
       const url = 'https://api.exchangerate.host/latest?base=USD&symbols=HKD,CNY';
@@ -99,7 +131,7 @@ export class FxService {
 
       if (rates.length === 0) return 0;
 
-      // Upsert each rate
+      // Upsert each rate on the (date, base, quote) key.
       let updated = 0;
       for (const r of rates) {
         try {
@@ -130,6 +162,17 @@ export class FxService {
     }
   }
 
+  /**
+   * Converts an amount from one currency to another. If a date is given, prefers
+   * that date's rate (direct, then inverse); otherwise uses the latest rate.
+   *
+   * @param amount Amount to convert.
+   * @param from   Source currency.
+   * @param to     Target currency.
+   * @param date   Optional rate date (YYYY-MM-DD).
+   * @returns Converted amount.
+   * @throws Error if no usable rate is available.
+   */
   async convert(amount: number, from: string, to: string, date?: string): Promise<number> {
     const fromUpper = from.toUpperCase();
     const toUpper = to.toUpperCase();
@@ -139,7 +182,7 @@ export class FxService {
     let rateStr: string | null = null;
 
     if (date) {
-      // Try direct on the given date
+      // Try the direct pair on the given date.
       const directRow = await this.db
         .select({ rate: fxRates.rate })
         .from(fxRates)
@@ -151,7 +194,7 @@ export class FxService {
       if (directRow.length > 0 && directRow[0].rate != null) {
         rateStr = String(directRow[0].rate);
       } else {
-        // Try reverse
+        // Try the inverse pair on the given date.
         const reverseRow = await this.db
           .select({ rate: fxRates.rate })
           .from(fxRates)
@@ -167,7 +210,7 @@ export class FxService {
       }
     }
 
-    // Fallback to latest
+    // Fall back to the latest available rate.
     if (rateStr === null) {
       rateStr = await this.getLatestRate(fromUpper, toUpper);
     }

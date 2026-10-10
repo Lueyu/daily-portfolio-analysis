@@ -1,3 +1,13 @@
+/**
+ * Snapshots service.
+ *
+ * Business logic and PostgreSQL (Drizzle) data access for daily portfolio
+ * snapshots. On upsert it recomputes the day's net deposits (from Deposit/Withdrawal
+ * transactions), converts them to the base currency (USD) via `FxService`, chains a
+ * cumulative net-deposit balance from the previous snapshot, and derives daily P&L
+ * as (account value change) minus (net deposits) so external cash flows don't count
+ * as performance. All rows are owner-scoped.
+ */
 import { Injectable, Inject, Logger, NotFoundException, forwardRef } from '@nestjs/common';
 import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '@lark-apaas/fullstack-nestjs-core';
 import { eq, and, desc, sql } from 'drizzle-orm';
@@ -5,8 +15,10 @@ import { snapshots, transactions } from '@server/database/schema';
 import type { Snapshot, CreateSnapshotDto, ListResponse } from '@shared/api.interface';
 import { FxService } from '../fx/fx.service';
 
+/** Marker prefix for synthetic auto-deposit transactions created by the buy flow. */
 const AUTO_DEPOSIT_MARKER = '__AUTO_DEPOSIT_FOR_BUY__';
 
+/** Net deposit amounts grouped by currency (known currencies plus dynamic others). */
 interface NetDepositByCurrency {
   USD: number;
   HKD: number;
@@ -14,6 +26,11 @@ interface NetDepositByCurrency {
   [key: string]: number;
 }
 
+/**
+ * Provides daily snapshot read/upsert/delete and derived cash-flow metrics.
+ * Depends on the Drizzle database and `FxService` (injected with `forwardRef` to
+ * avoid a circular module dependency).
+ */
 @Injectable()
 export class SnapshotsService {
   private readonly logger = new Logger(SnapshotsService.name);
@@ -23,6 +40,12 @@ export class SnapshotsService {
     @Inject(forwardRef(() => FxService)) private readonly fxService: FxService,
   ) {}
 
+  /**
+   * Lists snapshots for a user, newest first, capped at 365 rows.
+   *
+   * @param userId Owner id.
+   * @param limit  Requested max rows (clamped to 365).
+   */
   async list(userId: string, limit = 90): Promise<ListResponse<Snapshot>> {
     const safeLimit = Math.min(limit, 365);
     const rows = await this.db
@@ -37,6 +60,11 @@ export class SnapshotsService {
     };
   }
 
+  /**
+   * Returns the most recent snapshot for the user, or null if none.
+   *
+   * @param userId Owner id.
+   */
   async latest(userId: string): Promise<Snapshot | null> {
     const rows = await this.db
       .select()
@@ -49,6 +77,12 @@ export class SnapshotsService {
     return this.mapRow(rows[0]);
   }
 
+  /**
+   * Maps a raw snapshots row to the API `Snapshot` shape, stringifying numerics and
+   * normalizing the date to YYYY-MM-DD.
+   *
+   * @param row Raw snapshots table row.
+   */
   private mapRow(row: typeof snapshots.$inferSelect): Snapshot {
     const dateStr =
       typeof row.snapshotDate === 'string'
@@ -70,6 +104,12 @@ export class SnapshotsService {
     };
   }
 
+  /**
+   * Sums the day's Deposit/Withdrawal transactions by currency for a user.
+   *
+   * @param userId  Owner id.
+   * @param dateStr Target date (YYYY-MM-DD).
+   */
   private async getNetDepositByCurrency(
     userId: string,
     dateStr: string,
@@ -79,6 +119,7 @@ export class SnapshotsService {
     const rows = await this.db
       .select({
         txType: transactions.txType,
+        // shares*price is the deposit/withdrawal amount for cash-flow rows.
         amount: sql<number>`(${transactions.shares} * ${transactions.price})::numeric(16,4)`,
         currency: transactions.currency,
         notes: transactions.notes,
@@ -106,6 +147,15 @@ export class SnapshotsService {
     return byCurrency;
   }
 
+  /**
+   * Converts net deposits from each currency into the base currency using the
+   * rate for the snapshot date; on conversion failure it logs and falls back to a
+   * 1:1 pass-through.
+   *
+   * @param byCurrency Net deposits keyed by currency.
+   * @param base       Target base currency (USD).
+   * @param dateStr    Rate date (YYYY-MM-DD).
+   */
   private async convertNetDepositToBase(
     byCurrency: NetDepositByCurrency,
     base: string,
@@ -130,10 +180,19 @@ export class SnapshotsService {
     return total;
   }
 
+  /**
+   * Upserts the snapshot for a date. Computes net/cumulative net deposits in the
+   * base currency and derives daily P&L (account value change minus net deposits,
+   * relative to previously invested capital). Runs in a transaction.
+   *
+   * @param userId Owner id.
+   * @param dto    Snapshot payload keyed by `snapshotDate`.
+   */
   async upsert(userId: string, dto: CreateSnapshotDto): Promise<Snapshot> {
     const base = 'USD';
     const dateStr = dto.snapshotDate;
 
+    // Pull the most recent earlier snapshot to chain cumulative values.
     const prevRows = await this.db
       .select({
         accountValue: snapshots.accountValue,
@@ -165,6 +224,7 @@ export class SnapshotsService {
 
     const accountValueNum = dto.accountValue ?? 0;
 
+    // Daily P&L strips out net deposits so they don't inflate returns.
     let dailyPl: number | null = null;
     let dailyPct: number | null = null;
     if (prevAv != null && dto.accountValue !== undefined) {
@@ -230,6 +290,14 @@ export class SnapshotsService {
     return this.mapRow(result);
   }
 
+  /**
+   * Upserts many snapshots at once. Items are processed oldest-first so each
+   * snapshot's cumulative values chain off the previous one; results are returned
+   * newest-first.
+   *
+   * @param userId Owner id.
+   * @param items  Snapshot payloads.
+   */
   async batchUpsert(userId: string, items: CreateSnapshotDto[]): Promise<ListResponse<Snapshot>> {
     const sorted = [...items].sort((a, b) => a.snapshotDate.localeCompare(b.snapshotDate));
     const results: Snapshot[] = [];
@@ -240,15 +308,22 @@ export class SnapshotsService {
     return { items: results.sort((a, b) => b.snapshotDate.localeCompare(a.snapshotDate)) };
   }
 
+  /**
+   * Deletes an owned snapshot.
+   *
+   * @param userId Owner id.
+   * @param id     Snapshot primary key.
+   * @throws NotFoundException if the snapshot does not belong to the user.
+   */
   async remove(userId: string, id: string): Promise<{ success: boolean }> {
     const deleted = await this.db
       .delete(snapshots)
       .where(and(eq(snapshots.id, id), eq(snapshots.owner, userId)))
       .returning({ id: snapshots.id });
 
-    if (deleted.length === 0) {
+    if (deleted.length === 0)
+      // NOTE: Chinese user-facing message (existing behavior; not mojibake).
       throw new NotFoundException('快照记录不存在');
-    }
     return { success: true };
   }
 }

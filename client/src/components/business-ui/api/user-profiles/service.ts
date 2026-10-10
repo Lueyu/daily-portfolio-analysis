@@ -1,3 +1,8 @@
+/**
+ * Thin service wrapper around the platform UserProfileService for fetching
+ * user profile card data, used by the UserProfile component.
+ * Part of the vendored business-ui component library.
+ */
 import {
   UserProfileService,
   getAssetsUrl,
@@ -7,9 +12,7 @@ import {
 
 const userProfileService = new UserProfileService();
 
-/**
- * 获取用户 Profile 卡片数据
- */
+/** Fetches the profile card data for a single user, optionally abortable via signal. */
 export async function fetchUserProfile(
   userId: string,
   accountType: AccountType = 'apaas',

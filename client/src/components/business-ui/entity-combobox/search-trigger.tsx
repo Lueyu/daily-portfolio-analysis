@@ -1,5 +1,11 @@
 'use client';
 
+/**
+ * SearchTrigger: the input-box-style trigger used when triggerType is 'search'.
+ * Shows the selected value (single-select name or multi-select tags), a clear-all
+ * button, and an open/close chevron.
+ * Part of the vendored business-ui component library.
+ */
 import { ChevronDown, ChevronUp, CircleX, X } from 'lucide-react';
 
 import { useEntityComboboxContext } from '@client/src/components/business-ui/entity-combobox/context';
@@ -22,6 +28,7 @@ import {
   TooltipTrigger,
 } from '@client/src/components/ui/tooltip';
 
+/** Props for SearchTrigger. */
 export type SearchTriggerProps = {
   size?: ComboboxSize;
   placeholder?: string;
@@ -32,11 +39,11 @@ export type SearchTriggerProps = {
   onFocus?: (e: React.FocusEvent<HTMLDivElement>) => void;
   onBlur?: (e: React.FocusEvent<HTMLDivElement>) => void;
   /**
-   * 自定义渲染单个标签
-   * @param value 标签的值对象
-   * @param onClose 关闭标签的回调
-   * @param disabled 是否禁用
-   * @returns ReactNode
+   * Custom renderer for a single tag.
+   * @param value The tag's value object.
+   * @param onClose Callback to close the tag.
+   * @param disabled Whether the tag is disabled.
+   * @returns A React node.
    */
   renderTag?: (
     value: ItemValue,
@@ -44,12 +51,13 @@ export type SearchTriggerProps = {
     disabled?: boolean,
   ) => React.ReactNode;
   /**
-   * 判断选项是否禁用
+   * Returns whether a given option should be disabled.
    */
   getOptionDisabled?: (value: ItemValue) => boolean;
   ref?: React.Ref<HTMLDivElement>;
 };
 
+/** Renders the search-box-style trigger area. */
 export const SearchTrigger = ({
   size = 'medium',
   placeholder = '请选择',
@@ -74,7 +82,7 @@ export const SearchTrigger = ({
 
   const selectedArray = Array.isArray(selectedValue) ? selectedValue : [];
 
-  // 计算显示的标签
+  // Compute the tags to display.
   const getDisplayTags = () => {
     if (!multiple) return [];
 
@@ -82,7 +90,7 @@ export const SearchTrigger = ({
       return selectedArray.slice(0, maxTagCount);
     }
 
-    // TODO: responsive 模式需要根据容器宽度计算
+    // TODO: responsive mode should compute the count from the container width.
     return selectedArray;
   };
 
@@ -101,9 +109,9 @@ export const SearchTrigger = ({
     e.stopPropagation();
     if (getOptionDisabled?.(value)) return;
     if (!multiple) {
-      handleClear(); // 单选模式清空
+      handleClear(); // Single-select: clear the value
     } else {
-      handleDeselect(value); // 多选模式删除指定项
+      handleDeselect(value); // Multi-select: remove the given item
     }
   };
 
@@ -114,7 +122,7 @@ export const SearchTrigger = ({
     return text.slice(0, maxTagTextLength) + '...';
   };
 
-  // 单选模式下显示选中值
+  // In single-select mode, show the selected value's name.
   const displayValue =
     !multiple && selectedValue && !Array.isArray(selectedValue)
       ? selectedValue.name

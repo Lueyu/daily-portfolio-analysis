@@ -1,4 +1,12 @@
-// 头像 Avatar 图
+/**
+ * @file utils/img-resources/avatar-placeholders.ts
+ * @brief Remote avatar placeholder image URLs.
+ *
+ * Static list of generic headshot images served from the bytednsdoc CDN.
+ * Used as fallback avatars for users/researchers without a profile picture.
+ */
+
+// Avatar placeholder images (generic headshots).
 export const avatarImg1 = 'https://lf3-static.bytednsdoc.com/obj/eden-cn/ylcylz_fsph_ryhs/ljhwZthlaukjlkulzlp/feisuda/avatar/base/1.jpg';
 export const avatarImg2 = 'https://lf3-static.bytednsdoc.com/obj/eden-cn/ylcylz_fsph_ryhs/ljhwZthlaukjlkulzlp/feisuda/avatar/base/2.jpg';
 export const avatarImg3 = 'https://lf3-static.bytednsdoc.com/obj/eden-cn/ylcylz_fsph_ryhs/ljhwZthlaukjlkulzlp/feisuda/avatar/base/3.jpg';

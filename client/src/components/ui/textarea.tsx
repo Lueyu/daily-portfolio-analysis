@@ -1,7 +1,14 @@
+/**
+ * Styled multi-line textarea field.
+ *
+ * Vendored shadcn-style UI primitive (Radix UI + Tailwind CSS).
+ */
+
 import * as React from "react"
 
 import { cn } from "@/lib/utils"
 
+/** Multi-line text input. */
 function Textarea({ className, ...props }: React.ComponentProps<"textarea">) {
   return (
     <textarea

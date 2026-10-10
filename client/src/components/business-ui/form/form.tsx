@@ -1,9 +1,15 @@
+/**
+ * Form: the top-level form container bound to a TanStack React Form instance.
+ * Wraps fields in the FormProvider (for global layout) and wires submit handling.
+ * Part of the vendored business-ui component library.
+ */
 import React from 'react';
 import type { AppFieldExtendedReactFormApi } from '@tanstack/react-form';
 
 import { FormProvider } from '@client/src/components/business-ui/form/context';
 import { FieldGroup } from '@client/src/components/ui/field';
 
+/** Props for the Form container. */
 interface FormProps {
   children: React.ReactNode;
   form: AppFieldExtendedReactFormApi<
@@ -27,6 +33,7 @@ interface FormProps {
   layout?: 'vertical' | 'responsive' | 'horizontal';
 }
 
+/** Top-level form container bound to a TanStack form instance. */
 const ForceForm: React.FC<FormProps> = (props) => {
   const { children, form, className, style, layout = 'vertical' } = props;
   return (

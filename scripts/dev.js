@@ -1,4 +1,27 @@
 #!/usr/bin/env node
+/**
+ * dev.js — production-style local dev supervisor for the monorepo.
+ *
+ * Boots both the NestJS server and the Vite client as detached child processes,
+ * pipes their stdout/stderr through readline for timestamped logging to
+ * logs/dev.std.log (everything) and logs/dev.log (structured events), and
+ * auto-restarts crashed children with exponential backoff (capped at 8s).
+ *
+ * Key behaviors:
+ *  - Loads .env into process.env on startup (simple parser, no dotenv dep).
+ *  - Uses process groups (detached:true + negative-pid kill) so killing the
+ *    supervisor also kills grandchildren (nest watcher, vite dev server).
+ *  - Kills orphaned processes still bound to SERVER_PORT / CLIENT_DEV_PORT
+ *    before starting and on shutdown.
+ *  - Wipes dist/ on startup because a stale dist can make nest --watch skip
+ *    files and fail to self-heal.
+ *  - Log stdout mirroring is backpressure-limited (max 1000 in-flight writes)
+ *    so a stalled terminal consumer cannot grow memory unbounded; the log
+ *    FILE writes are always synchronous and never dropped.
+ *
+ * Env vars: LOG_DIR, MAX_RESTART_COUNT, RESTART_DELAY, SERVER_PORT,
+ * CLIENT_DEV_PORT.
+ */
 'use strict';
 
 const fs = require('fs');

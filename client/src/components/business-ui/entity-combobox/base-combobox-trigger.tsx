@@ -1,5 +1,11 @@
 'use client';
 
+/**
+ * The click trigger area of the combobox. Renders selected values as tags/badges
+ * (with overflow "+N" tooltips) plus an "add" button, and supports button, search
+ * and custom trigger modes.
+ * Part of the vendored business-ui component library.
+ */
 import { Plus } from 'lucide-react';
 
 import { useEntityComboboxContext } from '@client/src/components/business-ui/entity-combobox/context';
@@ -24,6 +30,7 @@ import {
   TooltipTrigger,
 } from '@client/src/components/ui/tooltip';
 
+/** Props for BaseComboboxTrigger. */
 export type BaseComboboxTriggerProps = {
   triggerType?: TriggerType;
   size?: ComboboxSize;
@@ -41,17 +48,18 @@ export type BaseComboboxTriggerProps = {
     disabled?: boolean,
   ) => React.ReactNode;
   /**
-   * 判断选项是否禁用
+   * Returns whether a given option should be disabled.
    */
   getOptionDisabled?: (value: ItemValue) => boolean;
   /**
-   * button 模式下，自定义渲染加号按钮的包裹器
-   * 用于将按钮包裹在 PopoverTrigger 中，使浮层跟随加号按钮而非整个容器
+   * In button mode, a wrapper for the "+" button. Used to place the button inside
+   * PopoverTrigger so the dropdown anchors to the button rather than the whole container.
    */
   renderAddButton?: (button: React.ReactNode) => React.ReactNode;
   ref?: React.Ref<HTMLButtonElement>;
 } & Omit<React.ComponentPropsWithoutRef<'button'>, 'children'>;
 
+/** Renders the trigger area: selected tags plus the add/"+" button. */
 export const BaseComboboxTrigger = ({
   triggerType = 'button',
   size = 'medium',
@@ -78,12 +86,12 @@ export const BaseComboboxTrigger = ({
     handleDeselect,
   } = useEntityComboboxContext();
 
-  // 自定义渲染 (custom 类型)
+  // Custom render (custom trigger type)
   if (triggerType === 'custom' && renderTrigger) {
     return <>{renderTrigger({ selectedValue, multiple, open, disabled })}</>;
   }
 
-  // search 类型
+  // search trigger type
   if (triggerType === 'search') {
     return (
       <SearchTrigger
@@ -101,16 +109,16 @@ export const BaseComboboxTrigger = ({
     );
   }
 
-  // button 类型（默认）
+  // button trigger type (default)
   const hasValue = !multiple
     ? !!selectedValue
     : Array.isArray(selectedValue) && selectedValue.length > 0;
 
-  // 计算最大显示标签数
+  // Maximum number of tags to display.
   const maxDisplayCount =
     typeof maxTagCount === 'number' ? maxTagCount : Infinity;
 
-  // 计算隐藏的标签
+  // Number of tags hidden behind the "+N" overflow badge.
   const hiddenCount =
     multiple && Array.isArray(selectedValue) && typeof maxTagCount === 'number'
       ? Math.max(0, selectedValue.length - maxTagCount)
@@ -121,15 +129,15 @@ export const BaseComboboxTrigger = ({
       ? selectedValue.slice(maxTagCount)
       : [];
 
-  // 标签关闭回调
+  // Tag close callback
   const handleTagClose = (value: ItemValue, e: React.MouseEvent) => {
-    e.stopPropagation(); // 阻止触发按钮点击
-    // 禁用的选项不允许关闭
+    e.stopPropagation(); // Prevent the button click from firing
+    // Disabled options cannot be closed
     if (getOptionDisabled?.(value)) return;
     if (!multiple) {
-      handleClear(); // 单选模式清空
+      handleClear(); // Single-select: clear the value
     } else {
-      handleDeselect(value); // 多选模式删除指定项
+      handleDeselect(value); // Multi-select: remove the given item
     }
   };
 
@@ -140,7 +148,7 @@ export const BaseComboboxTrigger = ({
         classNames?.trigger,
       )}
     >
-      {/* 已选择的标签显示区域 */}
+      {/* Selected tags area */}
       {hasValue && (
         <>
           {!multiple && selectedValue ? (
@@ -252,7 +260,7 @@ export const BaseComboboxTrigger = ({
         </>
       )}
 
-      {/* 加号按钮 - 紧跟标签 */}
+      {/* "+" add button, placed right after the tags */}
       {(() => {
         const addButton = (
           <Button

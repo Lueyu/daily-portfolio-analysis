@@ -1,3 +1,8 @@
+/**
+ * SelectField: a form-bound select dropdown rendered inside FieldLayout. Accepts
+ * either an options array (flat or grouped) or custom children.
+ * Part of the vendored business-ui component library.
+ */
 import type { ReactNode } from 'react';
 
 import { useFormGlobalProps } from '@client/src/components/business-ui/form/context';
@@ -24,17 +29,20 @@ import {
   SelectValue,
 } from '@client/src/components/ui/select';
 
+/** A single select option. */
 type SelectOption = {
   label: string;
   value: string;
   disabled?: boolean;
 };
 
+/** A group of select options with a heading. */
 type SelectGroupOption = {
   label: string;
   options: SelectOption[];
 };
 
+/** Props for SelectField. */
 type SelectFieldProps = CommonFieldProps & {
   placeholder?: string;
   children?: ReactNode;
@@ -51,10 +59,11 @@ type SelectFieldProps = CommonFieldProps & {
   >;
 };
 
+/** Renders flat or grouped select options into SelectItem/SelectGroup elements. */
 function renderOptions(
   options: SelectOption[] | SelectGroupOption[],
 ): ReactNode {
-  // 检查是否是分组选项
+  // Detect whether the options are grouped.
   const isGrouped = options.length > 0 && options[0] && 'options' in options[0];
 
   if (isGrouped) {
@@ -86,6 +95,7 @@ function renderOptions(
   }
 }
 
+/** Form-bound select dropdown field with label and validation display. */
 export function SelectField(props: SelectFieldProps) {
   const {
     label,

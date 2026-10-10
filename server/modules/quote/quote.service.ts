@@ -1,3 +1,15 @@
+/**
+ * Quote service.
+ *
+ * Provides market data for US / HK / CN stocks. It resolves a ticker's market and
+ * currency (`detectMarket`), then fetches live quotes from free public providers
+ * (Tencent qt.gtimg.cn, Sina hq.sinajs.cn, Yahoo Finance) with an in-memory TTL
+ * cache. Each market has a primary provider and a fallback provider; responses are
+ * GBK-decoded and parsed from the providers' custom delimited text formats. It also
+ * powers ticker search (matching the user's own holdings/watchlist first, then the
+ * Tencent smartbox) and a batch price refresh that writes prices back into the
+ * caller's holdings/watchlist rows.
+ */
 import { Injectable, Inject, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '@lark-apaas/fullstack-nestjs-core';
@@ -6,24 +18,39 @@ import { firstValueFrom } from 'rxjs';
 import { holdings, watchlist } from '@server/database/schema';
 import type { QuoteResponse, Market, Currency } from '@shared/api.interface';
 
+/** Derived market/currency/symbol metadata for a ticker. */
 interface MarketInfo {
+  /** Target exchange: US, HK, or CN. */
   market: Market;
+  /** Quote currency for the market (USD/HKD/CNY). */
   currency: Currency;
+  /** Human-readable display symbol (e.g. `AAPL`, `700.HK`, `600519.SH`). */
   displaySymbol: string;
+  /** Provider-native symbol used in upstream API calls. */
   symbolNative: string;
 }
 
+/** A cached quote entry with an absolute expiry time. */
 interface CacheEntry {
+  /** The cached quote payload. */
   value: QuoteResponse;
+  /** Unix-millisecond time after which the entry is stale. */
   expiresAt: number;
 }
 
+/** Maximum number of symbols resolved in a single batch request. */
 const MAX_BATCH_SIZE = 30;
+/** How long a fetched quote stays in the in-memory cache. */
 const CACHE_TTL_MS = 60_000;
 
+/**
+ * Fetches and caches stock quotes across markets. Depends on the Drizzle database
+ * (for search and price refresh) and the Axios `HttpService` (for upstream calls).
+ */
 @Injectable()
 export class QuoteService {
   private readonly logger = new Logger(QuoteService.name);
+  /** In-memory TTL cache keyed by `MarketInfo.displaySymbol`. */
   private readonly quoteCache = new Map<string, CacheEntry>();
 
   constructor(
@@ -31,13 +58,23 @@ export class QuoteService {
     private readonly httpService: HttpService,
   ) {}
 
+  /**
+   * Infers the market, currency, and display/native symbols for a ticker purely
+   * from its spelling: explicit suffixes (.HK/.SH/.SZ/.BJ) take priority, then
+   * digit-pattern heuristics (5 digits -> HK; 6 digits -> CN exchange by leading
+   * digit), defaulting to US/USD.
+   *
+   * @param symbol The user-supplied ticker.
+   * @returns Resolved market metadata.
+   */
   detectMarket(symbol: string): MarketInfo {
     const upper = symbol.toUpperCase().trim();
 
-    // Explicit suffix detection
+    // Explicit suffix detection.
     if (upper.endsWith('.HK')) {
       const codePart = upper.slice(0, -3);
       const numeric = codePart.replace(/\D/g, '');
+      // HK native codes are zero-padded to 5 digits.
       const symbolNative = numeric.padStart(5, '0');
       return {
         market: 'HK',
@@ -77,9 +114,9 @@ export class QuoteService {
       };
     }
 
-    // Pure numeric detection
+    // Pure numeric detection.
     if (/^\d+$/.test(upper)) {
-      // 5-digit → HK (e.g. 00700)
+      // 5-digit -> HK (e.g. 00700).
       if (upper.length === 5) {
         const displayCode = upper.startsWith('0') ? upper.slice(1) : upper;
         return {
@@ -89,7 +126,7 @@ export class QuoteService {
           symbolNative: upper,
         };
       }
-      // 6-digit → CN A-share
+      // 6-digit -> CN A-share; leading digit selects the exchange.
       if (upper.length === 6) {
         if (upper.startsWith('6')) {
           return {
@@ -118,7 +155,7 @@ export class QuoteService {
       }
     }
 
-    // Default: US market
+    // Default: US market.
     return {
       market: 'US',
       currency: 'USD',
@@ -127,11 +164,18 @@ export class QuoteService {
     };
   }
 
+  /**
+   * Returns the latest quote for a symbol, using the TTL cache when fresh and
+   * fetching from the market-appropriate provider otherwise.
+   *
+   * @param symbol Ticker to resolve.
+   * @returns The quote, or null if all providers failed.
+   */
   async getQuote(symbol: string): Promise<QuoteResponse | null> {
     const info = this.detectMarket(symbol);
     const cacheKey = info.displaySymbol;
 
-    // Check cache
+    // Return cached value if still fresh.
     const cached = this.quoteCache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) {
       return cached.value;
@@ -144,6 +188,7 @@ export class QuoteService {
       } else if (info.market === 'HK') {
         result = await this.fetchHkQuote(info.symbolNative);
       } else if (info.market === 'CN') {
+        // CN provider endpoints need an sh/sz/bj prefix.
         const prefix = info.displaySymbol.endsWith('.SH')
           ? 'sh'
           : info.displaySymbol.endsWith('.SZ')
@@ -165,6 +210,13 @@ export class QuoteService {
     }
   }
 
+  /**
+   * Resolves quotes for many symbols in parallel, de-duplicating and capping the
+   * list to `MAX_BATCH_SIZE`.
+   *
+   * @param symbols List of tickers.
+   * @returns Quotes that could be resolved (unresolved symbols are skipped).
+   */
   async getBatchQuotes(symbols: string[]): Promise<QuoteResponse[]> {
     const unique = Array.from(new Set(symbols.map((s: string) => s.trim()).filter(Boolean))).slice(0, MAX_BATCH_SIZE);
     const results: QuoteResponse[] = [];
@@ -176,6 +228,11 @@ export class QuoteService {
     return results;
   }
 
+  /**
+   * Fetches a US quote from Tencent, falling back to Yahoo on failure.
+   *
+   * @param symbol US ticker (uppercase).
+   */
   async fetchUsQuote(symbol: string): Promise<QuoteResponse | null> {
     let primary: QuoteResponse | null = null;
     try {
@@ -184,6 +241,7 @@ export class QuoteService {
         this.httpService.get(url, { responseType: 'arraybuffer', timeout: 8000 }),
       );
 
+      // Tencent returns GBK-encoded text.
       const text = this.decodeGbk(response.data as ArrayBuffer);
       if (!text) return null;
 
@@ -200,6 +258,7 @@ export class QuoteService {
 
       if (isNaN(currentPrice) || currentPrice <= 0) return null;
 
+      // Derive change/percent if the provider omits them.
       const changeVal = parseFloat(changeStr);
       const changePercentVal = parseFloat(changePercentStr);
       const change = isNaN(changeVal) ? (isNaN(prevClose) || prevClose <= 0 ? 0 : currentPrice - prevClose) : changeVal;
@@ -230,6 +289,7 @@ export class QuoteService {
       this.logger.warn(`fetchUsQuote tencent failed for ${symbol}: ${error instanceof Error ? error.message : String(error)}`);
     }
 
+    // Fallback to Yahoo when the primary provider failed.
     if (!primary) {
       try {
         const yahooResult = await this.fetchUsQuoteYahoo(symbol);
@@ -242,6 +302,11 @@ export class QuoteService {
     return primary;
   }
 
+  /**
+   * Fetches a US quote from the Yahoo Finance chart API (fallback provider).
+   *
+   * @param symbol US ticker.
+   */
   async fetchUsQuoteYahoo(symbol: string): Promise<QuoteResponse | null> {
     try {
       const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=1d`;
@@ -302,6 +367,11 @@ export class QuoteService {
     }
   }
 
+  /**
+   * Fetches an HK quote from Tencent, falling back to Sina on failure.
+   *
+   * @param symbol HK native code (5 digits).
+   */
   async fetchHkQuote(symbol: string): Promise<QuoteResponse | null> {
     let primary: QuoteResponse | null = null;
     try {
@@ -313,7 +383,7 @@ export class QuoteService {
       const text = this.decodeGbk(response.data as ArrayBuffer);
       if (!text) return null;
 
-      // Parse v_hkXXXX="..." pattern
+      // Parse v_hkXXXX="..." pattern.
       const match = text.match(/v_hk\d+="([^"]*)"/);
       if (!match) return null;
 
@@ -338,6 +408,7 @@ export class QuoteService {
       const volumeStr = fields[6] ?? '';
       const name = fields[1] ?? '';
 
+      // Display code drops a leading zero on 5-digit HK codes.
       const displayCode = symbol.startsWith('0') && symbol.length === 5
         ? symbol.slice(1)
         : symbol;
@@ -361,7 +432,7 @@ export class QuoteService {
       this.logger.warn(`fetchHkQuote tencent failed for ${symbol}: ${error instanceof Error ? error.message : String(error)}`);
     }
 
-    // Fallback to Sina if primary failed
+    // Fallback to Sina if primary failed.
     if (!primary) {
       try {
         primary = await this.fetchHkQuoteSina(symbol);
@@ -373,6 +444,12 @@ export class QuoteService {
     return primary;
   }
 
+  /**
+   * Fetches an HK quote from Sina (fallback provider). Requires a Referer header
+   * for Sina to answer.
+   *
+   * @param symbol HK native code (5 digits).
+   */
   async fetchHkQuoteSina(symbol: string): Promise<QuoteResponse | null> {
     try {
       const url = `https://hq.sinajs.cn/list=hk${symbol}`;
@@ -393,7 +470,7 @@ export class QuoteService {
       if (!match) return null;
 
       const fields = match[1].split(',');
-      // Sina HK format: 0=名称,1=开盘,2=昨收,3=最高,4=最低,5=最新价,6=涨跌额,7=涨跌幅,...
+      // Sina HK format: 0=name,1=open,2=prevClose,3=high,4=low,5=last,6=change,7=changePct,...
       if (fields.length < 8) return null;
 
       const name = fields[0] ?? '';
@@ -433,6 +510,12 @@ export class QuoteService {
     }
   }
 
+  /**
+   * Fetches a CN A-share quote from Tencent, falling back to Sina on failure.
+   *
+   * @param symbol CN native code (6 digits).
+   * @param prefix Exchange prefix required by the provider: `sh`, `sz`, or `bj`.
+   */
   async fetchCnQuote(symbol: string, prefix: string): Promise<QuoteResponse | null> {
     let primary: QuoteResponse | null = null;
     try {
@@ -444,7 +527,7 @@ export class QuoteService {
       const text = this.decodeGbk(response.data as ArrayBuffer);
       if (!text) return null;
 
-      // Parse v_shXXXX="..." or v_szXXXX="..." pattern
+      // Parse v_shXXXX="..." or v_szXXXX="..." pattern.
       const match = text.match(/v_[a-z]+\d+="([^"]*)"/);
       if (!match) return null;
 
@@ -461,7 +544,7 @@ export class QuoteService {
       const change = isNaN(prevClose) || prevClose <= 0 ? 0 : currentPrice - prevClose;
       const changePercent = isNaN(prevClose) || prevClose <= 0 ? 0 : (change / prevClose) * 100;
 
-      // Index 33 = high, 34 = low, 6 = volume(手)
+      // Index 33 = high, 34 = low, 6 = volume (in lots).
       const highStr = fields[33] ?? '';
       const lowStr = fields[34] ?? '';
       const volumeStr = fields[6] ?? '';
@@ -487,7 +570,7 @@ export class QuoteService {
       this.logger.warn(`fetchCnQuote tencent failed for ${symbol}: ${error instanceof Error ? error.message : String(error)}`);
     }
 
-    // Fallback to Sina if primary failed
+    // Fallback to Sina if primary failed.
     if (!primary) {
       try {
         primary = await this.fetchCnQuoteSina(symbol, prefix);
@@ -499,6 +582,12 @@ export class QuoteService {
     return primary;
   }
 
+  /**
+   * Fetches a CN A-share quote from Sina (fallback provider).
+   *
+   * @param symbol CN native code (6 digits).
+   * @param prefix Exchange prefix: `sh`, `sz`, or `bj`.
+   */
   async fetchCnQuoteSina(symbol: string, prefix: string): Promise<QuoteResponse | null> {
     try {
       const url = `https://hq.sinajs.cn/list=${prefix}${symbol}`;
@@ -519,7 +608,7 @@ export class QuoteService {
       if (!match) return null;
 
       const fields = match[1].split(',');
-      // Sina CN format: 0=名称,1=开盘,2=昨收,3=当前价,4=最高,5=最低,6=买入,7=卖出,8=成交量,...
+      // Sina CN format: 0=name,1=open,2=prevClose,3=last,4=high,5=low,6=bid,7=ask,8=volume,...
       if (fields.length < 6) return null;
 
       const name = fields[0] ?? '';
@@ -560,6 +649,15 @@ export class QuoteService {
     }
   }
 
+  /**
+   * Searches tickers for a user. It first matches the user's own holdings and
+   * watchlist (owner-scoped), and only if fewer than 10 local matches exist does it
+   * query the external Tencent smartbox endpoint. Results are de-duplicated by
+   * display symbol and capped at 15.
+   *
+   * @param query  Search text.
+   * @param userId Owner id used to scope the local holdings/watchlist lookup.
+   */
   async searchStocks(
     query: string,
     userId: string,
@@ -571,6 +669,7 @@ export class QuoteService {
       new Map();
 
     try {
+      // Owner-scoped local lookups for holdings and watchlist.
       const [holdingRows, watchRows] = await Promise.all([
         this.db
           .select({
@@ -635,6 +734,7 @@ export class QuoteService {
       );
     }
 
+    // Enough local results; skip the external lookup.
     if (results.size >= 10) {
       return Array.from(results.values()).slice(0, 10);
     }
@@ -667,6 +767,7 @@ export class QuoteService {
         let currency: import('@shared/api.interface').Currency | null = null;
         let displaySymbol = '';
 
+        // Map the provider's market code to our market/currency/display symbol.
         if (marketCode === 'us') {
           market = 'US';
           currency = 'USD';
@@ -713,21 +814,39 @@ export class QuoteService {
     return Array.from(results.values()).slice(0, 15);
   }
 
+  /**
+   * Decodes `\uXXXX` escapes inside a string into actual characters.
+   *
+   * @param s Raw string possibly containing unicode escapes.
+   */
   private decodeUnicodeEscape(s: string): string {
     return s.replace(/\\u([0-9a-fA-F]{4})/g, (_, hex: string) =>
       String.fromCharCode(parseInt(hex, 16)),
     );
   }
 
+  /**
+   * Cleans a raw company name from the provider: decodes unicode escapes and
+   * strips a trailing ASCII letter appended after CJK characters.
+   *
+   * @param raw Raw company name.
+   */
   private cleanCompanyName(raw: string): string {
     let name = raw;
     if (name.includes('\\u')) {
       name = this.decodeUnicodeEscape(name);
     }
+    // Remove a trailing lowercase ASCII letter that follows a CJK character.
     name = name.replace(/([\u4e00-\u9fff])[a-z]$/, '$1');
     return name.trim();
   }
 
+  /**
+   * Decodes a provider response buffer as GBK, falling back to UTF-8, then null.
+   * Tencent/Sina quote endpoints historically return GBK-encoded text.
+   *
+   * @param buffer Raw response bytes.
+   */
   private decodeGbk(buffer: ArrayBuffer): string | null {
     try {
       const decoder = new TextDecoder('gbk');
@@ -741,9 +860,18 @@ export class QuoteService {
     }
   }
 
+  /**
+   * Refreshes current prices for all of a user's holdings and watchlist tickers:
+   * collects the distinct tickers, fetches a fresh quote for each (capped at
+   * `MAX_BATCH_SIZE`), and writes the new `currentPrice` back to both holdings and
+   * watchlist rows, scoped to the owner.
+   *
+   * @param userId Owner id scoping which rows are read and written.
+   * @returns The number of tickers successfully refreshed.
+   */
   async batchRefreshPrices(userId: string): Promise<number> {
     try {
-      // Collect all tickers from holdings and watchlist
+      // Collect all tickers from the user's holdings and watchlist.
       const [holdingRows, watchRows] = await Promise.all([
         this.db
           .select({ ticker: holdings.ticker })
@@ -772,7 +900,7 @@ export class QuoteService {
         }
       }
 
-      // Update holdings and watchlist in parallel per ticker
+      // Write updated prices back to holdings and watchlist, in parallel per ticker.
       const updatePromises: Promise<unknown>[] = [];
       for (const [ticker, price] of priceMap) {
         updatePromises.push(
@@ -781,6 +909,7 @@ export class QuoteService {
             .set({
               currentPrice: price,
               updatedAt: sql`CURRENT_TIMESTAMP`,
+              // updatedBy references the user_profile composite type; cast explicitly.
               updatedBy: sql`ROW(${userId})::user_profile`,
             })
             .where(

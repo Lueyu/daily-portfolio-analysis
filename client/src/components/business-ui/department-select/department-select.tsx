@@ -1,5 +1,11 @@
 'use client';
 
+/**
+ * DepartmentSelect: a controlled field for picking one or more departments.
+ * Wires the generic BaseCombobox to the department search API, renders department
+ * rows and selected tags. Works in object mode (value is a Department object).
+ * Part of the vendored business-ui component library.
+ */
 import { useMemo } from 'react';
 
 import { searchDepartments } from '@client/src/components/business-ui/api/departments/service';
@@ -24,7 +30,7 @@ function createDepartmentsFetcher(pageSize = 100) {
   };
 }
 
-// 内部包装组件用于获取 context 中的 size
+// Internal wrapper that reads size from the combobox context.
 const DepartmentItemWrapper = ({
   departmentValue,
   isSelected,
@@ -72,6 +78,10 @@ const DepartmentSelectTagWrapper = ({
   );
 };
 
+/**
+ * Controlled department selector. Value is a Department object (or an array for
+ * multi-select); it auto-searches departments as the user types.
+ */
 export const DepartmentSelect = (props: DepartmentSelectProps) => {
   const {
     size = 'medium',

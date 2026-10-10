@@ -1,5 +1,12 @@
 'use client';
 
+/**
+ * UserSelect: a searchable single/multi user picker built on BaseCombobox. Supports
+ * controlled/uncontrolled values in either ID-string or User-object form, and handles
+ * on-the-fly account activation ("opening") for unregistered external contacts —
+ * converting them and reflecting the converted user back into the list.
+ * Part of the vendored business-ui component library.
+ */
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
@@ -22,6 +29,7 @@ import {
   isUnregisteredExternalContact,
 } from '@client/src/components/business-ui/user-select/utils';
 
+/** Builds the fetchFn that searches users and maps results to normalized items. */
 function createUsersFetcher(options: { accountType?: AccountType; pageSize?: number } = {}) {
   const { accountType = 'apaas', pageSize = 100 } = options;
 
@@ -35,7 +43,7 @@ function createUsersFetcher(options: { accountType?: AccountType; pageSize?: num
   };
 }
 
-// 内部包装组件用于获取 context 中的 size
+// Internal wrapper that reads size from the combobox context.
 const UserItemWrapper = ({
   userValue,
   isSelected,
@@ -92,6 +100,7 @@ const UserSelectTagWrapper = ({
   );
 };
 
+/** Renders the UserSelect component: a searchable single/multi user picker. */
 export const UserSelect: React.FC<UserSelectProps> = (props) => {
   const {
     size = 'medium',
@@ -123,7 +132,7 @@ export const UserSelect: React.FC<UserSelectProps> = (props) => {
     getOptionDisabled,
   } = props;
 
-  // 使用 useUserValue 处理不同类型的 value（包括 defaultValue）
+  // Use useUserValue to handle the different value types (including defaultValue).
   const { internalValue, isLoading, toExternalValue } = useUserValue(
     value ?? null,
     multiple,
@@ -131,11 +140,12 @@ export const UserSelect: React.FC<UserSelectProps> = (props) => {
     valueType,
   );
 
-  // 始终追踪最新 internalValue，避免异步开户回调中闭包捕获过期值
+  // Always track the latest internalValue so async account-open callbacks don't
+  // capture a stale value in their closure.
   const internalValueRef = useRef(internalValue);
   internalValueRef.current = internalValue;
 
-  // 同样处理 defaultValue，确保 ID 字符串类型的 defaultValue 也能正确解析
+  // Process defaultValue the same way so ID-string defaults also resolve correctly.
   const { internalValue: internalDefaultValue } = useUserValue(
     defaultValue ?? null,
     multiple,
@@ -145,16 +155,16 @@ export const UserSelect: React.FC<UserSelectProps> = (props) => {
 
   const baseFetchFn = useMemo(() => createUsersFetcher({ accountType }), [accountType]);
 
-  // 正在开户中的用户 ID 集合
+  // IDs of users currently being opened (account activation in flight).
   const [convertingSet, setConvertingSet] = useState<Set<string>>(() => new Set());
 
-  // 已开户用户映射：旧 ID → 转换后的 UserSelectItemValue，用于回写到待选列表
+  // Already-opened users: old ID -> converted UserSelectItemValue, written back into the candidate list.
   const [convertedMap, setConvertedMap] = useState<Map<string, UserSelectItemValue>>(
     () => new Map(),
   );
 
-  // 包装 fetchFn，将已开户用户替换到搜索结果中
-  // convertedMap 变化 → fetchFn 引用变化 → useFetchData 自动 refetch
+  // Wrap fetchFn to substitute converted users into search results.
+  // convertedMap change -> fetchFn reference change -> useFetchData refetches automatically.
   const fetchFn = useCallback(
     async (search: string) => {
       const result = await baseFetchFn(search);
@@ -167,19 +177,19 @@ export const UserSelect: React.FC<UserSelectProps> = (props) => {
     [baseFetchFn, convertedMap],
   );
 
-  // 标记是否有即将开户的用户（用于在 handleOpenChange 中阻止关闭）
-  // 时序：handleChange（设置标记）→ handleOpenChange（检查标记）→ handleSelect（开始开户）
+  // Marks whether a user is about to be opened (used to block closing in handleOpenChange).
+  // Timing: handleChange (sets the flag) -> handleOpenChange (checks it) -> handleSelect (starts opening).
   const pendingConvertRef = useRef(false);
 
-  // 受控 open 状态：开户期间阻止 popover 关闭
+  // Controlled open state: keep the popover open while an account is being activated.
   const [open, setOpen] = useState(defaultOpen ?? false);
   const handleOpenChange = useCallback((nextOpen: boolean) => {
-    // 有正在开户或即将开户的用户时，不允许关闭下拉
+    // Do not allow closing the dropdown while an account is being opened or about to open.
     if (!nextOpen && pendingConvertRef.current) return;
     setOpen(nextOpen);
   }, []);
 
-  // 开户中的用户禁止再次点击
+  // Users being opened cannot be clicked again.
   const mergedGetOptionDisabled = useCallback(
     (option: UserSelectItemValue) => {
       if (convertingSet.has(option.id)) return true;
@@ -190,8 +200,8 @@ export const UserSelect: React.FC<UserSelectProps> = (props) => {
   );
 
   /**
-   * onChange 门卫：过滤掉未注册外部联系人，不允许未开户用户进入选中列表。
-   * 同时设置 pendingConvertRef 标记，阻止 handleOpenChange 关闭下拉。
+   * onChange gate: filters out unregistered external contacts so they never enter the
+   * selected list. Also sets pendingConvertRef to stop handleOpenChange from closing.
    */
   const handleChange = useCallback(
     (newValue: UserSelectItemValue | UserSelectItemValue[] | null) => {
@@ -208,7 +218,7 @@ export const UserSelect: React.FC<UserSelectProps> = (props) => {
       } else if (!multiple) {
         const user = newValue as UserSelectItemValue | null;
         if (user && isUnregisteredExternalContact(user)) {
-          // 不允许未注册用户进入选中值，标记即将开户
+          // Never let an unregistered user enter the selected value; mark it as about-to-open.
           pendingConvertRef.current = true;
           return;
         }
@@ -220,8 +230,8 @@ export const UserSelect: React.FC<UserSelectProps> = (props) => {
   );
 
   /**
-   * onSelect 拦截：检测未注册外部联系人，触发开户流程。
-   * 开户成功后手动调用 onChange 回填转换后的用户。
+   * onSelect interceptor: detects unregistered external contacts and kicks off the
+   * account-activation flow. On success it calls onChange with the converted user.
    */
   const handleSelect = useCallback(
     (user: UserSelectItemValue) => {
@@ -235,7 +245,7 @@ export const UserSelect: React.FC<UserSelectProps> = (props) => {
       if (convertingSet.has(user.id)) return;
 
       setConvertingSet((prev) => new Set(prev).add(user.id));
-      // pendingConvertRef 已在 handleChange 中设置，此处转为正式开户状态
+      // pendingConvertRef was already set in handleChange; now it enters the active opening state.
 
       void (async () => {
         try {
@@ -248,7 +258,8 @@ export const UserSelect: React.FC<UserSelectProps> = (props) => {
             raw: user.raw ? { ...user.raw, user_id: forceUserID } : undefined,
           };
 
-          // 回写到待选列表：触发 fetchFn 引用变化 → useFetchData refetch → 列表更新
+          // Write back into the candidate list: trigger a fetchFn reference change ->
+          // useFetchData refetches -> list updates.
           setConvertedMap((prev) => new Map(prev).set(user.id, convertedUser));
 
           onSelect?.(convertedUser);
@@ -264,7 +275,7 @@ export const UserSelect: React.FC<UserSelectProps> = (props) => {
               (onChange as (value: unknown) => void)(externalValue);
             }
           }
-          // 开户成功后关闭下拉（单选）
+          // Close the dropdown after opening succeeds (single-select).
           if (!multiple) {
             pendingConvertRef.current = false;
             setOpen(false);
@@ -275,7 +286,7 @@ export const UserSelect: React.FC<UserSelectProps> = (props) => {
           setConvertingSet((prev) => {
             const next = new Set(prev);
             next.delete(user.id);
-            // 所有开户完成后清除标记
+            // Clear the flag once all openings have finished.
             if (next.size === 0) {
               pendingConvertRef.current = false;
             }

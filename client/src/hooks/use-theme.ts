@@ -1,9 +1,24 @@
+/**
+ * @file hooks/use-theme.ts
+ * @brief Light/dark theme hook.
+ *
+ * The active theme is persisted to `localStorage` and applied by toggling
+ * the `dark` class on `<html>` (Tailwind's class-based dark mode). On first
+ * load without a stored preference, the OS `prefers-color-scheme` media query
+ * is honored.
+ */
 import { useEffect, useState } from 'react';
 
+/** Theme values supported by the UI. */
 type Theme = 'light' | 'dark';
 
+/** localStorage key for the persisted theme. */
 const THEME_KEY = 'pt-theme';
 
+/**
+ * Resolve the initial theme: stored value wins, otherwise fall back to the
+ * OS color-scheme preference. SSR-safe (returns 'light' on the server).
+ */
 function getInitialTheme(): Theme {
   if (typeof window === 'undefined') return 'light';
   const stored = localStorage.getItem(THEME_KEY);
@@ -13,6 +28,12 @@ function getInitialTheme(): Theme {
     : 'light';
 }
 
+/**
+ * Manage the application theme.
+ * @returns `theme` (current value), `setTheme` (direct setter) and
+ *          `toggleTheme` (flip between light and dark). The effect mirrors the
+ *          theme onto `<html>.classList.dark` and persists it.
+ */
 export function useTheme() {
   const [theme, setTheme] = useState<Theme>(getInitialTheme);
 

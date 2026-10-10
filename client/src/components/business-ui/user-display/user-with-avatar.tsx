@@ -1,4 +1,11 @@
 'use client';
+
+/**
+ * UserWithAvatar: renders a single user as an avatar with an optional name label.
+ * If only a user ID is supplied (no name/avatar), it fetches the missing info and
+ * shows a fallback while loading.
+ * Part of the vendored business-ui component library.
+ */
 import React from 'react';
 
 import { useMemo } from 'react';
@@ -20,6 +27,7 @@ import {
 } from '@client/src/components/ui/avatar';
 import { cva } from 'class-variance-authority';
 
+/** Size/mode variants for the avatar+name chip. */
 const userWithAvatarVariants = cva(
   'flex min-w-0 items-center gap-1 rounded-full',
   {
@@ -93,6 +101,7 @@ const textVariants = cva('text-card-foreground', {
   },
 });
 
+/** Renders a single user chip: avatar plus an optional (truncated) name label. */
 export function UserWithAvatar({
   data,
   size = 'medium',
@@ -101,21 +110,21 @@ export function UserWithAvatar({
   showLabel = true,
   accountType = 'apaas',
 }: UserWithAvatarProps) {
-  // 统一转换为标准 User 类型
+  // Normalize the input into the standard User type.
   const user: User = normalizeUser(data);
   const { user_id, avatar: propsAvatar, name: propsName } = user;
 
-  // 判断是否需要从 API 获取用户信息
+  // Whether user info must be fetched from the API.
   const needsFetch = !propsName && !propsAvatar && !!user_id;
 
-  // 使用 react-query hook 获取用户信息
+  // Fetch the missing user info via the react-query hook.
   const idsToFetch = useMemo(
     () => (needsFetch ? [user_id] : []),
     [needsFetch, user_id],
   );
   const { data: response, isLoading } = useUsersByIds(idsToFetch, accountType);
 
-  // 从原始 API 响应中提取并转换用户信息
+  // Extract and convert the user info from the raw API response.
   const fetchedUser = useMemo(() => {
     if (!needsFetch) return null;
     const userInfoMap = response?.data?.userInfoMap || {};
@@ -128,7 +137,7 @@ export function UserWithAvatar({
   const avatar = propsAvatar || fetchedUser?.avatar;
   const name = propsName || fetchedUser?.name;
 
-  // 直接使用已合并的 name，通过 getI18nText 处理国际化
+  // Use the merged name, resolving internationalization via getI18nText.
   const displayName = isLoading ? '' : (getI18nText(name) || '无效人员');
   const formatSize = ['small', 'medium', 'large'].includes(size)
     ? size

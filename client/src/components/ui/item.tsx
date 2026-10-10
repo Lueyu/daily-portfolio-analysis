@@ -1,3 +1,9 @@
+/**
+ * Generic list/menu item row used inside command/dropdown menus.
+ *
+ * Vendored shadcn-style UI primitive (Radix UI + Tailwind CSS).
+ */
+
 import * as React from "react"
 import { Slot } from "@radix-ui/react-slot"
 import { cva, type VariantProps } from "class-variance-authority"
@@ -5,6 +11,7 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/lib/utils"
 import { Separator } from "@/components/ui/separator"
 
+/** ItemGroup component. */
 function ItemGroup({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
@@ -16,6 +23,7 @@ function ItemGroup({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
+/** ItemSeparator component. */
 function ItemSeparator({
   className,
   ...props
@@ -30,6 +38,7 @@ function ItemSeparator({
   )
 }
 
+/** itemVariants component. */
 const itemVariants = cva(
   "group/item flex items-center border border-transparent text-sm rounded-md transition-colors [a]:hover:bg-accent/50 [a]:transition-colors duration-100 flex-wrap outline-none focus-visible:border-ring focus-visible:ring-ring/20 focus-visible:ring-[3px]",
   {
@@ -51,6 +60,7 @@ const itemVariants = cva(
   }
 )
 
+/** Generic list/menu item row. */
 function Item({
   className,
   variant = "default",
@@ -71,6 +81,7 @@ function Item({
   )
 }
 
+/** itemMediaVariants component. */
 const itemMediaVariants = cva(
   "flex shrink-0 items-center justify-center gap-2 group-has-[[data-slot=item-description]]/item:self-start [&_svg]:pointer-events-none group-has-[[data-slot=item-description]]/item:translate-y-0.5",
   {
@@ -88,6 +99,7 @@ const itemMediaVariants = cva(
   }
 )
 
+/** ItemMedia component. */
 function ItemMedia({
   className,
   variant = "default",
@@ -103,6 +115,7 @@ function ItemMedia({
   )
 }
 
+/** ItemContent component. */
 function ItemContent({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
@@ -116,6 +129,7 @@ function ItemContent({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
+/** ItemTitle component. */
 function ItemTitle({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
@@ -129,6 +143,7 @@ function ItemTitle({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
+/** ItemDescription component. */
 function ItemDescription({ className, ...props }: React.ComponentProps<"p">) {
   return (
     <p
@@ -143,6 +158,7 @@ function ItemDescription({ className, ...props }: React.ComponentProps<"p">) {
   )
 }
 
+/** ItemActions component. */
 function ItemActions({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
@@ -153,6 +169,7 @@ function ItemActions({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
+/** ItemHeader component. */
 function ItemHeader({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
@@ -166,6 +183,7 @@ function ItemHeader({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
+/** ItemFooter component. */
 function ItemFooter({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div

@@ -1,35 +1,46 @@
 "use client"
 
+/**
+ * Modal dialog overlay with header, content, description, and close affordances (Radix Dialog).
+ *
+ * Vendored shadcn-style UI primitive (Radix UI + Tailwind CSS).
+ */
+
 import * as React from "react"
 import * as DialogPrimitive from "@radix-ui/react-dialog"
 import { XIcon } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 
+/** Dialog root. */
 function Dialog({
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Root>) {
   return <DialogPrimitive.Root data-slot="dialog" {...props} />
 }
 
+/** Button that opens the dialog. */
 function DialogTrigger({
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Trigger>) {
   return <DialogPrimitive.Trigger data-slot="dialog-trigger" {...props} />
 }
 
+/** Portal rendering the dialog into a top-layer container. */
 function DialogPortal({
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Portal>) {
   return <DialogPrimitive.Portal data-slot="dialog-portal" {...props} />
 }
 
+/** DialogClose component. */
 function DialogClose({
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Close>) {
   return <DialogPrimitive.Close data-slot="dialog-close" {...props} />
 }
 
+/** Dimmed backdrop behind the dialog. */
 function DialogOverlay({
   className,
   ...props
@@ -46,6 +57,7 @@ function DialogOverlay({
   )
 }
 
+/** Main dialog panel. */
 function DialogContent({
   className,
   children,
@@ -80,6 +92,7 @@ function DialogContent({
   )
 }
 
+/** Container for the dialog title/description. */
 function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
@@ -90,6 +103,7 @@ function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
+/** Container for the dialog action buttons. */
 function DialogFooter({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
@@ -103,6 +117,7 @@ function DialogFooter({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
+/** Heading inside the dialog. */
 function DialogTitle({
   className,
   ...props
@@ -116,6 +131,7 @@ function DialogTitle({
   )
 }
 
+/** Supporting body text inside the dialog. */
 function DialogDescription({
   className,
   ...props

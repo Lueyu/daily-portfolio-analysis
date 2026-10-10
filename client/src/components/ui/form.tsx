@@ -1,5 +1,11 @@
 "use client"
 
+/**
+ * React Hook Form binding helpers wrapping Label/Input/Message into accessible form fields.
+ *
+ * Vendored shadcn-style UI primitive (Radix UI + Tailwind CSS).
+ */
+
 import * as React from "react"
 import * as LabelPrimitive from "@radix-ui/react-label"
 import { Slot } from "@radix-ui/react-slot"
@@ -16,6 +22,7 @@ import {
 import { cn } from "@/lib/utils"
 import { Label } from "@/components/ui/label"
 
+/** Form context provider. */
 const Form = FormProvider
 
 type FormFieldContextValue<
@@ -25,10 +32,12 @@ type FormFieldContextValue<
   name: TName
 }
 
+/** FormFieldContext component. */
 const FormFieldContext = React.createContext<FormFieldContextValue>(
   {} as FormFieldContextValue
 )
 
+/** FormField component. */
 const FormField = <
   TFieldValues extends FieldValues = FieldValues,
   TName extends FieldPath<TFieldValues> = FieldPath<TFieldValues>,
@@ -42,6 +51,7 @@ const FormField = <
   )
 }
 
+/** useFormField component. */
 const useFormField = () => {
   const fieldContext = React.useContext(FormFieldContext)
   const itemContext = React.useContext(FormItemContext)
@@ -69,10 +79,12 @@ type FormItemContextValue = {
   id: string
 }
 
+/** FormItemContext component. */
 const FormItemContext = React.createContext<FormItemContextValue>(
   {} as FormItemContextValue
 )
 
+/** Wrapped form field row. */
 function FormItem({ className, ...props }: React.ComponentProps<"div">) {
   const id = React.useId()
 
@@ -87,6 +99,7 @@ function FormItem({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
+/** Label for a form field. */
 function FormLabel({
   className,
   ...props
@@ -104,6 +117,7 @@ function FormLabel({
   )
 }
 
+/** Wraps the actual input control. */
 function FormControl({ ...props }: React.ComponentProps<typeof Slot>) {
   const { error, formItemId, formDescriptionId, formMessageId } = useFormField()
 
@@ -122,6 +136,7 @@ function FormControl({ ...props }: React.ComponentProps<typeof Slot>) {
   )
 }
 
+/** Help text under a field. */
 function FormDescription({ className, ...props }: React.ComponentProps<"p">) {
   const { formDescriptionId } = useFormField()
 
@@ -135,6 +150,7 @@ function FormDescription({ className, ...props }: React.ComponentProps<"p">) {
   )
 }
 
+/** Validation/error message for a field. */
 function FormMessage({ className, ...props }: React.ComponentProps<"p">) {
   const { error, formMessageId } = useFormField()
   const body = error ? String(error?.message ?? "") : props.children

@@ -1,3 +1,8 @@
+/**
+ * @file client/src/index.css
+ * @description Root stylesheet: imports the Lark aapaas UI toolkit CSS,
+ * Tailwind animation utilities, and the project's theme + typography layers.
+ */
 @import '@lark-apaas/client-toolkit/lib/index.css';
 @import "tw-animate-css";
 @import "./tailwind-theme.css";

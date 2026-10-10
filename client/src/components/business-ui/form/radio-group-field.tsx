@@ -1,3 +1,8 @@
+/**
+ * RadioGroupField: a form-bound radio group rendered inside FieldLayout. Accepts
+ * either an options array (auto-rendered) or custom children.
+ * Part of the vendored business-ui component library.
+ */
 import type { ReactNode } from 'react';
 
 import { useFormGlobalProps } from '@client/src/components/business-ui/form/context';
@@ -19,6 +24,7 @@ import {
   RadioGroupItem,
 } from '@client/src/components/ui/radio-group';
 
+/** A single radio option. */
 type RadioOption = {
   label: string;
   value: string;
@@ -26,6 +32,7 @@ type RadioOption = {
   description?: string;
 };
 
+/** Props for RadioGroupField. */
 type RadioGroupFieldProps = CommonFieldProps & {
   children?: ReactNode;
   options?: RadioOption[];
@@ -42,6 +49,7 @@ type RadioGroupFieldProps = CommonFieldProps & {
   >;
 };
 
+/** Renders the given radio options into labeled radio items. */
 function renderRadioOptions(
   options: RadioOption[],
   fieldName: string,
@@ -76,6 +84,7 @@ function renderRadioOptions(
   });
 }
 
+/** Form-bound radio group field with label and validation display. */
 export function RadioGroupField(props: RadioGroupFieldProps) {
   const {
     children,

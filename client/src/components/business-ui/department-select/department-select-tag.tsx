@@ -1,5 +1,10 @@
 'use client';
 
+/**
+ * Renders a selected department as a removable tag/pill (icon + name + close
+ * button) shown in the trigger area for multi-select DepartmentSelect.
+ * Part of the vendored business-ui component library.
+ */
 import { X } from 'lucide-react';
 
 import { IconDepartment } from '@client/src/components/business-ui/department-select/icon-department';
@@ -11,6 +16,7 @@ import {
   type ComboboxSize,
 } from '@client/src/components/business-ui/entity-combobox/size-variants';
 
+/** A selected department rendered as a closable pill. */
 export const DepartmentSelectTag = ({
   departmentValue,
   onClose,

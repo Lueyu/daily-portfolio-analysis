@@ -1,9 +1,13 @@
+/**
+ * Props type for UserWithAvatar (the avatar+name rendering used inside UserDisplay).
+ * Part of the vendored business-ui component library.
+ */
 import type { AccountType } from '@lark-apaas/client-toolkit/tools/services';
 import type { UserInput } from '@client/src/components/business-ui/types/user';
 
 export interface UserWithAvatarProps {
   /**
-   * 用户数据，可以只传 userId，组件会自动查询 name 和 avatar
+   * User data; passing only a userId is enough, as the component fetches name and avatar.
    */
   data: UserInput;
   /**
@@ -20,7 +24,7 @@ export interface UserWithAvatarProps {
    */
   showLabel?: boolean;
   /**
-   * 账户类型，用于查询用户信息
+   * Account type used to look up user info.
    * @default 'apaas'
    */
   accountType?: AccountType;

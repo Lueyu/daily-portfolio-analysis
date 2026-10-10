@@ -1,11 +1,18 @@
 "use client"
 
+/**
+ * Top application-style menu bar with nested dropdown menus.
+ *
+ * Vendored shadcn-style UI primitive (Radix UI + Tailwind CSS).
+ */
+
 import * as React from "react"
 import * as MenubarPrimitive from "@radix-ui/react-menubar"
 import { CheckIcon, ChevronRightIcon, CircleIcon } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 
+/** Menu bar root. */
 function Menubar({
   className,
   ...props
@@ -22,24 +29,28 @@ function Menubar({
   )
 }
 
+/** One top-level menu entry. */
 function MenubarMenu({
   ...props
 }: React.ComponentProps<typeof MenubarPrimitive.Menu>) {
   return <MenubarPrimitive.Menu data-slot="menubar-menu" {...props} />
 }
 
+/** Group of related menu items. */
 function MenubarGroup({
   ...props
 }: React.ComponentProps<typeof MenubarPrimitive.Group>) {
   return <MenubarPrimitive.Group data-slot="menubar-group" {...props} />
 }
 
+/** Portal rendering the menu. */
 function MenubarPortal({
   ...props
 }: React.ComponentProps<typeof MenubarPrimitive.Portal>) {
   return <MenubarPrimitive.Portal data-slot="menubar-portal" {...props} />
 }
 
+/** MenubarRadioGroup component. */
 function MenubarRadioGroup({
   ...props
 }: React.ComponentProps<typeof MenubarPrimitive.RadioGroup>) {
@@ -48,6 +59,7 @@ function MenubarRadioGroup({
   )
 }
 
+/** Button that opens a menu bar dropdown. */
 function MenubarTrigger({
   className,
   ...props
@@ -64,6 +76,7 @@ function MenubarTrigger({
   )
 }
 
+/** Floating menu panel. */
 function MenubarContent({
   className,
   align = "start",
@@ -88,6 +101,7 @@ function MenubarContent({
   )
 }
 
+/** One menu entry. */
 function MenubarItem({
   className,
   inset,
@@ -135,6 +149,7 @@ function MenubarItem({
   )
 }
 
+/** Checkable menu entry. */
 function MenubarCheckboxItem({
   className,
   children,
@@ -185,6 +200,7 @@ function MenubarCheckboxItem({
   )
 }
 
+/** Radio menu entry. */
 function MenubarRadioItem({
   className,
   children,
@@ -233,6 +249,7 @@ function MenubarRadioItem({
   )
 }
 
+/** Non-interactive label inside the menu. */
 function MenubarLabel({
   className,
   inset,
@@ -253,6 +270,7 @@ function MenubarLabel({
   )
 }
 
+/** Separator line between entries. */
 function MenubarSeparator({
   className,
   ...props
@@ -266,6 +284,7 @@ function MenubarSeparator({
   )
 }
 
+/** Keyboard shortcut hint beside an entry. */
 function MenubarShortcut({
   className,
   ...props
@@ -282,12 +301,14 @@ function MenubarShortcut({
   )
 }
 
+/** Nested submenu container. */
 function MenubarSub({
   ...props
 }: React.ComponentProps<typeof MenubarPrimitive.Sub>) {
   return <MenubarPrimitive.Sub data-slot="menubar-sub" {...props} />
 }
 
+/** Entry that opens a nested submenu. */
 function MenubarSubTrigger({
   className,
   inset,
@@ -312,6 +333,7 @@ function MenubarSubTrigger({
   )
 }
 
+/** Floating panel of a nested submenu. */
 function MenubarSubContent({
   className,
   ...props

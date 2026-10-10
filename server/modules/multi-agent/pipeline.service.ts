@@ -1,3 +1,38 @@
+/**
+ * PipelineService — orchestrates the async multi-agent analysis pipeline for a
+ * single stock run.
+ *
+ * Stage ordering (see runPipeline):
+ *   0. setStatus('fetching') — mark run as in-progress, record startedAt.
+ *   1. Evidence collection: pull live quote + portfolio/watchlist rows via
+ *      EvidenceService.collectEvidence. Persist rows to agent_evidence.
+ *   2. Bull/Bear debate: two parallel LLM calls (bull + bear) generate opening
+ *      arguments; then two more parallel calls generate rebuttals. Each side's
+ *      output is parsed as JSON and persisted to bull_bear_arguments and
+ *      debate_records. Round-2 failures are non-fatal (logged as warning).
+ *   3. Critique: a single LLM call (chatSlow, free text) that criticizes both
+ *      sides' weakest points. Stored as a round-3 debate record by the `critic`.
+ *   4. Risk gate: evaluate the user's hard/soft strategy rules against the
+ *      current portfolio (no LLM). `hard` rule failures cap the final rating.
+ *   5. Rating aggregation: one final LLM call that consumes evidence summary +
+ *      bull/bear/critic + risk summary and emits a JSON rating object. The
+ *      result is post-processed with two hard overrides (see runRatingPhase)
+ *      before being saved.
+ *
+ * After stage 5 the run transitions to `awaiting_human` and the HTTP client
+ * polls until a human approves/modifies/rejects.
+ *
+ * Cancellation: between every stage the pipeline calls `isCancelled` which
+ * re-reads the run row; if the user hit cancel, the pipeline bails out without
+ * advancing state.
+ *
+ * Completion notification: on both success and failure, `notifyComplete`
+ * invokes callbacks (registered by BatchService) so the queue can release a
+ * concurrency slot and dequeue the next item.
+ *
+ * Token accounting: tokensUsed is accumulated across LLM calls and persisted
+ * on the run row for cost tracking.
+ */
 import { Injectable, Inject, Logger } from '@nestjs/common';
 import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '@lark-apaas/fullstack-nestjs-core';
 import { eq, and } from 'drizzle-orm';
@@ -11,6 +46,8 @@ import { MultiAgentService } from './multi-agent.service';
 @Injectable()
 export class PipelineService {
   private readonly logger = new Logger(PipelineService.name);
+  /** Callbacks fired when any run finishes (success, failure, or cancel).
+   *  BatchService registers one to free a concurrency slot. */
   private completeCallbacks: Array<(runId: string, userId: string, mode: AgentRunMode) => void> = [];
 
   constructor(
@@ -21,10 +58,19 @@ export class PipelineService {
     private readonly multiAgentService: MultiAgentService,
   ) {}
 
+  /**
+   * Register a callback invoked when a run completes (for any terminal state).
+   * Used by BatchService to release a concurrency slot and process the queue.
+   * @param cb callback receiving runId, userId, and the run's mode.
+   */
   onRunComplete(cb: (runId: string, userId: string, mode: AgentRunMode) => void): void {
     this.completeCallbacks.push(cb);
   }
 
+  /**
+   * Fire all registered completion callbacks. Each callback is wrapped in
+   * try/catch so one bad listener cannot break the others or the pipeline.
+   */
   private notifyComplete(runId: string, userId: string, mode: AgentRunMode): void {
     for (const cb of this.completeCallbacks) {
       try {
@@ -35,12 +81,25 @@ export class PipelineService {
     }
   }
 
+  /**
+   * Fire-and-forget entry point that starts the pipeline. The returned promise
+   * is intentionally not awaited by the caller (controller returns immediately);
+   * all errors are logged here.
+   * @param runId the agent_runs.id to run.
+   * @param userId owner, used for owner-scoped DB writes and cancellation check.
+   */
   startPipeline(runId: string, userId: string): void {
     void this.runPipeline(runId, userId).catch((err) => {
       this.logger.error(`Pipeline failed for run ${runId}: ${err instanceof Error ? err.message : String(err)}`);
     });
   }
 
+  /**
+   * Internal driver for the full pipeline. Runs all five stages in order,
+   * checking cancellation between each. On error, transitions the run to
+   * `failed` and writes an audit log, then still fires notifyComplete so the
+   * batch queue can make progress.
+   */
   private async runPipeline(runId: string, userId: string): Promise<void> {
     let tokensUsed = 0;
     const addTokens = (n: number): void => {
@@ -60,6 +119,7 @@ export class PipelineService {
       const portfolio = await this.portfolioContextService.getPortfolioContext(userId);
       const evidence = await this.evidenceService.collectEvidence(ticker, userId, portfolio);
 
+      // Persist all collected evidence rows (cast to the union type used by the DB).
       await this.multiAgentService.addEvidence(
         userId,
         runId,
@@ -112,6 +172,8 @@ export class PipelineService {
         })),
       );
 
+      // A hard-rule failure does NOT abort the pipeline, but it caps the
+      // final rating (no Buy/Strong Buy allowed).
       const hasHardFailure = riskResults.some((r) => r.ruleType === 'hard' && !r.passed);
 
       if (await this.isCancelled(runId, userId)) return;
@@ -151,6 +213,7 @@ export class PipelineService {
       } catch (updateErr) {
         this.logger.error(`Failed to update run status to failed: ${updateErr instanceof Error ? updateErr.message : String(updateErr)}`);
       }
+      // Still notify batch so the queue can proceed.
       const runDetail = await this.multiAgentService.getRun(userId, runId).catch(() => null);
       if (runDetail) {
         this.notifyComplete(runId, userId, runDetail.runMode);
@@ -158,6 +221,10 @@ export class PipelineService {
     }
   }
 
+  /**
+   * Owner-scoped cancellation check. Re-reads the run row; returns true iff the
+   * row exists and its status is 'cancelled'.
+   */
   private async isCancelled(runId: string, userId: string): Promise<boolean> {
     const [row] = await this.db
       .select({ status: agentRuns.status })
@@ -166,6 +233,10 @@ export class PipelineService {
     return row?.status === 'cancelled';
   }
 
+  /**
+   * Update the run row's status and optional metadata (startedAt, completedAt,
+   * errorMessage, tokensUsed). Always owner-scoped.
+   */
   private async setStatus(
     runId: string,
     userId: string,
@@ -184,6 +255,12 @@ export class PipelineService {
       .where(and(eq(agentRuns.id, runId), eq(agentRuns.owner, userId)));
   }
 
+  /**
+   * Run the bull/bear debate: two opening arguments (parallel LLM calls) then
+   * two rebuttal rounds (parallel LLM calls). Rebuttal failures are logged but
+   * do NOT fail the whole run — the opening round is enough.
+   * @returns total tokens consumed across all debate LLM calls.
+   */
   private async runDebatePhase(
     runId: string,
     userId: string,
@@ -193,6 +270,8 @@ export class PipelineService {
     const evidenceText = this.formatEvidence(evidence);
     let totalTokens = 0;
 
+    // Prompts are written in Chinese because the LLM model (Doubao) is
+    // tuned for Chinese financial reasoning; the JSON keys are English.
     const bullPrompt = `你是一位看多的股票研究员（Bull Analyst）。请仔细阅读以下关于 ${ticker} 的证据，列出 3-4 条看多理由。每条理由必须引用具体的证据数据，要有数字支撑，不要泛泛而谈。
 
 【证据】
@@ -219,6 +298,7 @@ ${evidenceText}
   ]
 }`;
 
+    // Opening round: run bull and bear in parallel via the "slow" (pro) model.
     const [bullResult, bearResult] = await Promise.all([
       this.llmService.chatSlowJSON([{ role: 'user', content: bullPrompt }]),
       this.llmService.chatSlowJSON([{ role: 'user', content: bearPrompt }]),
@@ -229,6 +309,7 @@ ${evidenceText}
     const bullArgs = this.extractArguments(bullResult.data);
     const bearArgs = this.extractArguments(bearResult.data);
 
+    // Persist arguments and debate records in parallel.
     await Promise.all([
       ...bullArgs.map((arg, i) =>
         this.multiAgentService.addArgument(userId, runId, {
@@ -263,6 +344,7 @@ ${evidenceText}
     const bullSummary = bullArgs.map((a) => a.point).join('; ');
     const bearSummary = bearArgs.map((a) => a.point).join('; ');
 
+    // Rebuttal round: each side attacks the other's opening points.
     const bullRebuttalPrompt = `你是多头研究员。对方（空头）提出了以下看空论点，请逐一回应，指出其漏洞或不成立之处，并坚持你的看多立场。
 
 【空头论点】
@@ -335,12 +417,18 @@ ${bearArgs.map((a, i) => `${i + 1}. ${a.point}`).join('\n')}
         }),
       ]);
     } catch (rebuttalErr) {
+      // Rebuttal is best-effort; opening round is the required minimum.
       this.logger.warn(`Debate round 2 failed: ${rebuttalErr instanceof Error ? rebuttalErr.message : String(rebuttalErr)}`);
     }
 
     return totalTokens;
   }
 
+  /**
+   * Run the critic stage: a free-text LLM call that critiques both sides'
+   * weakest points. Output is stored verbatim as a round-3 debate record.
+   * @returns tokens consumed.
+   */
   private async runCritiquePhase(runId: string, userId: string): Promise<number> {
     const detail = await this.multiAgentService.getRun(userId, runId);
 
@@ -381,6 +469,17 @@ ${bearArgs || '（无）'}`;
     return result.totalTokens;
   }
 
+  /**
+   * Run the final rating aggregation: build a prompt from evidence summary,
+   * bull/bear arguments, critic output, and risk-gate results, then parse the
+   * LLM's JSON response. Two post-hoc overrides are applied (defensive guards
+   * that enforce business rules even if the LLM disobeys the prompt):
+   *   - If any hard risk rule failed, the rating cannot exceed Hold.
+   *   - If confidence is low, directional ratings (Buy/Sell/Strong Buy/Strong
+   *     Sell) are downgraded to Watch.
+   * Unknown ratings are clamped to Watch.
+   * @returns tokens consumed by this LLM call.
+   */
   private async runRatingPhase(
     runId: string,
     userId: string,
@@ -390,6 +489,8 @@ ${bearArgs || '（无）'}`;
   ): Promise<number> {
     const detail = await this.multiAgentService.getRun(userId, runId);
 
+    // Cap evidence list to 8 items and truncate each content to 150 chars to
+    // keep the prompt within the slow model's context budget.
     const evidenceSummary = detail.evidence
       .slice(0, 8)
       .map((e) => `- [${e.role}] ${e.title}: ${e.content.slice(0, 150)}`)
@@ -457,14 +558,17 @@ ${riskSummary}
     let rating = String(data.rating ?? 'Watch').trim() as AgentRating;
     const confidence = String(data.confidence ?? 'low').trim().toLowerCase() as AgentConfidence;
 
+    // Clamp unknown ratings to Watch as a safe default.
     const validRatings: AgentRating[] = ['Strong Buy', 'Buy', 'Hold', 'Sell', 'Strong Sell', 'Watch'];
     if (!validRatings.includes(rating)) {
       rating = 'Watch';
     }
 
+    // Hard override #1: hard risk-gate failure caps rating at Hold.
     if (hasHardFailure && (rating === 'Buy' || rating === 'Strong Buy')) {
       rating = 'Hold';
     }
+    // Hard override #2: low confidence forbids directional calls.
     if (confidence === 'low' && (rating === 'Buy' || rating === 'Sell' || rating === 'Strong Buy' || rating === 'Strong Sell')) {
       rating = 'Watch';
     }
@@ -486,6 +590,10 @@ ${riskSummary}
     return result.tokens;
   }
 
+  /**
+   * Format the collected evidence list into a numbered human-readable block
+   * that is pasted verbatim into the debate prompts.
+   */
   private formatEvidence(evidence: EvidenceInput[]): string {
     return evidence
       .map(
@@ -495,6 +603,12 @@ ${riskSummary}
       .join('\n\n');
   }
 
+  /**
+   * Defensive parser for the bull/bear JSON output. The LLM is asked for
+   * `{ arguments: [{ point, evidence_refs }] }` but may return malformed JSON
+   * or missing fields; this helper returns an empty array on any shape mismatch
+   * rather than throwing.
+   */
   private extractArguments(data: unknown): Array<{ point: string; evidence_refs: string[] }> {
     if (!data || typeof data !== 'object') return [];
     const obj = data as Record<string, unknown>;

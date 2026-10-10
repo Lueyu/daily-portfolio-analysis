@@ -1,13 +1,21 @@
 'use client';
 
+/**
+ * Error state row shown in the combobox dropdown when a search fails, with a
+ * retry/refresh action.
+ * Part of the vendored business-ui component library.
+ */
 import { cn } from '@/lib/utils';
 import { Button } from '@client/src/components/ui/button';
 
+/** Props for BaseComboboxError. */
 export type BaseComboboxErrorProps = {
+  /** Callback invoked when the user clicks the retry button. */
   onRetry?: () => void;
   className?: string;
 };
 
+/** Renders the load-failed error state with a retry button. */
 export const BaseComboboxError = ({
   onRetry,
   className,

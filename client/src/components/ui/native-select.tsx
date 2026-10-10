@@ -1,8 +1,15 @@
+/**
+ * Native <select> dropdown styled to match the design system.
+ *
+ * Vendored shadcn-style UI primitive (Radix UI + Tailwind CSS).
+ */
+
 import * as React from "react"
 import { ChevronDownIcon } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 
+/** Native styled <select> dropdown. */
 function NativeSelect({ className, ...props }: React.ComponentProps<"select">) {
   return (
     <div
@@ -28,10 +35,12 @@ function NativeSelect({ className, ...props }: React.ComponentProps<"select">) {
   )
 }
 
+/** One native select option. */
 function NativeSelectOption({ ...props }: React.ComponentProps<"option">) {
   return <option data-slot="native-select-option" {...props} />
 }
 
+/** Grouping of native select options. */
 function NativeSelectOptGroup({
   className,
   ...props

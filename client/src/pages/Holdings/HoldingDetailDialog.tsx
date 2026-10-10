@@ -1,3 +1,14 @@
+/**
+ * @file pages/Holdings/HoldingDetailDialog.tsx
+ * @description Detail / edit dialog for a single holding.
+ *
+ * Two view modes:
+ *  - Read-only: tabbed layout with a "详情" tab (price, P/L, cost, group, notes)
+ *    and an "AI 推理" tab (rating, confidence, target price, bull/bear summaries).
+ *  - Editing: a grid form that PATCHes the changed fields on save.
+ *
+ * Also hosts a delete confirmation and a quick group-move selector.
+ */
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { Pencil, Trash2, FolderOpen, X, Check, Sparkles, TrendingUp, TrendingDown, ShieldAlert, ExternalLink } from 'lucide-react';
@@ -54,6 +65,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 
+/** AI rating info shown on the "AI 推理" tab. */
 interface AiRatingInfo {
   rating: AgentRating;
   confidence: AgentConfidence;
@@ -64,6 +76,7 @@ interface AiRatingInfo {
   bearSummary: string | null;
 }
 
+/** Props for {@link HoldingDetailDialog}. */
 interface HoldingDetailDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -75,6 +88,7 @@ interface HoldingDetailDialogProps {
   onViewFullAnalysis?: (runId: string) => void;
 }
 
+/** Derived market value, cost, P/L and return % from a raw holding. */
 function computeDerived(h: Holding) {
   const shares = parseFloat(h.shares || '0');
   const buyPrice = parseFloat(h.buyPrice || '0');
@@ -86,6 +100,9 @@ function computeDerived(h: Holding) {
   return { marketValue, cost, pl, returnPct };
 }
 
+/**
+ * Render the holding detail dialog. Returns null when no holding is selected.
+ */
 export default function HoldingDetailDialog({
   open,
   onOpenChange,
@@ -101,6 +118,7 @@ export default function HoldingDetailDialog({
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<Record<string, string>>({});
 
+  /** Copy the holding's current fields into the edit form and enter edit mode. */
   const startEdit = () => {
     if (!holding) return;
     setForm({
@@ -119,11 +137,17 @@ export default function HoldingDetailDialog({
     setEditing(true);
   };
 
+  /** Exit edit mode and clear the form. */
   const closeEdit = () => {
     setEditing(false);
     setForm({});
   };
 
+  /**
+   * PATCH only the fields that differ from the holding's current values.
+   * Numeric fields are parsed to numbers; empty strings are sent as undefined
+   * so the backend treats them as "clear".
+   */
   const handleSave = async () => {
     if (!holding) return;
     setSaving(true);
@@ -162,6 +186,7 @@ export default function HoldingDetailDialog({
     }
   };
 
+  /** Confirm-and-delete the holding, then close and refresh the list. */
   const handleDelete = async () => {
     if (!holding) return;
     setSaving(true);
@@ -178,6 +203,7 @@ export default function HoldingDetailDialog({
     }
   };
 
+  /** Quick group-move handler used by the "移动分组" selector. */
   const handleGroupChange = async (value: string) => {
     if (!holding) return;
     try {

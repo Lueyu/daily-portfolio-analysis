@@ -1,5 +1,11 @@
 "use client"
 
+/**
+ * Form field wrapper that couples label, control, and message with consistent spacing/state.
+ *
+ * Vendored shadcn-style UI primitive (Radix UI + Tailwind CSS).
+ */
+
 import { useMemo } from "react"
 import { cva, type VariantProps } from "class-variance-authority"
 
@@ -7,6 +13,7 @@ import { cn } from "@/lib/utils"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 
+/** FieldSet component. */
 function FieldSet({ className, ...props }: React.ComponentProps<"fieldset">) {
   return (
     <fieldset
@@ -21,6 +28,7 @@ function FieldSet({ className, ...props }: React.ComponentProps<"fieldset">) {
   )
 }
 
+/** FieldLegend component. */
 function FieldLegend({
   className,
   variant = "legend",
@@ -41,6 +49,7 @@ function FieldLegend({
   )
 }
 
+/** FieldGroup component. */
 function FieldGroup({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
@@ -54,6 +63,7 @@ function FieldGroup({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
+/** fieldVariants component. */
 const fieldVariants = cva(
   "group/field flex w-full gap-3 data-[invalid=true]:text-destructive",
   {
@@ -78,6 +88,7 @@ const fieldVariants = cva(
   }
 )
 
+/** Field component. */
 function Field({
   className,
   orientation = "vertical",
@@ -94,6 +105,7 @@ function Field({
   )
 }
 
+/** FieldContent component. */
 function FieldContent({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
@@ -107,6 +119,7 @@ function FieldContent({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
+/** FieldLabel component. */
 function FieldLabel({
   className,
   ...props
@@ -125,6 +138,7 @@ function FieldLabel({
   )
 }
 
+/** FieldTitle component. */
 function FieldTitle({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
@@ -138,6 +152,7 @@ function FieldTitle({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
+/** FieldDescription component. */
 function FieldDescription({ className, ...props }: React.ComponentProps<"p">) {
   return (
     <p
@@ -153,6 +168,7 @@ function FieldDescription({ className, ...props }: React.ComponentProps<"p">) {
   )
 }
 
+/** FieldSeparator component. */
 function FieldSeparator({
   children,
   className,
@@ -183,6 +199,7 @@ function FieldSeparator({
   )
 }
 
+/** FieldError component. */
 function FieldError({
   className,
   children,

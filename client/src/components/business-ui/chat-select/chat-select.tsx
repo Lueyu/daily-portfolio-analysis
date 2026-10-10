@@ -1,5 +1,12 @@
 'use client';
 
+/**
+ * ChatSelect: a controlled field for picking one or more chats (group conversations).
+ * Wires the generic BaseCombobox to the chat search API, renders chat rows and
+ * selected chat tags, and converts between external value shapes (chatID string or
+ * Chat object) and the internal Chat objects used by the combobox.
+ * Part of the vendored business-ui component library.
+ */
 import React, { useCallback, useMemo } from 'react';
 
 import { searchChats } from '@client/src/components/business-ui/api/chats/service';
@@ -22,7 +29,7 @@ function createChatsFetcher(pageSize: number = 100) {
   };
 }
 
-// 内部包装组件用于获取 context 中的 size
+// Internal wrapper that reads size from the combobox context.
 const ChatItemWrapper = ({
   chatValue,
   isSelected,
@@ -73,6 +80,12 @@ const ChatSelectTagWrapper = ({
   );
 };
 
+/**
+ * Controlled chat (group) selector. Value is a chatID string (string mode, the
+ * default) or a Chat object (object mode), and switches between single and
+ * multi-select via `multiple`. It auto-searches chats and resolves selected IDs
+ * to full chat metadata for display.
+ */
 export const ChatSelect: React.FC<ChatSelectProps> = (props) => {
   const {
     size = 'medium',
@@ -105,14 +118,14 @@ export const ChatSelect: React.FC<ChatSelectProps> = (props) => {
 
   const isControlled = value !== undefined;
 
-  // 使用 useChatValue 处理不同类型的 value（包括 defaultValue）
+  // Use useChatValue to normalize the external value (including defaultValue).
   const { internalValue, isLoading, toExternalValue } = useChatValue(
     value ?? null,
     multiple,
     valueType,
   );
 
-  // 同样处理 defaultValue，确保 ID 字符串类型的 defaultValue 也能正确解析
+  // Normalize defaultValue the same way so ID-string defaults also resolve.
   const { internalValue: internalDefaultValue } = useChatValue(
     defaultValue ?? null,
     multiple,
@@ -121,7 +134,7 @@ export const ChatSelect: React.FC<ChatSelectProps> = (props) => {
 
   const fetchFn = useMemo(() => createChatsFetcher(), []);
 
-  // 包装 onChange，根据输入模式转换输出格式
+  // Wrap onChange to convert the internal value back to the configured external shape.
   const handleChange = useCallback(
     (newValue: Chat | Chat[] | null) => {
       if (!onChange) return;

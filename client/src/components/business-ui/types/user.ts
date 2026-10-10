@@ -1,74 +1,73 @@
-// client/src/types/user.ts
-
+/**
+ * Canonical user types (single source of truth) for the business-ui library: the
+ * standard User shape, user type enum, and a tolerant UserInput that accepts both
+ * snake_case and camelCase field names.
+ * Part of the vendored business-ui component library.
+ */
 import type { I18nText } from '@/components/business-ui/entity-combobox/types';
 import type { Department } from '@/components/business-ui/department-select/types';
 
-/**
- * 重新导出相关类型，方便统一导入
- */
+/** Re-export related types for convenient unified imports. */
 export type { I18nText, Department };
 
-/**
- * 用户类型枚举
- */
+/** User type enum. */
 export type UserType = '_employee' | '_externalUser' | '_anonymousUser';
 
 /**
- * 统一的标准用户类型（单一事实来源）
- * 使用下划线命名（与后端统一），larkUserId 除外
+ * Standard user type (single source of truth).
+ * Uses snake_case naming (aligned with the backend), except for larkUserId.
  */
 export interface User {
-  /** 用户 ID（未注册外部联系人可能没有） */
+  /** User ID (unregistered external contacts may not have one). */
   user_id?: string;
 
-  /** 飞书用户 ID（保持驼峰） */
+  /** Feishu user ID (kept camelCase). */
   larkUserId?: string;
 
   /**
-   * 用户名称
-   * 支持简单字符串或国际化文本
+   * Display name; either a plain string or internationalized text.
    */
   name?: I18nText | string;
 
-  /** 用户头像 URL */
+  /** Avatar URL. */
   avatar?: string;
 
-  /** 用户邮箱 */
+  /** Email address. */
   email?: string;
 
   /**
-   * 用户类型
-   * - '_employee': 内部员工
-   * - '_externalUser': 外部用户
-   * - '_anonymousUser': 匿名用户
+   * User type.
+   * - '_employee': internal employee
+   * - '_externalUser': external user
+   * - '_anonymousUser': anonymous user
    */
   user_type?: UserType;
 
-  /** 部门信息（引用 DepartmentSelect 的类型） */
+  /** Department info (reuses the DepartmentSelect type). */
   department?: Department;
 
-  /** 租户名称（外部用户显示） */
+  /** Tenant name (shown for external users). */
   tenantName?: string;
 
-  /** 用户状态 */
+  /** User status. */
   status?: number;
 }
 
 /**
- * 用户数据输入类型（用于组件 Props）
- * 兼容驼峰和下划线命名，内部自动转换为标准 User 类型
+ * Acceptable input shape for user data (used in component props).
+ * Tolerates camelCase and snake_case naming; normalized into the standard User type internally.
  */
 export type UserInput =
   | User
   | {
       user_id?: string;
-      userId?: string;         // 兼容驼峰
+      userId?: string;         // camelCase alias
       larkUserId?: string;
       name?: I18nText | string;
       avatar?: string;
       email?: string;
       user_type?: UserType;
-      userType?: UserType;     // 兼容驼峰
+      userType?: UserType;     // camelCase alias
       department?: Department | any;
       status?: number;
     };

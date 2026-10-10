@@ -1,7 +1,14 @@
 'use client';
+
+/**
+ * Uploads a File object to the platform object storage (dataloom) default bucket
+ * and returns its stored location metadata.
+ * Part of the vendored business-ui component library.
+ */
 import { getDataloom } from '@lark-apaas/client-toolkit/dataloom';
 import { getDefaultBucketId } from '@lark-apaas/client-toolkit/tools/storage';
 
+/** Metadata describing a file that has been uploaded to object storage. */
 export interface UploadFileData {
   id: string;
   filePath: string;
@@ -9,6 +16,7 @@ export interface UploadFileData {
   url: string;
 }
 
+/** Uploads the given file to the default storage bucket; throws on upload error. */
 export async function uploadFile(file: File): Promise<UploadFileData> {
   const dataloom = await getDataloom();
   const bucket = dataloom.storage.from(getDefaultBucketId());

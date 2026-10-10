@@ -1,3 +1,28 @@
+/**
+ * MultiAgentController — HTTP entry points for the LLM-driven multi-agent
+ * stock-analysis pipeline.
+ *
+ * All routes are mounted under `/api/multi-agent` and require authentication
+ * via `@NeedLogin()`. Every handler extracts `userId` from `req.userContext`
+ * and passes it down to the service layer so that all DB reads/writes are
+ * owner-scoped (a user can only see/modify their own runs and rules).
+ *
+ * Route groups:
+ *  - Runs: list/get/create/update/cancel/start/status, batch creation,
+ *    daily batch, latest ratings.
+ *  - Run sub-resources: evidence, bull/bear arguments, debate records, rating,
+ *    risk-gate results (GET + POST for each).
+ *  - Human-in-the-loop: `/runs/:id/human-decision` approves/modifies/rejects
+ *    an LLM-produced rating and optionally syncs it to the daily analysis table
+ *    and/or to the holdings row.
+ *  - Strategy rules: CRUD + reorder + reset-to-default.
+ *  - Deep report: fetch by runId, or generate a sample (Xiaomi) report.
+ *  - Audit logs + portfolio-context snapshot.
+ *
+ * Side note: `startRun` triggers `PipelineService.startPipeline` fire-and-forget
+ * (void promise) — the HTTP response returns immediately with status
+ * `fetching`; the client polls `/runs/:id/status` for progress.
+ */
 import {
   Controller,
   Get,
@@ -50,6 +75,8 @@ import type {
   DailyBatchResult,
 } from '@shared/api.interface';
 
+/** Query-string shape for GET /runs. All values arrive as strings from HTTP;
+ *  numeric fields are parsed to int in the handler. */
 interface ListRunsQuery {
   ticker?: string;
   status?: AgentRunStatus;
@@ -60,14 +87,23 @@ interface ListRunsQuery {
   offset?: string;
 }
 
+/** Wraps a list of evidence rows so the client can POST them in one request. */
 interface EvidenceBatchDto {
   items: CreateEvidenceDto[];
 }
 
+/** Wraps a list of risk-gate results for bulk insertion. */
 interface RiskGateBatchDto {
   items: CreateRiskGateDto[];
 }
 
+/**
+ * NestJS controller exposing all multi-agent-analysis HTTP endpoints.
+ * Delegates business logic to the service/pipeline/batch layer; the controller
+ * itself is thin and only does auth extraction, param parsing, and a small
+ * number of request-validity checks (e.g. only `pending`/`failed` runs can be
+ * started; only `awaiting_human`/`completed` runs accept a human decision).
+ */
 @NeedLogin()
 @Controller('api/multi-agent')
 export class MultiAgentController {
@@ -78,6 +114,11 @@ export class MultiAgentController {
     private readonly batchService: BatchService,
   ) {}
 
+  /**
+   * GET /runs — paginated list of the caller's agent runs, each joined with
+   * its rating (if any) and deep-report target prices.
+   * Supports filtering by ticker, status, runMode, and date range.
+   */
   @Get('runs')
   async listRuns(
     @Req() req: Request,
@@ -95,6 +136,10 @@ export class MultiAgentController {
     });
   }
 
+  /**
+   * POST /runs/batch — create one or more runs for the caller and enqueue them
+   * through BatchService (which applies per-mode concurrency caps).
+   */
   @Post('runs/batch')
   @NeedLogin()
   async createBatch(
@@ -105,6 +150,11 @@ export class MultiAgentController {
     return this.batchService.createBatch(userId, dto);
   }
 
+  /**
+   * POST /daily-batch — convenience endpoint that kicks off the daily routine:
+   * a tiered run over all holdings plus a full run for watchlist items that
+   * carry a buy/strong-buy signal.
+   */
   @Post('daily-batch')
   @NeedLogin()
   async createDailyBatch(@Req() req: Request): Promise<DailyBatchResult> {
@@ -112,6 +162,11 @@ export class MultiAgentController {
     return this.batchService.createDailyBatch(userId);
   }
 
+  /**
+   * GET /latest-ratings — return the most recent completed rating per ticker
+   * (optionally filtered by a comma-separated ticker list). Used by the
+   * dashboard to show current recommendations without opening each run.
+   */
   @Get('latest-ratings')
   @NeedLogin()
   async getLatestRatings(
@@ -123,6 +178,7 @@ export class MultiAgentController {
     return this.multiAgentService.getLatestRatings(userId, tickerList);
   }
 
+  /** GET /runs/:id — full detail of a single run including all sub-resources. */
   @Get('runs/:id')
   async getRun(
     @Req() req: Request,
@@ -132,6 +188,7 @@ export class MultiAgentController {
     return this.multiAgentService.getRun(userId, id);
   }
 
+  /** POST /runs — create a new run row in `pending` status. Does not start it. */
   @Post('runs')
   async createRun(
     @Req() req: Request,
@@ -141,6 +198,7 @@ export class MultiAgentController {
     return this.multiAgentService.createRun(userId, dto);
   }
 
+  /** PATCH /runs/:id — update run status / human decision / human note. */
   @Patch('runs/:id')
   async updateRun(
     @Req() req: Request,
@@ -151,6 +209,8 @@ export class MultiAgentController {
     return this.multiAgentService.updateRunStatus(userId, id, dto.status, dto);
   }
 
+  /** POST /runs/:id/cancel — mark a run as cancelled. The pipeline checks
+   *  cancellation between phases and stops early. */
   @Post('runs/:id/cancel')
   async cancelRun(
     @Req() req: Request,
@@ -160,6 +220,7 @@ export class MultiAgentController {
     return this.multiAgentService.cancelRun(userId, id);
   }
 
+  /** GET /runs/:id/evidence — list evidence rows collected for a run. */
   @Get('runs/:id/evidence')
   async getEvidence(
     @Req() req: Request,
@@ -169,6 +230,7 @@ export class MultiAgentController {
     return this.multiAgentService.getEvidence(userId, id);
   }
 
+  /** POST /runs/:id/evidence — bulk-insert evidence rows for a run. */
   @Post('runs/:id/evidence')
   async addEvidence(
     @Req() req: Request,
@@ -179,6 +241,7 @@ export class MultiAgentController {
     return this.multiAgentService.addEvidence(userId, id, dto.items);
   }
 
+  /** GET /runs/:id/arguments — list bull/bear debate arguments. */
   @Get('runs/:id/arguments')
   async getArguments(
     @Req() req: Request,
@@ -188,6 +251,7 @@ export class MultiAgentController {
     return this.multiAgentService.getArguments(userId, id);
   }
 
+  /** POST /runs/:id/arguments — record a single bull/bear argument. */
   @Post('runs/:id/arguments')
   async addArgument(
     @Req() req: Request,
@@ -198,6 +262,7 @@ export class MultiAgentController {
     return this.multiAgentService.addArgument(userId, id, dto);
   }
 
+  /** GET /runs/:id/debate — list debate turns (bull/bear/critic). */
   @Get('runs/:id/debate')
   async getDebate(
     @Req() req: Request,
@@ -207,6 +272,7 @@ export class MultiAgentController {
     return this.multiAgentService.getDebate(userId, id);
   }
 
+  /** POST /runs/:id/debate — append a debate turn. */
   @Post('runs/:id/debate')
   async addDebateRecord(
     @Req() req: Request,
@@ -217,6 +283,7 @@ export class MultiAgentController {
     return this.multiAgentService.addDebateRecord(userId, id, dto);
   }
 
+  /** GET /runs/:id/rating — the aggregated final rating (null if not yet produced). */
   @Get('runs/:id/rating')
   async getRating(
     @Req() req: Request,
@@ -226,6 +293,8 @@ export class MultiAgentController {
     return this.multiAgentService.getRating(userId, id);
   }
 
+  /** POST /runs/:id/rating — upsert the rating for a run (called by the pipeline
+   *  and by the human-modified path). */
   @Post('runs/:id/rating')
   async saveRating(
     @Req() req: Request,
@@ -236,6 +305,7 @@ export class MultiAgentController {
     return this.multiAgentService.saveRating(userId, id, dto);
   }
 
+  /** GET /runs/:id/risk-gate — list evaluated hard/soft risk-rule results. */
   @Get('runs/:id/risk-gate')
   async getRiskGate(
     @Req() req: Request,
@@ -245,6 +315,7 @@ export class MultiAgentController {
     return this.multiAgentService.getRiskGate(userId, id);
   }
 
+  /** POST /runs/:id/risk-gate — bulk-insert risk-gate evaluation results. */
   @Post('runs/:id/risk-gate')
   async saveRiskGate(
     @Req() req: Request,
@@ -255,6 +326,11 @@ export class MultiAgentController {
     return this.multiAgentService.saveRiskGateResults(userId, id, dto.items);
   }
 
+  /**
+   * POST /runs/:id/start — kick off the async pipeline for a pending/failed run.
+   * Validates that the run is in a startable state, then fires
+   * `pipelineService.startPipeline` (fire-and-forget) and immediately returns.
+   */
   @Post('runs/:id/start')
   @NeedLogin()
   async startRun(
@@ -263,6 +339,7 @@ export class MultiAgentController {
   ): Promise<{ runId: string; status: string }> {
     const { userId } = req.userContext;
     const run = await this.multiAgentService.getRun(userId, id);
+    // Only freshly-created or previously-failed runs can be started.
     if (run.status !== 'pending' && run.status !== 'failed') {
       throw new BadRequestException(`Run status ${run.status} cannot be started`);
     }
@@ -270,6 +347,7 @@ export class MultiAgentController {
     return { runId: id, status: 'fetching' };
   }
 
+  /** GET /runs/:id/status — poll the current state of a run. */
   @Get('runs/:id/status')
   @NeedLogin()
   async getRunStatus(
@@ -280,6 +358,17 @@ export class MultiAgentController {
     return this.multiAgentService.getRun(userId, id);
   }
 
+  /**
+   * POST /runs/:id/human-decision — human-in-the-loop approval step.
+   *
+   * The pipeline ends at `awaiting_human`; the user then chooses:
+   *  - rejected: run is marked cancelled, audit log written.
+   *  - modified: an optional human-edited rating is saved over the LLM rating,
+   *    then the run completes.
+   *  - approved: run completes; optionally syncs the rating into the daily
+   *    analysis table (`syncToAnalysis`, default true) and/or writes the rating
+   *    back onto the holdings row (`applyToHoldings`, default false).
+   */
   @Post('runs/:id/human-decision')
   @NeedLogin()
   async humanDecision(
@@ -320,6 +409,7 @@ export class MultiAgentController {
         bearSummary: mr.bearSummary,
         catalysts: mr.catalysts,
         risks: mr.risks,
+        // Record the original LLM rating for traceability.
         aggregationLogic: `人工修改评级，原始评级: ${run.rating?.rating ?? 'N/A'}`,
         keyUncertainty: run.rating?.keyUncertainty ?? undefined,
       });
@@ -349,12 +439,14 @@ export class MultiAgentController {
     });
   }
 
+  /** GET /strategy-rules — list the caller's personalized risk rules. */
   @Get('strategy-rules')
   async getStrategyRules(@Req() req: Request): Promise<StrategyRule[]> {
     const { userId } = req.userContext;
     return this.multiAgentService.getStrategyRules(userId);
   }
 
+  /** POST /strategy-rules — create a new risk rule. */
   @Post('strategy-rules')
   @NeedLogin()
   async createStrategyRule(
@@ -365,6 +457,7 @@ export class MultiAgentController {
     return this.multiAgentService.createStrategyRule(userId, dto);
   }
 
+  /** PATCH /strategy-rules/:id — update a risk rule. */
   @Patch('strategy-rules/:id')
   @NeedLogin()
   async updateStrategyRule(
@@ -376,6 +469,7 @@ export class MultiAgentController {
     return this.multiAgentService.updateStrategyRule(userId, id, dto);
   }
 
+  /** DELETE /strategy-rules/:id — remove a risk rule. */
   @Delete('strategy-rules/:id')
   @NeedLogin()
   async deleteStrategyRule(
@@ -387,6 +481,7 @@ export class MultiAgentController {
     return { deleted: true };
   }
 
+  /** POST /strategy-rules/reorder — bulk-update sort order for the rules list. */
   @Post('strategy-rules/reorder')
   @NeedLogin()
   async reorderStrategyRules(
@@ -404,6 +499,7 @@ export class MultiAgentController {
     return { updated: count };
   }
 
+  /** POST /strategy-rules/reset-default — wipe caller's rules and reseed defaults. */
   @Post('strategy-rules/reset-default')
   @NeedLogin()
   async resetStrategyRules(@Req() req: Request): Promise<StrategyRule[]> {
@@ -411,6 +507,7 @@ export class MultiAgentController {
     return this.multiAgentService.resetDefaultStrategyRules(userId);
   }
 
+  /** GET /deep-report/:runId — fetch the full structured deep-dive report. */
   @Get('deep-report/:runId')
   @NeedLogin()
   async getDeepReport(
@@ -421,6 +518,11 @@ export class MultiAgentController {
     return this.multiAgentService.getDeepReport(userId, runId);
   }
 
+  /**
+   * POST /runs/:id/generate-sample-deep-report — developer/demo endpoint that
+   * writes a hard-coded Xiaomi (1810.HK) sample deep report into the DB so the
+   * UI can be tested end-to-end without running the full LLM pipeline.
+   */
   @Post('runs/:id/generate-sample-deep-report')
   @NeedLogin()
   async generateSampleDeepReport(
@@ -431,6 +533,7 @@ export class MultiAgentController {
     return this.multiAgentService.generateSampleDeepReport(userId, id);
   }
 
+  /** GET /audit-logs — recent audit events for the caller (default 20, max 100). */
   @Get('audit-logs')
   async getAuditLogs(
     @Req() req: Request,
@@ -440,6 +543,8 @@ export class MultiAgentController {
     return this.multiAgentService.getAuditLogs(userId, limit ? parseInt(limit, 10) : 20);
   }
 
+  /** GET /portfolio-context — current holdings/cash/weights/company-group
+   *  exposures snapshot for the caller. */
   @Get('portfolio-context')
   @NeedLogin()
   async getPortfolioContext(@Req() req: Request): Promise<PortfolioContext> {

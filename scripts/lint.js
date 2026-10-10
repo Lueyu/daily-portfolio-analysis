@@ -1,4 +1,20 @@
 #!/usr/bin/env node
+/**
+ * lint.js — unified lint entry point used by both `npm run lint` and the
+ * pre-commit hook.
+ *
+ * Two modes:
+ *  - Default (no --files): run eslint + type:check across the whole project,
+ *    plus stylelint if the project has a stylelint script and config.
+ *  --files <path…>: selective mode — only lint the changed files. Routes
+ *    .ts/.tsx to eslint + the matching type:check:client/server; .css to
+ *    stylelint. Type-checks are split by directory (client/ vs server/; files
+ *    in shared/ are checked by both tsconfigs).
+ *
+ * Tasks run serially (not in parallel) to keep resource usage low and output
+ * readable, but a failure in any task sets the overall exit code to 1 so all
+ * problems surface in one pass.
+ */
 
 const path = require('node:path');
 const { spawn } = require('node:child_process');

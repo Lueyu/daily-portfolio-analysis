@@ -1,3 +1,27 @@
+/**
+ * MultiAgentService — data-access facade for all multi-agent tables.
+ *
+ * This is the single place where the multi-agent subsystem talks to PostgreSQL.
+ * The controller and pipeline call into these methods; business logic lives in
+ * PipelineService / PortfolioContextService / BatchService.
+ *
+ * Tables touched:
+ *  - agent_runs: one row per analysis run (lifecycle, timing, tokens).
+ *  - agent_evidence: evidence rows collected in Phase 1.
+ *  - bull_bear_arguments: individual bull/bear debate points.
+ *  - debate_records: one row per debate turn (bull/bear/critic).
+ *  - agent_ratings: the final aggregated rating (upserted once per run).
+ *  - risk_gate_results: evaluated hard/soft rule results.
+ *  - strategy_rules: user-customizable risk rules (seeded with defaults).
+ *  - agent_audit_log: append-only audit trail of run lifecycle events.
+ *  - deep_report: structured deep-dive report (SOTP valuation, financials…).
+ *  - analysis: the daily-analysis table that human-approved ratings can sync
+ *    into (shared with the rest of the app).
+ *
+ * Every query is owner-scoped (WHERE owner = userId) so users can never read
+ * or mutate each other's data. Sub-resource writes (evidence/arguments/etc.)
+ * first call ensureRunOwner to verify the run belongs to the caller.
+ */
 import {
   Injectable,
   Inject,
@@ -46,6 +70,7 @@ import type {
   AgentRunWithRating,
 } from '@shared/api.interface';
 
+/** Internal row shape for bulk evidence inserts (snake_case DB columns). */
 interface EvidenceInsert {
   runId: string;
   role: string;
@@ -64,6 +89,7 @@ export class MultiAgentService {
 
   constructor(@Inject(DRIZZLE_DATABASE) private readonly db: PostgresJsDatabase) {}
 
+  /** Create a new run row in `pending` status. Does not start the pipeline. */
   async createRun(userId: string, dto: CreateAgentRunDto): Promise<AgentRun> {
     const [row] = await this.db
       .insert(agentRuns)
@@ -80,6 +106,7 @@ export class MultiAgentService {
     return this.mapRun(row);
   }
 
+  /** Update run status and/or human-decision metadata. Owner-scoped. */
   async updateRunStatus(
     userId: string,
     runId: string,
@@ -105,6 +132,11 @@ export class MultiAgentService {
     return this.mapRun(updated);
   }
 
+  /**
+   * Load a run plus all its sub-resources (evidence, arguments, debate,
+   * rating, risk-gate results) in parallel. Throws NotFound if the run does
+   * not exist or belongs to another user.
+   */
   async getRun(userId: string, runId: string): Promise<AgentRunDetail> {
     const [runRow] = await this.db
       .select()
@@ -150,6 +182,10 @@ export class MultiAgentService {
     };
   }
 
+  /**
+   * Paginated list of runs, left-joined with the deep-report row for target
+   * prices. Prefer listRunsWithRating (which also joins ratings).
+   */
   async listRuns(userId: string, query: AgentRunListQuery): Promise<{ items: AgentRun[]; total: number }> {
     const conditions = [eq(agentRuns.owner, userId)];
     if (query.ticker) conditions.push(eq(agentRuns.ticker, query.ticker));
@@ -191,6 +227,7 @@ export class MultiAgentService {
     };
   }
 
+  /** Bulk-insert evidence rows for a run (owner-checked). */
   async addEvidence(userId: string, runId: string, items: CreateEvidenceDto[]): Promise<AgentEvidence[]> {
     await this.ensureRunOwner(userId, runId);
 
@@ -210,6 +247,7 @@ export class MultiAgentService {
     return inserted.map((r) => this.mapEvidence(r));
   }
 
+  /** Insert one bull/bear argument row (owner-checked). */
   async addArgument(userId: string, runId: string, dto: CreateArgumentDto): Promise<BullBearArgument> {
     await this.ensureRunOwner(userId, runId);
 
@@ -229,6 +267,7 @@ export class MultiAgentService {
     return this.mapArgument(row);
   }
 
+  /** Insert one debate turn row (owner-checked). */
   async addDebateRecord(userId: string, runId: string, dto: CreateDebateRecordDto): Promise<DebateRecord> {
     await this.ensureRunOwner(userId, runId);
 
@@ -247,6 +286,11 @@ export class MultiAgentService {
     return this.mapDebate(row);
   }
 
+  /**
+   * Upsert the rating for a run. If a rating row already exists for this
+   * (runId, owner), it is updated in place; otherwise a new row is inserted.
+   * Called by the pipeline (Phase 5) and by the human-modified path.
+   */
   async saveRating(userId: string, runId: string, dto: CreateAgentRatingDto): Promise<AgentRatingRecord> {
     await this.ensureRunOwner(userId, runId);
 
@@ -298,6 +342,7 @@ export class MultiAgentService {
     return this.mapRating(row);
   }
 
+  /** Bulk-insert evaluated risk-gate results for a run (owner-checked). */
   async saveRiskGateResults(userId: string, runId: string, items: CreateRiskGateDto[]): Promise<RiskGateResult[]> {
     await this.ensureRunOwner(userId, runId);
 
@@ -317,6 +362,10 @@ export class MultiAgentService {
     return inserted.map((r) => this.mapRiskGate(r));
   }
 
+  /**
+   * List the caller's strategy rules. If the user has no rules yet, seedDefault
+   * is called automatically so the pipeline always has rules to evaluate.
+   */
   async getStrategyRules(userId: string): Promise<StrategyRule[]> {
     const rows = await this.db
       .select()
@@ -331,6 +380,7 @@ export class MultiAgentService {
     return rows.map((r) => this.mapStrategyRule(r));
   }
 
+  /** Create a new strategy rule; rejects duplicate ruleKey per user. */
   async createStrategyRule(
     userId: string,
     dto: CreateStrategyRuleDto,
@@ -368,6 +418,7 @@ export class MultiAgentService {
     return this.mapStrategyRule(inserted);
   }
 
+  /** Partially update a strategy rule. */
   async updateStrategyRule(userId: string, ruleId: string, dto: UpdateStrategyRuleDto): Promise<StrategyRule> {
     const patch: Record<string, unknown> = {};
     if (dto.ruleName !== undefined) patch.ruleName = dto.ruleName;
@@ -394,6 +445,7 @@ export class MultiAgentService {
     return this.mapStrategyRule(updated);
   }
 
+  /** Delete a strategy rule (owner-scoped). */
   async deleteStrategyRule(userId: string, ruleId: string): Promise<void> {
     const deleted = await this.db
       .delete(strategyRules)
@@ -404,6 +456,10 @@ export class MultiAgentService {
     if (deleted.length === 0) throw new NotFoundException('规则不存在');
   }
 
+  /**
+   * Bulk-update sort order for rules. Done one UPDATE per item (not a single
+   * transaction) — acceptable because reorder is a low-frequency admin action.
+   */
   async reorderStrategyRules(
     userId: string,
     items: ReorderStrategyRuleDto[],
@@ -425,6 +481,7 @@ export class MultiAgentService {
     return count;
   }
 
+  /** Delete all caller's rules and reseed with the default set. */
   async resetDefaultStrategyRules(userId: string): Promise<StrategyRule[]> {
     await this.db
       .delete(strategyRules)
@@ -432,6 +489,7 @@ export class MultiAgentService {
     return this.seedDefaultRules(userId);
   }
 
+  /** Fetch the deep-dive report for a run (owner-checked), or null if none. */
   async getDeepReport(
     userId: string,
     runId: string,
@@ -445,6 +503,11 @@ export class MultiAgentService {
     return this.mapDeepReport(rows[0]);
   }
 
+  /**
+   * Developer/demo endpoint: write a hard-coded Xiaomi (1810.HK) sample deep
+   * report into the DB (upsert on runId). Lets the UI render the full
+   * deep-report view without running the LLM pipeline.
+   */
   async generateSampleDeepReport(userId: string, runId: string): Promise<DeepReport> {
     const [runRow] = await this.db
       .select({ ticker: agentRuns.ticker, tickerName: agentRuns.tickerName })
@@ -747,6 +810,7 @@ export class MultiAgentService {
     return this.mapDeepReport(upserted);
   }
 
+  /** Append an audit-log row (runId may be null for user-level events). */
   async addAuditLog(userId: string, runId: string | null, action: string, detail: Record<string, unknown> | null): Promise<AgentAuditLog> {
     const [row] = await this.db
       .insert(agentAuditLog)
@@ -761,6 +825,7 @@ export class MultiAgentService {
     return this.mapAuditLog(row);
   }
 
+  /** Recent audit logs for the caller (newest first, capped at 100). */
   async getAuditLogs(userId: string, limit: number): Promise<AgentAuditLog[]> {
     const rows = await this.db
       .select()
@@ -771,6 +836,7 @@ export class MultiAgentService {
     return rows.map((r) => this.mapAuditLog(r));
   }
 
+  /** Mark a run as cancelled. The pipeline polls for this between phases. */
   async cancelRun(userId: string, runId: string): Promise<AgentRun> {
     const [updated] = await this.db
       .update(agentRuns)
@@ -782,6 +848,7 @@ export class MultiAgentService {
     return this.mapRun(updated);
   }
 
+  /** List evidence rows for a run (owner-checked). */
   async getEvidence(userId: string, runId: string): Promise<AgentEvidence[]> {
     await this.ensureRunOwner(userId, runId);
     const rows = await this.db
@@ -792,6 +859,7 @@ export class MultiAgentService {
     return rows.map((r) => this.mapEvidence(r));
   }
 
+  /** List bull/bear arguments for a run (owner-checked). */
   async getArguments(userId: string, runId: string): Promise<BullBearArgument[]> {
     await this.ensureRunOwner(userId, runId);
     const rows = await this.db
@@ -802,6 +870,7 @@ export class MultiAgentService {
     return rows.map((r) => this.mapArgument(r));
   }
 
+  /** List debate turns for a run (owner-checked). */
   async getDebate(userId: string, runId: string): Promise<DebateRecord[]> {
     await this.ensureRunOwner(userId, runId);
     const rows = await this.db
@@ -812,6 +881,7 @@ export class MultiAgentService {
     return rows.map((r) => this.mapDebate(r));
   }
 
+  /** Fetch the rating for a run, or null if not yet produced (owner-checked). */
   async getRating(userId: string, runId: string): Promise<AgentRatingRecord | null> {
     await this.ensureRunOwner(userId, runId);
     const rows = await this.db
@@ -821,6 +891,7 @@ export class MultiAgentService {
     return rows.length > 0 ? this.mapRating(rows[0]) : null;
   }
 
+  /** List risk-gate results for a run (owner-checked). */
   async getRiskGate(userId: string, runId: string): Promise<RiskGateResult[]> {
     await this.ensureRunOwner(userId, runId);
     const rows = await this.db
@@ -831,6 +902,12 @@ export class MultiAgentService {
     return rows.map((r) => this.mapRiskGate(r));
   }
 
+  /**
+   * Sync a completed run's rating into the daily `analysis` table (one row per
+   * user/ticker/date). Updates the existing row for today if present, otherwise
+   * inserts a new one. Called from the human-decision endpoint when
+   * syncToAnalysis is true (the default).
+   */
   async syncRatingToAnalysis(userId: string, runId: string): Promise<boolean> {
     const [runRow, ratingRow] = await Promise.all([
       this.db
@@ -896,6 +973,12 @@ export class MultiAgentService {
     return true;
   }
 
+  /**
+   * Return the latest completed rating per ticker for the caller. Joins
+   * agentRatings → agentRuns, filters to runs with status='completed', then
+   * picks the most recent row per ticker (case-insensitive).
+   * @param tickers optional whitelist; if omitted, returns all tickers.
+   */
   async getLatestRatings(userId: string, tickers?: string[]): Promise<LatestRating[]> {
     const ratingRows = await this.db
       .select({
@@ -946,6 +1029,11 @@ export class MultiAgentService {
     return result.sort((a, b) => a.ticker.localeCompare(b.ticker));
   }
 
+  /**
+   * Paginated list of runs joined with both the deep-report row and the
+   * rating row. This is the variant the controller's GET /runs uses.
+   * Date filtering: `to` is inclusive (we add a day and use lt).
+   */
   async listRunsWithRating(
     userId: string,
     query: AgentRunListQuery,
@@ -1008,6 +1096,7 @@ export class MultiAgentService {
     };
   }
 
+  /** Verify that a run exists and belongs to the caller; throw otherwise. */
   private async ensureRunOwner(userId: string, runId: string): Promise<void> {
     const [row] = await this.db
       .select({ id: agentRuns.id })
@@ -1016,6 +1105,11 @@ export class MultiAgentService {
     if (!row) throw new NotFoundException('运行记录不存在');
   }
 
+  /**
+   * Insert the built-in default risk rules for a new user. These cover
+   * position concentration, cash management, stop-loss/take-profit, and
+   * buy-checklist categories. Users can later edit/delete/reorder them.
+   */
   private async seedDefaultRules(userId: string): Promise<StrategyRule[]> {
     const defaults = [
       { ruleKey: 'single_company_exposure', ruleName: '单一公司合并敞口上限', ruleType: 'hard', threshold: 25, unit: '%', description: '单一公司所有相关标的（正股+转债+关联ETF等）合计仓位不超过25%', category: 'position_concentration', severity: 'hard_block', sort: 10 },
@@ -1050,6 +1144,7 @@ export class MultiAgentService {
     return inserted.map((r) => this.mapStrategyRule(r));
   }
 
+  /** Map a raw agent_runs row to the AgentRun API shape (dates → ISO strings). */
   private mapRun(row: typeof agentRuns.$inferSelect): AgentRun {
     return {
       id: row.id,
@@ -1077,6 +1172,7 @@ export class MultiAgentService {
     };
   }
 
+  /** Map a raw agent_evidence row to AgentEvidence. */
   private mapEvidence(row: typeof agentEvidence.$inferSelect): AgentEvidence {
     return {
       id: row.id,
@@ -1093,6 +1189,7 @@ export class MultiAgentService {
     };
   }
 
+  /** Map a raw bull_bear_arguments row to BullBearArgument. */
   private mapArgument(row: typeof bullBearArguments.$inferSelect): BullBearArgument {
     return {
       id: row.id,
@@ -1106,6 +1203,7 @@ export class MultiAgentService {
     };
   }
 
+  /** Map a raw debate_records row to DebateRecord. */
   private mapDebate(row: typeof debateRecords.$inferSelect): DebateRecord {
     return {
       id: row.id,
@@ -1118,6 +1216,7 @@ export class MultiAgentService {
     };
   }
 
+  /** Map a raw agent_ratings row to AgentRatingRecord. */
   private mapRating(row: typeof agentRatings.$inferSelect): AgentRatingRecord {
     return {
       id: row.id,
@@ -1138,6 +1237,7 @@ export class MultiAgentService {
     };
   }
 
+  /** Map a raw risk_gate_results row to RiskGateResult. */
   private mapRiskGate(row: typeof riskGateResults.$inferSelect): RiskGateResult {
     return {
       id: row.id,
@@ -1153,6 +1253,7 @@ export class MultiAgentService {
     };
   }
 
+  /** Map a raw strategy_rules row to StrategyRule. */
   private mapStrategyRule(row: typeof strategyRules.$inferSelect): StrategyRule {
     return {
       id: row.id,
@@ -1171,6 +1272,7 @@ export class MultiAgentService {
     };
   }
 
+  /** Map a raw deep_report row to DeepReport (JSONB columns cast to typed arrays). */
   private mapDeepReport(row: typeof deepReport.$inferSelect): DeepReport {
     return {
       id: row.id,
@@ -1224,6 +1326,7 @@ export class MultiAgentService {
     };
   }
 
+  /** Map a raw agent_audit_log row to AgentAuditLog. */
   private mapAuditLog(row: typeof agentAuditLog.$inferSelect): AgentAuditLog {
     return {
       id: row.id,

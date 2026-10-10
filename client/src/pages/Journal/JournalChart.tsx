@@ -1,3 +1,11 @@
+/**
+ * @file pages/Journal/JournalChart.tsx
+ * @description Dual-axis ECharts for the journal page.
+ *
+ * Bars show daily P/L (left axis, green/red by sign); a smoothed area line
+ * shows account value over time (right axis). Snapshots are sorted by date
+ * ascending; invalid dates are filtered out.
+ */
 import { useMemo } from 'react';
 import ReactECharts from 'echarts-for-react';
 import type { Snapshot } from '@shared/api.interface';
@@ -11,12 +19,17 @@ import {
   EmptyDescription,
 } from '@/components/ui/empty';
 
+/** Props for {@link JournalChart}. */
 interface JournalChartProps {
   snapshots: Snapshot[];
   loading: boolean;
 }
 
+/**
+ * Render the daily-P/L bar + account-value line chart.
+ */
 export function JournalChart({ snapshots, loading }: JournalChartProps) {
+  /** Build the ECharts option from snapshots; returns {} when there is no data. */
   const chartOption = useMemo(() => {
     const valid = snapshots.filter((s) => toDate(s.snapshotDate));
     if (valid.length === 0) return {};

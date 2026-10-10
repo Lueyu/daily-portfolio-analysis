@@ -1,3 +1,12 @@
+/**
+ * @file pages/Watchlist/WatchlistPage.tsx
+ * @description Route `/watchlist`: tracked tickers with live quotes.
+ *
+ * Renders a desktop table and mobile card grid, both click-through to a detail
+ * dialog. Supports text search, signal filter, and an add-watch dialog. Live
+ * quotes are subscribed via `useMarketQuotes`; when a quote is fresher than
+ * the stored `currentPrice`, the quote price is displayed instead.
+ */
 import { useState, useEffect, useMemo } from 'react';
 import { Search, Plus, Eye, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
@@ -55,6 +64,7 @@ import {
 import DetailDialog from './DetailDialog';
 import WatchForm, { type WatchFormData } from './WatchForm';
 
+/** Signal filter options for the toolbar. */
 const SIGNAL_FILTERS: Array<{ value: 'all' | Signal; label: string }> = [
   { value: 'all', label: '全部信号' },
   { value: '强烈买入', label: '强烈买入' },
@@ -63,6 +73,7 @@ const SIGNAL_FILTERS: Array<{ value: 'all' | Signal; label: string }> = [
   { value: '回避', label: '回避' },
 ];
 
+/** Blank watch-form state; `dateAdded` defaults to today. */
 const EMPTY_FORM: WatchFormData = {
   ticker: '',
   company: '',
@@ -76,11 +87,17 @@ const EMPTY_FORM: WatchFormData = {
   analysis: '',
 };
 
+/** Parse a string to a number, returning undefined for empty/NaN input. */
 function parseNumber(v: string): number | undefined {
   const n = parseFloat(v);
   return isNaN(n) ? undefined : n;
 }
 
+/**
+ * Compute how far the current price is below the target buy price, as a
+ * positive percent. Returns null when the price is at/above target or inputs
+ * are missing/invalid.
+ */
 function belowTargetPct(
   current: string | null,
   target: string | null
@@ -92,6 +109,12 @@ function belowTargetPct(
   return ((t - c) / t) * 100;
 }
 
+/**
+ * Watchlist page component.
+ *
+ * State: watch items, search/signal filters, selected item for the detail
+ * dialog, add-dialog open state, and the create form.
+ */
 function WatchlistPage() {
   const [items, setItems] = useState<WatchItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -113,6 +136,7 @@ function WatchlistPage() {
 
 
 
+  /** Fetch the watchlist and populate state. */
   const loadData = async () => {
     setLoading(true);
     setError(null);
@@ -132,6 +156,7 @@ function WatchlistPage() {
     void loadData();
   }, []);
 
+  /** Apply text search and signal filter to the watch items. */
   const filteredItems = useMemo(() => {
     const q = search.trim().toLowerCase();
     return items.filter((item: WatchItem) => {
@@ -144,6 +169,7 @@ function WatchlistPage() {
     });
   }, [items, search, signalFilter]);
 
+  /** Prefer the live quote price when available; fall back to stored currentPrice. */
   function getDisplayPrice(item: WatchItem): string {
     const quote = quotes[item.ticker];
     if (quote && quote.price !== undefined && !isNaN(parseFloat(quote.price))) {
@@ -152,11 +178,13 @@ function WatchlistPage() {
     return item.currentPrice ?? '';
   }
 
+  /** Open the detail dialog for the selected watch item. */
   const openDetail = (item: WatchItem) => {
     setSelected(item);
     setDetailOpen(true);
   };
 
+  /** Validate and submit the create-watch form, then reset and refetch. */
   const handleCreate = async () => {
     if (!formData.ticker.trim()) {
       toast.error('请输入股票代码');
@@ -542,6 +570,7 @@ function WatchlistPage() {
   );
 }
 
+/** Loading skeleton shown while the watchlist is being fetched. */
 function WatchlistSkeleton() {
   return (
     <div className="space-y-4 md:space-y-6">

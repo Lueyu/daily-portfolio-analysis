@@ -1,15 +1,31 @@
+/**
+ * Trading journal service.
+ *
+ * Business logic and PostgreSQL (Drizzle) data access for the user's per-day
+ * trading journal. Entries are owner-scoped and keyed by (owner, journalDate);
+ * `upsert` updates the existing entry for that date or creates one if absent.
+ */
 import { Injectable, Inject, Logger, NotFoundException } from '@nestjs/common';
 import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '@lark-apaas/fullstack-nestjs-core';
 import { eq, and, desc } from 'drizzle-orm';
 import { journal } from '@server/database/schema';
 import type { JournalEntry, CreateJournalDto, ListResponse } from '@shared/api.interface';
 
+/**
+ * Provides journal read/upsert/delete. Depends on the Drizzle database connection.
+ */
 @Injectable()
 export class JournalService {
   private readonly logger = new Logger(JournalService.name);
 
   constructor(@Inject(DRIZZLE_DATABASE) private readonly db: PostgresJsDatabase) {}
 
+  /**
+   * Lists journal entries for a user, newest first, optionally filtered by date.
+   *
+   * @param userId Owner id.
+   * @param date   Optional journal date filter.
+   */
   async list(userId: string, date?: string): Promise<ListResponse<JournalEntry>> {
     const conditions = [eq(journal.owner, userId)];
     if (date) conditions.push(eq(journal.journalDate, date));
@@ -34,6 +50,11 @@ export class JournalService {
     };
   }
 
+  /**
+   * Returns the most recent journal entry for the user, or null if none.
+   *
+   * @param userId Owner id.
+   */
   async latest(userId: string): Promise<JournalEntry | null> {
     const rows = await this.db
       .select()
@@ -56,6 +77,13 @@ export class JournalService {
     };
   }
 
+  /**
+   * Upserts the journal entry for a given date: updates it if one already exists
+   * for (owner, date), otherwise inserts a new one. Runs in a transaction.
+   *
+   * @param userId Owner id.
+   * @param dto    Journal payload keyed by `journalDate`.
+   */
   async upsert(userId: string, dto: CreateJournalDto): Promise<JournalEntry> {
     const result = await this.db.transaction(async (tx) => {
       const existing = await tx
@@ -65,6 +93,7 @@ export class JournalService {
         .limit(1);
 
       if (existing.length > 0) {
+        // Update only the fields supplied in the DTO.
         const patch: Record<string, unknown> = {};
         if (dto.marketSummary !== undefined) patch.marketSummary = dto.marketSummary;
         if (dto.portfolioSummary !== undefined) patch.portfolioSummary = dto.portfolioSummary;
@@ -111,15 +140,22 @@ export class JournalService {
     };
   }
 
+  /**
+   * Deletes an owned journal entry.
+   *
+   * @param userId Owner id.
+   * @param id     Journal entry primary key.
+   * @throws NotFoundException if the entry does not belong to the user.
+   */
   async remove(userId: string, id: string): Promise<{ success: boolean }> {
     const deleted = await this.db
       .delete(journal)
       .where(and(eq(journal.id, id), eq(journal.owner, userId)))
       .returning({ id: journal.id });
 
-    if (deleted.length === 0) {
+    if (deleted.length === 0)
+      // NOTE: Chinese user-facing message (existing behavior; not mojibake).
       throw new NotFoundException('日志记录不存在');
-    }
     return { success: true };
   }
 }

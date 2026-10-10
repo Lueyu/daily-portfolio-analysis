@@ -1,3 +1,9 @@
+/**
+ * DepartmentSelect wired into the form system: renders DepartmentSelect inside a
+ * FieldLayout (label/description/error) and binds it to the surrounding form field
+ * context. Value is a Department object (object mode), not an ID string.
+ * Part of the vendored business-ui component library.
+ */
 import {
   DepartmentSelect,
   type DepartmentSelectProps,
@@ -16,6 +22,7 @@ import type {
   FieldLayoutStyles,
 } from '@client/src/components/business-ui/form/types';
 
+/** Props for DepartmentSelectField: layout props plus DepartmentSelect props (minus controlled value). */
 type DepartmentSelectFieldProps = CommonFieldProps &
   Omit<
     DepartmentSelectProps,
@@ -33,6 +40,7 @@ type DepartmentSelectFieldProps = CommonFieldProps &
     >;
   };
 
+/** Form-bound department select field. */
 export function DepartmentSelectField(props: DepartmentSelectFieldProps) {
   const {
     label,

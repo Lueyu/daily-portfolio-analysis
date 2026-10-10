@@ -1,7 +1,13 @@
 'use client';
 
+/**
+ * Round blue organization/department icon used in department rows and tags.
+ * Accepts standard SVG props (className, width, etc.).
+ * Part of the vendored business-ui component library.
+ */
 import type { SVGProps } from 'react';
 
+/** Department glyph (round blue badge with a white org chart mark). */
 export const IconDepartment = (props: SVGProps<SVGSVGElement>) => {
   return (
     <svg

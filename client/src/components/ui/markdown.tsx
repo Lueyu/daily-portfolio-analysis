@@ -1,5 +1,11 @@
 'use client';
 
+/**
+ * Markdown renderer (react-markdown + GFM) styled with Tailwind typography.
+ *
+ * Vendored shadcn-style UI primitive (Radix UI + Tailwind CSS).
+ */
+
 import * as React from 'react';
 import ReactMarkdown, { type Options } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -25,6 +31,7 @@ const defaultComponents: NonNullable<Options['components']> = {
   ),
 };
 
+/** Markdown renderer. */
 export function Markdown({
   className,
   remarkPlugins,

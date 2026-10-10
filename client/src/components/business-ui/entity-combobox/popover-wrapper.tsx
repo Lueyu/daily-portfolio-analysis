@@ -1,5 +1,12 @@
 'use client';
 
+/**
+ * PopoverWrapper: assembles the Radix Popover (trigger + dropdown content) for
+ * the combobox. Renders the trigger and dropdown list, and adapts the PopoverTrigger
+ * placement to the trigger type (button mode anchors the dropdown to the "+" button;
+ * search/custom modes wrap the whole trigger).
+ * Part of the vendored business-ui component library.
+ */
 import { BaseComboboxContent } from '@client/src/components/business-ui/entity-combobox/base-combobox-content';
 import { BaseComboboxList } from '@client/src/components/business-ui/entity-combobox/base-combobox-list';
 import { BaseComboboxSearch } from '@client/src/components/business-ui/entity-combobox/base-combobox-search';
@@ -13,8 +20,7 @@ import { cn } from '@/lib/utils';
 import { Popover, PopoverTrigger } from '@client/src/components/ui/popover';
 
 /**
- * 统一的浮层包装组件
- * 根据 triggerType 渲染不同的交互模式
+ * Unified popover wrapper that renders the interaction mode according to triggerType.
  */
 export function PopoverWrapper<
   T = unknown,
@@ -50,13 +56,13 @@ export function PopoverWrapper<
 
   const { open, setOpen, disabled } = useEntityComboboxContext();
 
-  // 处理打开状态变化，如果 disabled 则不允许打开
+  // Track open state; a disabled combobox cannot be opened.
   const handleOpenChange = (newOpen: boolean) => {
     if (disabled && newOpen) return;
     setOpen(newOpen);
   };
 
-  // 渲染 Popover 内容
+  // Renders the dropdown content (search input + option list).
   const renderPopoverContent = () => (
     <BaseComboboxContent
       popoverProps={slotProps?.popover}
@@ -88,7 +94,7 @@ export function PopoverWrapper<
     </BaseComboboxContent>
   );
 
-  // button 类型：标签在外部，Popover 只包裹加号按钮
+  // button mode: tags render outside the popover; only the "+" button triggers it.
   if (triggerType === 'button') {
     return (
       <div className={cn(className, classNames?.root)}>
@@ -118,7 +124,7 @@ export function PopoverWrapper<
     );
   }
 
-  // search 和 custom 类型：整个 trigger 包裹在 Popover 中
+  // search and custom modes: the whole trigger is wrapped by the Popover.
   return (
     <div className={cn(className, classNames?.root)}>
       <Popover open={open} onOpenChange={handleOpenChange}>

@@ -1,3 +1,11 @@
+/**
+ * @file pages/Journal/DateNavigator.tsx
+ * @description Date navigator bar for the journal page.
+ *
+ * Renders prev/next buttons, a clickable date that opens a date-picker popover,
+ * and a 4-up strip of the selected day's snapshot stats (daily P/L, P/L %,
+ * account value, cash). P/L values are colored by sign via `plClass`.
+ */
 import { useState } from 'react';
 import { ChevronLeft, ChevronRight, Calendar, TrendingUp, TrendingDown, Wallet, DollarSign } from 'lucide-react';
 import type { Snapshot } from '@shared/api.interface';
@@ -7,6 +15,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
 
+/** Format a Date as `YYYY-MM-DD` for the native date input. */
 function formatDateInput(d: Date): string {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -14,6 +23,7 @@ function formatDateInput(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
+/** Props for {@link DateNavigator}. */
 interface DateNavigatorProps {
   currentDate: Date;
   snapshot: Snapshot | undefined;
@@ -23,6 +33,10 @@ interface DateNavigatorProps {
   onDateChange: (date: Date) => void;
 }
 
+/**
+ * Render the date navigator with prev/next, date picker popover, and today's
+ * snapshot stat strip.
+ */
 export function DateNavigator({
   currentDate,
   snapshot,
@@ -34,6 +48,7 @@ export function DateNavigator({
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState(formatDateInput(currentDate));
 
+  /** Parse the date input and commit it when valid. */
   const handleSubmit = () => {
     const d = new Date(input);
     if (!isNaN(d.getTime())) {

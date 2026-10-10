@@ -1,5 +1,12 @@
 'use client';
 
+/**
+ * EntityCombobox: the state container for the generic combobox. Owns the
+ * controlled/uncontrolled selection, open state, debounced search text, and data
+ * fetching, and exposes all of it through the context provider to descendant
+ * trigger/popover subcomponents.
+ * Part of the vendored business-ui component library.
+ */
 import { useCallback, useState } from 'react';
 import { useControllableState } from 'radix-ui/internal';
 
@@ -11,6 +18,7 @@ import type {
 } from '@client/src/components/business-ui/entity-combobox/types';
 import { useFetchData } from '@client/src/components/business-ui/entity-combobox/use-fetch-data';
 
+/** Provides combobox selection/open/search state and data-fetching to descendants. */
 export function EntityCombobox<
   T = unknown,
   TRaw = unknown,
@@ -36,7 +44,7 @@ export function EntityCombobox<
     getItemValue,
   } = props;
 
-  // 受控状态
+  // Controlled/uncontrolled selection state.
   const [selectedValue, setSelectedValue] = useControllableState({
     prop: valueProp,
     defaultProp: defaultValue ?? (!multiple ? null : []),
@@ -46,7 +54,7 @@ export function EntityCombobox<
   const [searchValue, setSearchValue] = useState('');
   const debouncedSearch = useDebounce(searchValue, debounce);
 
-  // 代理 onOpenChange，关闭时清空搜索
+  // Wrap onOpenChange to clear the search text when the dropdown closes.
   const handleOpenChange = useCallback(
     (newOpen: boolean) => {
       if (!newOpen) {
@@ -63,7 +71,7 @@ export function EntityCombobox<
     onChange: handleOpenChange,
   });
 
-  // 使用自定义 hook 处理数据请求
+  // Fetch data through the dedicated hook.
   const { data, isFetching, isError, isSuccess, fetchStatus, refetch } =
     useFetchData<T>({
       fetchFn,
@@ -72,7 +80,7 @@ export function EntityCombobox<
       onSearch,
     });
 
-  // 选择逻辑
+  // Selection logic.
   const handleSelect = useCallback(
     (itemValue: TValue) => {
       if (!multiple) {
@@ -113,7 +121,7 @@ export function EntityCombobox<
     onClear?.();
   }, [multiple, setSelectedValue, onClear]);
 
-  // Context 值
+  // Value exposed through the context provider.
   const contextValue = {
     open,
     setOpen,

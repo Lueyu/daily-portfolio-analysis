@@ -1,3 +1,14 @@
+/**
+ * Root (application) module.
+ *
+ * Wires together the entire NestJS backend: it imports the shared platform
+ * module and every feature module (holdings, watchlist, groups, analysis,
+ * transactions, closed positions, journal, snapshots, alpha picks, dashboard,
+ * LLM agent, cash accounts, quotes, FX, and multi-agent pipeline), and registers
+ * `GlobalExceptionFilter` as the application-wide exception handler via
+ * `APP_FILTER`. `ViewModule` must remain the last import because it provides the
+ * SPA fallback routes.
+ */
 import { APP_FILTER } from '@nestjs/core';
 import { Module } from '@nestjs/common';
 import { PlatformModule } from '@lark-apaas/fullstack-nestjs-core';
@@ -20,6 +31,10 @@ import { QuoteModule } from './modules/quote/quote.module';
 import { FxModule } from './modules/fx/fx.module';
 import { MultiAgentModule } from './modules/multi-agent/multi-agent.module';
 
+/**
+ * Root NestJS module. Aggregates all feature modules and installs the global
+ * exception filter. Has no logic of its own; it exists purely for DI wiring.
+ */
 @Module({
   imports: [
     PlatformModule.forRoot(),

@@ -1,4 +1,12 @@
-// Banner 图 technology 类型
+/**
+ * @file utils/img-resources/banner-placeholders.ts
+ * @brief Remote banner placeholder image URLs grouped by visual style.
+ *
+ * Three style buckets (technology / professional / minimalism), each with
+ * eight images. Used as hero/banner fallbacks on content cards.
+ */
+
+// Banner images - technology style.
 export const techBannerImg1 = 'https://lf3-static.bytednsdoc.com/obj/eden-cn/ylcylz_fsph_ryhs/ljhwZthlaukjlkulzlp/feisuda/banner/technology/1.jpg';
 export const techBannerImg2 = 'https://lf3-static.bytednsdoc.com/obj/eden-cn/ylcylz_fsph_ryhs/ljhwZthlaukjlkulzlp/feisuda/banner/technology/2.jpg';
 export const techBannerImg3 = 'https://lf3-static.bytednsdoc.com/obj/eden-cn/ylcylz_fsph_ryhs/ljhwZthlaukjlkulzlp/feisuda/banner/technology/3.jpg';
@@ -8,7 +16,7 @@ export const techBannerImg6 = 'https://lf3-static.bytednsdoc.com/obj/eden-cn/ylc
 export const techBannerImg7 = 'https://lf3-static.bytednsdoc.com/obj/eden-cn/ylcylz_fsph_ryhs/ljhwZthlaukjlkulzlp/feisuda/banner/technology/7.jpg';
 export const techBannerImg8 = 'https://lf3-static.bytednsdoc.com/obj/eden-cn/ylcylz_fsph_ryhs/ljhwZthlaukjlkulzlp/feisuda/banner/technology/8.jpg';
 
-// Banner 图 professional 类型
+// Banner images - professional style.
 export const professionalBannerImg1 = 'https://lf3-static.bytednsdoc.com/obj/eden-cn/ylcylz_fsph_ryhs/ljhwZthlaukjlkulzlp/feisuda/banner/professional/1.jpg';
 export const professionalBannerImg2 = 'https://lf3-static.bytednsdoc.com/obj/eden-cn/ylcylz_fsph_ryhs/ljhwZthlaukjlkulzlp/feisuda/banner/professional/2.jpg';
 export const professionalBannerImg3 = 'https://lf3-static.bytednsdoc.com/obj/eden-cn/ylcylz_fsph_ryhs/ljhwZthlaukjlkulzlp/feisuda/banner/professional/3.jpg';
@@ -18,7 +26,7 @@ export const professionalBannerImg6 = 'https://lf3-static.bytednsdoc.com/obj/ede
 export const professionalBannerImg7 = 'https://lf3-static.bytednsdoc.com/obj/eden-cn/ylcylz_fsph_ryhs/ljhwZthlaukjlkulzlp/feisuda/banner/professional/7.jpg';
 export const professionalBannerImg8 = 'https://lf3-static.bytednsdoc.com/obj/eden-cn/ylcylz_fsph_ryhs/ljhwZthlaukjlkulzlp/feisuda/banner/professional/8.jpg';
 
-// Banner 图 minimalism 类型
+// Banner images - minimalism style.
 export const minimalismBannerImg1 = 'https://lf3-static.bytednsdoc.com/obj/eden-cn/ylcylz_fsph_ryhs/ljhwZthlaukjlkulzlp/feisuda/banner/minimalism/1.jpg';
 export const minimalismBannerImg2 = 'https://lf3-static.bytednsdoc.com/obj/eden-cn/ylcylz_fsph_ryhs/ljhwZthlaukjlkulzlp/feisuda/banner/minimalism/2.jpg';
 export const minimalismBannerImg3 = 'https://lf3-static.bytednsdoc.com/obj/eden-cn/ylcylz_fsph_ryhs/ljhwZthlaukjlkulzlp/feisuda/banner/minimalism/3.jpg';

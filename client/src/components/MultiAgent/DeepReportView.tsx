@@ -1,3 +1,13 @@
+/**
+ * DeepReportView - renders the versioned, long-form multi-agent "deep research"
+ * report (runMode === 'full') as a dark-themed document page.
+ *
+ * The report is a fixed 14-section structure (executive summary, business model,
+ * financials, segments, valuation, industry, bull/bear, critic, catalysts, risks,
+ * risk gate, PM action, tracking). Each section self-hides when its backing data
+ * is empty, and the left/table-of-contents nav is built only from sections that
+ * actually have data. An IntersectionObserver provides scroll-spy highlighting.
+ */
 import React, { useEffect, useRef, useState } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import {
@@ -37,18 +47,29 @@ import type {
 } from '@shared/api.interface';
 
 interface DeepReportViewProps {
+  /** The versioned deep report data to render */
   report: DeepReport;
+  /** Optional run id, shown in the header for traceability */
   runId?: string;
+  /** Optional back-button callback; the button is only rendered when this is set */
   onBack?: () => void;
 }
 
+/** A visible table-of-contents entry; `visible` is derived from whether the underlying data exists */
 interface SectionDef {
+  /** Anchor id of the rendered <section>, also used for smooth scroll */
   id: string;
+  /** Nav label shown in the TOC */
   label: string;
+  /** Whether this section has any backing data (hidden sections are omitted from TOC) */
   visible: boolean;
 }
 
 // ─── Rating helpers ────────────────────────────────────────────────
+/**
+ * Returns the Badge color classes for a rating. Strong ratings get solid fills;
+ * directional ratings (Buy/Sell/Hold/Watch) get translucent tints.
+ */
 const ratingColor = (rating: AgentRating | null | undefined): string => {
   switch (rating) {
     case 'Strong Buy':
@@ -68,6 +89,7 @@ const ratingColor = (rating: AgentRating | null | undefined): string => {
   }
 };
 
+/** Badge color classes for confidence level: high=emerald, medium=amber, low=rose */
 const confidenceColor = (
   confidence: AgentConfidence | null | undefined,
 ): string => {
@@ -83,6 +105,7 @@ const confidenceColor = (
   }
 };
 
+/** Chinese display label for confidence level; em-dash when absent */
 const confidenceLabel = (
   confidence: AgentConfidence | null | undefined,
 ): string => {
@@ -99,6 +122,7 @@ const confidenceLabel = (
 };
 
 // ─── Shared section heading ───────────────────────────────────────
+/** Large numbered section heading with an anchor id for scroll-spy / TOC links */
 const SectionTitle: React.FC<{ children: React.ReactNode; id: string }> = ({
   children,
   id,
@@ -111,12 +135,14 @@ const SectionTitle: React.FC<{ children: React.ReactNode; id: string }> = ({
   </h2>
 );
 
+/** Amber sub-heading used inside a section for sub-topics */
 const SubHeading: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   <h3 className="font-serif text-lg font-semibold text-amber-400 mb-3 mt-6 first:mt-0">
     {children}
   </h3>
 );
 
+/** Renders a multi-line text blob as separated paragraphs; returns null when empty */
 const ParagraphBlock: React.FC<{ content: string | null | undefined }> = ({
   content,
 }) => {
@@ -132,6 +158,7 @@ const ParagraphBlock: React.FC<{ content: string | null | undefined }> = ({
 };
 
 // ─── Data table wrapper (dark style) ──────────────────────────────
+/** Dark-bordered, horizontally-scrollable table shell used by every data table */
 const DarkTable: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   <div className="border border-slate-700/60 rounded-lg overflow-x-auto bg-slate-900/40">
     <Table className="min-w-full">{children}</Table>
@@ -141,6 +168,7 @@ const DarkTable: React.FC<{ children: React.ReactNode }> = ({ children }) => (
 // ─── Section components ───────────────────────────────────────────
 
 // ① Executive Summary
+/** Top-of-report cards: current rating, confidence, previous rating, core thesis, and view changes */
 const ExecutiveSummarySection: React.FC<{ report: DeepReport }> = ({
   report,
 }) => {
@@ -218,6 +246,7 @@ const ExecutiveSummarySection: React.FC<{ report: DeepReport }> = ({
 };
 
 // ② Company & Business
+/** Company overview, business model, moat, and the revenue-structure table */
 const CompanyBusinessSection: React.FC<{ report: DeepReport }> = ({
   report,
 }) => {
@@ -306,6 +335,7 @@ const CompanyBusinessSection: React.FC<{ report: DeepReport }> = ({
 };
 
 // ③ Financial Depth
+/** Annual/quarterly financials, profitability metrics, cash flow, and qualitative financial quality */
 const FinancialSection: React.FC<{ report: DeepReport }> = ({ report }) => {
   const hasContent =
     (report.financialAnnual && report.financialAnnual.length > 0) ||
@@ -478,6 +508,7 @@ const FinancialSection: React.FC<{ report: DeepReport }> = ({ report }) => {
 };
 
 // ④ Segments
+/** Per-business-segment table: revenue, gross margin, growth, outlook */
 const SegmentsSection: React.FC<{ report: DeepReport }> = ({ report }) => {
   if (!report.segmentAnalysis || report.segmentAnalysis.length === 0)
     return null;
@@ -534,6 +565,7 @@ const SegmentsSection: React.FC<{ report: DeepReport }> = ({ report }) => {
 };
 
 // ⑤ Valuation
+/** Relative valuation table, SOTP sum-of-parts table, and methodology narrative */
 const ValuationSection: React.FC<{ report: DeepReport }> = ({ report }) => {
   const hasContent =
     (report.valuationRelative && report.valuationRelative.length > 0) ||
@@ -642,6 +674,7 @@ const ValuationSection: React.FC<{ report: DeepReport }> = ({ report }) => {
 };
 
 // ⑥ Industry & Competition
+/** Industry overview, market size, competitive position, and trends as narrative blocks */
 const IndustrySection: React.FC<{ report: DeepReport }> = ({ report }) => {
   const hasContent =
     report.industryOverview ||
@@ -683,6 +716,7 @@ const IndustrySection: React.FC<{ report: DeepReport }> = ({ report }) => {
 };
 
 // ⑦ Bull + ⑧ Bear
+/** Side-by-side bull (emerald) and bear (rose) argument columns; each side self-hides if empty */
 const BullBearSection: React.FC<{ report: DeepReport }> = ({ report }) => {
   const hasBull = report.bullPoints && report.bullPoints.length > 0;
   const hasBear = report.bearPoints && report.bearPoints.length > 0;
@@ -765,6 +799,7 @@ const BullBearSection: React.FC<{ report: DeepReport }> = ({ report }) => {
 };
 
 // ⑨ Critic
+/** Critic challenges: original claim, the critique, and the revised conclusion; badge shows resolved vs open */
 const CriticSection: React.FC<{ report: DeepReport }> = ({ report }) => {
   if (!report.criticPoints || report.criticPoints.length === 0) return null;
 
@@ -821,10 +856,12 @@ const CriticSection: React.FC<{ report: DeepReport }> = ({ report }) => {
 };
 
 // ⑩ Catalysts
+/** Chronological catalyst timeline; items are sorted by date and colored by type/impact */
 const CatalystsSection: React.FC<{ report: DeepReport }> = ({ report }) => {
   if (!report.catalystsTimeline || report.catalystsTimeline.length === 0)
     return null;
 
+  // Sort catalysts chronologically (copy first to avoid mutating report data)
   const sorted = [...report.catalystsTimeline].sort(
     (a: CatalystItem, b: CatalystItem) =>
       new Date(a.date).getTime() - new Date(b.date).getTime(),
@@ -910,6 +947,7 @@ const CatalystsSection: React.FC<{ report: DeepReport }> = ({ report }) => {
 };
 
 // ⑪ Risks
+/** Quantified risk table: probability/impact badges (high=rose, medium=amber, low=emerald) and mitigations */
 const RisksSection: React.FC<{ report: DeepReport }> = ({ report }) => {
   if (!report.riskItems || report.riskItems.length === 0) return null;
 
@@ -961,6 +999,7 @@ const RisksSection: React.FC<{ report: DeepReport }> = ({ report }) => {
 };
 
 // ⑫ Risk Gate
+/** Snapshot of risk-gate rule results captured at report generation; emerald row = passed, rose = failed */
 const RiskGateSection: React.FC<{ report: DeepReport }> = ({ report }) => {
   if (
     !report.riskGateSnapshot ||
@@ -1024,6 +1063,7 @@ const RiskGateSection: React.FC<{ report: DeepReport }> = ({ report }) => {
 };
 
 // ⑬ PM Action
+/** Portfolio-manager action recommendation: action badge, price range, position size, stop loss, execution plan */
 const PmActionSection: React.FC<{ report: DeepReport }> = ({ report }) => {
   const hasContent =
     report.pmAction ||
@@ -1033,6 +1073,7 @@ const PmActionSection: React.FC<{ report: DeepReport }> = ({ report }) => {
     report.pmExecutionPlan;
   if (!hasContent) return null;
 
+  // Picks a badge color by keyword matching against the (Chinese or English) action string
   const actionColor = (action: string | null): string => {
     if (!action) return 'bg-slate-500/20 text-slate-300 border-slate-500/50';
     const a = action.toLowerCase();
@@ -1109,6 +1150,7 @@ const PmActionSection: React.FC<{ report: DeepReport }> = ({ report }) => {
 };
 
 // ⑭ Tracking
+/** Watch-list metrics (threshold/direction/frequency) and explicit view-change triggers */
 const TrackingSection: React.FC<{ report: DeepReport }> = ({ report }) => {
   const hasContent =
     (report.trackingMetrics && report.trackingMetrics.length > 0) ||
@@ -1182,6 +1224,11 @@ const TrackingSection: React.FC<{ report: DeepReport }> = ({ report }) => {
 };
 
 // ─── Main Component ────────────────────────────────────────────────
+/**
+ * Top-level report layout: sticky desktop TOC + horizontal mobile chips + the
+ * 14 rendered sections. The TOC is derived from which sections have data, and an
+ * IntersectionObserver highlights the section currently in view.
+ */
 const DeepReportView: React.FC<DeepReportViewProps> = ({
   report,
   runId,
@@ -1300,7 +1347,8 @@ const DeepReportView: React.FC<DeepReportViewProps> = ({
 
   const visibleSections = sections.filter((s: SectionDef) => s.visible);
 
-  // Scroll spy
+  // Scroll spy: highlight the TOC entry whose section is most in view
+  // (rootMargin shrinks the active band so it tracks the top reading area)
   useEffect(() => {
     if (visibleSections.length === 0) return;
     setActiveSection(visibleSections[0].id);
@@ -1328,6 +1376,7 @@ const DeepReportView: React.FC<DeepReportViewProps> = ({
     return () => observer.disconnect();
   }, [visibleSections.length, report.id]);
 
+  // Smooth-scroll to a TOC target; scroll-mt-6 on SectionTitle keeps the heading below the sticky header
   const scrollToSection = (id: string) => {
     const el = document.getElementById(id);
     if (el) {

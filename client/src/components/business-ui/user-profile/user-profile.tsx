@@ -1,5 +1,12 @@
 'use client';
 
+/**
+ * UserProfile: a user detail card. Fetches profile data for a user ID and renders
+ * either a simple built-in card (name/avatar/email/status) or the official Feishu
+ * H5 web-component card (lazily loading the H5 JS SDK). Shows loading/error states
+ * with retry.
+ * Part of the vendored business-ui component library.
+ */
 import { logger } from '@lark-apaas/client-toolkit/logger';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -19,6 +26,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Spinner } from '@/components/ui/spinner';
 import { UserInput } from '@client/src/components/business-ui/types/user';
 
+/** Shape of the Feishu H5 webComponent SDK used to render the official profile card. */
 type WebComponentAPI = {
   config(params: {
     openId: string;
@@ -41,12 +49,13 @@ type WebComponentAPI = {
 };
 
 declare global {
-  // 运行环境标识（可根据需要扩展实际取值范围）
+  // Runtime environment identifier (extend the accepted values as needed).
   var ENVIRONMENT: 'staging' | 'local' | 'production' | string;
-  // 飞书 H5 webComponent SDK
+  // Feishu H5 webComponent SDK.
   var webComponent: WebComponentAPI;
 }
 
+/** Props for the UserProfile card. */
 interface UserProfileProps {
   readonly value?: string | UserInput;
   readonly userId?: string | undefined;
@@ -115,13 +124,13 @@ interface BaseOfficialProfileProps {
 }
 
 /**
- * 通用响应结构
- * 用于标准化 API 响应格式
+ * Common response wrapper used to standardize API response shapes.
  */
 export interface WithCommonResponse<T> {
   data: T;
 }
 
+/** Renders the official Feishu profile card through the webComponent SDK. */
 async function renderLarkProfile({
   larkAppID,
   jsAPITicket,
@@ -162,6 +171,7 @@ async function renderLarkProfile({
   return myComponent;
 }
 
+/** Renders the user profile card, handling loading, error/retry, and simple vs. official card modes. */
 function UserProfile(props: UserProfileProps) {
   const { value, userId: originUserId, user_id, accountType = 'apaas' } = props;
 
@@ -183,7 +193,8 @@ function UserProfile(props: UserProfileProps) {
   const onAuthError = useCallback(() => {
     globalThis.webComponent.onAuthError(function (error: Error) {
       const errorMessage = JSON.parse(error.message);
-      // 存在token过期情况，但后端无法识别，需要前端这边主动识别error，并进行鉴权重定向
+      // Token may have expired in a way the backend does not recognize; the front end
+      // must detect this error and trigger an auth re-redirect.
       if (
         errorMessage?.msg?.code === 20442 &&
         errorMessage?.msg?.msg === 'jsapi-ticket not exist'
@@ -197,7 +208,7 @@ function UserProfile(props: UserProfileProps) {
     });
   }, []);
 
-  // 按需注入飞书 H5 JS SDK，仅在组件使用时加载
+  // Lazily inject the Feishu H5 JS SDK only when this component is used.
   const larkSdkURl =
     'https://lf3-cdn-tos.bytegoofy.com/obj/goofy/locl/lark/external_js_sdk/h5-js-sdk-1.2.21.js';
   const scriptOptions = useMemo(
@@ -230,9 +241,9 @@ function UserProfile(props: UserProfileProps) {
       }
     } catch (error: unknown) {
       if (error instanceof Error && error.name === 'AbortError') {
-        // 直接退出，不处理 AbortError
+        // Bail out silently for aborted requests.
       } else {
-        // 最终的UI反馈
+        // Final UI feedback for other errors.
         setError(true);
         setLoading(false);
       }

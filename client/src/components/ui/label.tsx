@@ -1,10 +1,17 @@
 "use client"
 
+/**
+ * Form label associated with a control (Radix Label).
+ *
+ * Vendored shadcn-style UI primitive (Radix UI + Tailwind CSS).
+ */
+
 import * as React from "react"
 import * as LabelPrimitive from "@radix-ui/react-label"
 
 import { cn } from "@/lib/utils"
 
+/** Form label. */
 function Label({
   className,
   ...props

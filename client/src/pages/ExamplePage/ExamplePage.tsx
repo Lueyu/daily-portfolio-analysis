@@ -1,3 +1,12 @@
+/**
+ * @file pages/ExamplePage/ExamplePage.tsx
+ * @description Placeholder/example page kept commented out.
+ *
+ * Demonstrates the standard page skeleton: loading state, error state with a
+ * retry button, and an empty content area. Copy this file when scaffolding a
+ * new route. It is not wired into the route table.
+ */
+
 // import { useState } from 'react';
 // import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 // import { Button } from '@/components/ui/button';
@@ -12,7 +21,7 @@
 //   if (loading) {
 //     return (
 //       <div className="flex items-center justify-center h-64">
-//         <div className="text-muted-foreground">加载中...</div>
+//         <div className="text-muted-foreground">Loading...</div>
 //       </div>
 //     );
 //   }
@@ -23,7 +32,7 @@
 //         <div className="text-destructive">{error}</div>
 //         <Button onClick={refetch} variant="outline" size="sm">
 //           <RefreshCw className="h-4 w-4 mr-2" />
-//           重试
+//           Retry
 //         </Button>
 //       </div>
 //     );
@@ -31,7 +40,7 @@
 
 //   return (
 //     <div className="space-y-6">
-//       {/* 页面内容 */}
+//       {/* Page content goes here */}
 //     </div>
 //   );
 // }

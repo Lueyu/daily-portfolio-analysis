@@ -1,3 +1,8 @@
+/**
+ * TextareaField: a form-bound multi-line text input rendered inside FieldLayout,
+ * wired to the surrounding form field context.
+ * Part of the vendored business-ui component library.
+ */
 import { useFormGlobalProps } from '@client/src/components/business-ui/form/context';
 import { FieldLayout } from '@client/src/components/business-ui/form/field-layout';
 import { useFieldContext } from '@client/src/components/business-ui/form/hooks/form-context';
@@ -12,6 +17,7 @@ import type {
 } from '@client/src/components/business-ui/form/types';
 import { Textarea } from '@client/src/components/ui/textarea';
 
+/** Props for TextareaField. */
 type TextareaFieldProps = CommonFieldProps &
   React.ComponentProps<typeof Textarea> & {
     classNames?: Partial<FieldLayoutClassNames & Record<'textarea', string>>;
@@ -20,6 +26,7 @@ type TextareaFieldProps = CommonFieldProps &
     >;
   };
 
+/** Form-bound multi-line textarea field with label and validation display. */
 export function TextareaField({
   label,
   description,

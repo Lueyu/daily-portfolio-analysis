@@ -1,3 +1,11 @@
+/**
+ * @file pages/Holdings/AddHoldingDialog.tsx
+ * @description Create-a-holding dialog.
+ *
+ * Controlled form; only ticker and shares are required. Numeric fields are
+ * parsed on submit; optional string fields are omitted from the payload when
+ * empty so the backend can default them.
+ */
 import { useState } from 'react';
 import { toast } from 'sonner';
 import type { Group } from '@shared/api.interface';
@@ -22,6 +30,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 
+/** Props for {@link AddHoldingDialog}. */
 interface AddHoldingDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -29,6 +38,9 @@ interface AddHoldingDialogProps {
   onCreated: () => void;
 }
 
+/**
+ * Render the add-holding dialog with controlled form state.
+ */
 export default function AddHoldingDialog({
   open,
   onOpenChange,
@@ -51,6 +63,7 @@ export default function AddHoldingDialog({
     groupId: '',
   });
 
+  /** Reset the form to blank values (called after a successful create). */
   const reset = () => {
     setForm({
       ticker: '',
@@ -68,6 +81,10 @@ export default function AddHoldingDialog({
     });
   };
 
+  /**
+   * Validate required fields and POST the new holding. On success, resets the
+   * form, closes the dialog and invokes `onCreated` so the parent refetches.
+   */
   const handleSubmit = async () => {
     if (!form.ticker.trim()) {
       toast.error('请输入代码 (Ticker)');

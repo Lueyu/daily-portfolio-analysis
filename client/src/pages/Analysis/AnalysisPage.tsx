@@ -1,3 +1,17 @@
+/**
+ * @file pages/Analysis/AnalysisPage.tsx
+ * @description Route `/analysis`: daily research/review page.
+ *
+ * Two view modes:
+ *  - Traditional: per-date analysis cards, with a special portfolio-level card
+ *    (ticker === 'PORTFOLIO'), rating filter pills, and a date sidebar.
+ *  - Multi-Agent: list of versioned deep-research reports fetched from the
+ *    `window.__pt` agent bridge (falling back to the agent-runs API). Clicking
+ *    a card navigates to DeepReportPage.
+ *
+ * Refetches on window focus/visibility change; prev/next date buttons step
+ * through the available analysis dates (newest first).
+ */
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -55,12 +69,18 @@ import {
 import { formatDate, formatDateTime, cn } from '@/utils/format';
 import AnalysisCard from './AnalysisCard';
 
+/** Ticker sentinel for the portfolio-level analysis card. */
 const PORTFOLIO_TICKER = 'PORTFOLIO';
 
+/** Rating order used for the filter pills. */
 const RATING_ORDER = ['Strong Buy', 'Buy', 'Hold', 'Sell', 'Strong Sell'];
 
+/** View mode toggle: traditional daily cards vs. multi-agent deep reports. */
 type ViewMode = 'traditional' | 'multiagent';
 
+/**
+ * Analysis page component.
+ */
 function AnalysisPage() {
   const [analyses, setAnalyses] = useState<AnalysisType[]>([]);
   const [dates, setDates] = useState<string[]>([]);
@@ -93,6 +113,7 @@ function AnalysisPage() {
     setRatingFilter(null);
   }, [currentDate]);
 
+  /** Load the list of dates that have analyses (newest first). */
   const loadDates = async () => {
     setDatesLoading(true);
     try {
@@ -114,6 +135,7 @@ function AnalysisPage() {
     }
   };
 
+  /** Load all analysis cards for the given date. */
   const loadAnalysis = async (date: string) => {
     setLoading(true);
     setError(null);
@@ -128,6 +150,10 @@ function AnalysisPage() {
     }
   };
 
+  /**
+   * Load the list of deep research reports. Prefers the `window.__pt` agent
+   * bridge (`listDeepReports`); falls back to the agent-runs REST API.
+   */
   const loadDeepReports = useCallback(async () => {
     setDeepReportsLoading(true);
     try {
@@ -238,6 +264,7 @@ function AnalysisPage() {
   const handleOpenBatchInfo = () => setBatchInfoOpen(true);
   const handleOpenSingleInfo = () => setSingleInfoOpen(true);
 
+  /** Navigate to the deep-report detail page for the given run id. */
   const handleDeepReportClick = (runId: string) => {
     navigate(`/analysis/deep-report/${runId}`);
   };
@@ -250,19 +277,22 @@ function AnalysisPage() {
   const prevDisabled = currentIndex >= dates.length - 1 || dates.length === 0;
   const nextDisabled = currentIndex <= 0 || dates.length === 0;
 
+  /** Step back to the next-newer analysis date. */
   const goPrev = () => {
     if (currentIndex < dates.length - 1) {
       setCurrentDate(dates[currentIndex + 1]);
     }
   };
 
+  /** Step forward to the next-older analysis date. */
   const goNext = () => {
     if (currentIndex > 0) {
       setCurrentDate(dates[currentIndex - 1]);
     }
   };
 
-  // ticker -> deep report runId map for traditional view badges
+  // ticker -> deep report runId map for traditional view badges.
+  // Suffixes like .HK / .US are stripped so display tickers match.
   const deepReportByTicker = useMemo(() => {
     const map = new Map<string, string>();
     const normalizeTicker = (t: string): string => t.replace(/\.(HK|US)$/i, '');
@@ -274,6 +304,7 @@ function AnalysisPage() {
     return map;
   }, [deepReports]);
 
+  /** Split analyses into stock-level cards and the special portfolio card. */
   const { stockAnalyses, portfolioAnalysis } = useMemo(() => {
     const stocks = analyses.filter(
       (a: AnalysisType) => a.ticker !== PORTFOLIO_TICKER
@@ -285,6 +316,7 @@ function AnalysisPage() {
     return { stockAnalyses: stocks, portfolioAnalysis: portfolio ?? null };
   }, [analyses]);
 
+  /** Build rating filter options with counts, in RATING_ORDER. */
   const ratingOptions = useMemo(() => {
     const counts = new Map<string, number>();
     for (const a of stockAnalyses) {
@@ -298,6 +330,7 @@ function AnalysisPage() {
     }));
   }, [stockAnalyses]);
 
+  /** Apply the active rating filter to the stock analyses. */
   const filteredStockAnalyses = useMemo(
     () =>
       ratingFilter
@@ -708,6 +741,7 @@ function AnalysisPage() {
   );
 }
 
+/** Full-page skeleton shown while the first date list loads. */
 function AnalysisSkeleton() {
   return (
     <div className="flex flex-col gap-4 md:flex-row md:gap-6">
@@ -727,6 +761,7 @@ function AnalysisSkeleton() {
   );
 }
 
+/** Props for {@link DeepReportListContent}. */
 interface DeepReportListContentProps {
   loading: boolean;
   reports: AgentRunWithRating[];
@@ -734,6 +769,7 @@ interface DeepReportListContentProps {
   onRefresh: () => void;
 }
 
+/** Render the deep-report list (loading, empty, or grid of cards). */
 function DeepReportListContent({
   loading,
   reports,
@@ -819,6 +855,10 @@ function DeepReportListContent({
   );
 }
 
+/**
+ * Render a single deep-report card: ticker, name, rating/confidence badges,
+ * bear/base/bull target prices, and completion timestamp.
+ */
 function DeepReportCard({
   run,
   onClick,
@@ -959,6 +999,7 @@ function DeepReportCard({
   );
 }
 
+/** Skeleton shown while the traditional analysis cards load. */
 function AnalysisContentSkeleton() {
   return (
     <div className="grid gap-4 xl:grid-cols-2">

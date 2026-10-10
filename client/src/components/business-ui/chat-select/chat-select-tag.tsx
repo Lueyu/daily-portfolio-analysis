@@ -1,5 +1,10 @@
 'use client';
 
+/**
+ * Renders a selected chat as a removable tag/pill (avatar + name + close button),
+ * shown in the trigger area for multi-select ChatSelect.
+ * Part of the vendored business-ui component library.
+ */
 import React from 'react';
 
 import { X } from 'lucide-react';
@@ -15,6 +20,10 @@ import {
 } from '@client/src/components/business-ui/entity-combobox/size-variants';
 import { Skeleton } from '@/components/ui/skeleton';
 
+/**
+ * A selected chat rendered as a closable pill. While chat info is still being
+ * resolved (ID mode) it renders a skeleton placeholder.
+ */
 export const ChatSelectTag = ({
   chatValue,
   onClose,
@@ -30,9 +39,7 @@ export const ChatSelectTag = ({
   className?: string;
   size?: ComboboxSize;
   disabled?: boolean;
-  /**
-   * 是否正在加载群组信息（ID 模式下查询中）
-   */
+  /** Whether chat info is still loading (ID-mode resolution in progress). */
   isLoading?: boolean;
 }) => {
   const chat = chatValue.raw;
@@ -53,7 +60,7 @@ export const ChatSelectTag = ({
     </button>
   ) : null;
 
-  // 加载中状态显示 Skeleton
+  // While loading and chat info is not yet available, show a skeleton.
   if (isLoading && !chat) {
     return (
       <div className="inline-flex items-center gap-1 rounded-md bg-secondary px-1.5 py-0.5">

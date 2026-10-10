@@ -1,5 +1,12 @@
+/**
+ * Colorful Source code file-type icon.
+ *
+ * Vendored colorful file-type SVG icon component.
+ */
+
 import * as React from 'react';
 
+/** FileCodeColorfulIcon component. */
 export function FileCodeColorfulIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
     <svg

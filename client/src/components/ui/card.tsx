@@ -1,7 +1,14 @@
+/**
+ * Surface container composed of CardHeader / CardTitle / CardDescription / CardContent / CardFooter.
+ *
+ * Vendored shadcn-style UI primitive (Radix UI + Tailwind CSS).
+ */
+
 import * as React from "react";
 
 import { cn } from "@/lib/utils";
 
+/** Card surface container. */
 const Card = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
@@ -17,6 +24,7 @@ const Card = React.forwardRef<
 ));
 Card.displayName = "Card"
 
+/** Top section of a card. */
 const CardHeader = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
@@ -29,6 +37,7 @@ const CardHeader = React.forwardRef<
 ));
 CardHeader.displayName = "CardHeader"
 
+/** Card heading. */
 const CardTitle = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
@@ -44,6 +53,7 @@ const CardTitle = React.forwardRef<
 ))
 CardTitle.displayName = "CardTitle"
 
+/** Card supporting subtext. */
 const CardDescription = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
@@ -56,6 +66,7 @@ const CardDescription = React.forwardRef<
 ));
 CardDescription.displayName = "CardDescription"
 
+/** Card body content. */
 const CardContent = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
@@ -64,6 +75,7 @@ const CardContent = React.forwardRef<
 ))
 CardContent.displayName = "CardContent"
 
+/** Bottom action row of a card. */
 const CardFooter = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>

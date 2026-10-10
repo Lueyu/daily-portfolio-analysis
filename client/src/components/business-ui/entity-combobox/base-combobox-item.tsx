@@ -1,5 +1,11 @@
 'use client';
 
+/**
+ * A single selectable option row in the combobox dropdown. Wraps a cmdk
+ * CommandItem, reports selection through the context, and shows a check mark
+ * when selected.
+ * Part of the vendored business-ui component library.
+ */
 import { Check } from 'lucide-react';
 
 import { useEntityComboboxContext } from '@client/src/components/business-ui/entity-combobox/context';
@@ -7,6 +13,7 @@ import type { ItemValue } from '@client/src/components/business-ui/entity-combob
 import { cn } from '@/lib/utils';
 import { CommandItem } from '@client/src/components/ui/command';
 
+/** Props for BaseComboboxItem. */
 export type BaseComboboxItemProps<T = unknown> = {
   item: T;
   getItemValue: (item: T) => ItemValue;
@@ -15,12 +22,12 @@ export type BaseComboboxItemProps<T = unknown> = {
   onSelect?: () => void;
   className?: string;
   /**
-   * 是否禁用该选项
-   * 禁用时不能改变选中状态
+   * Whether this option is disabled; a disabled option cannot change selection.
    */
   disabled?: boolean;
 };
 
+/** Renders one selectable combobox option. */
 export function BaseComboboxItem<T>({
   item,
   getItemValue,

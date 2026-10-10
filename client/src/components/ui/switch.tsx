@@ -1,10 +1,17 @@
 "use client"
 
+/**
+ * Toggle switch control for boolean on/off state (Radix Switch).
+ *
+ * Vendored shadcn-style UI primitive (Radix UI + Tailwind CSS).
+ */
+
 import * as React from "react"
 import * as SwitchPrimitive from "@radix-ui/react-switch"
 
 import { cn } from "@/lib/utils"
 
+/** On/off toggle switch. */
 function Switch({
   className,
   ...props

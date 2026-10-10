@@ -1,9 +1,14 @@
 'use client';
 
+/**
+ * React Query hook and cache keys for department search used by DepartmentSelect.
+ * Part of the vendored business-ui component library.
+ */
 import { useQuery, queryOptions, type QueryClient } from '@tanstack/react-query';
 
 import { searchDepartments } from './service';
 
+/** Centralized React Query cache keys and query options for department lookups. */
 export const departmentQueries = {
   all: () => ['departments'] as const,
   search: (query: string, pageSize: number = 100) =>
@@ -16,15 +21,14 @@ export const departmentQueries = {
     }),
 };
 
+/** Options accepted by the useSearchDepartments hook. */
 export type UseSearchDepartmentsOptions = {
   query: string;
   pageSize?: number;
   enabled?: boolean;
 };
 
-/**
- * 搜索部门的 hook
- */
+/** Hook that searches departments matching the given query string. */
 export function useSearchDepartments(options: UseSearchDepartmentsOptions) {
   const { query, pageSize = 100, enabled = true } = options;
 
@@ -34,9 +38,7 @@ export function useSearchDepartments(options: UseSearchDepartmentsOptions) {
   });
 }
 
-/**
- * 清除部门缓存
- */
+/** Invalidates all cached department queries so they are refetched. */
 export function clearDepartmentCache(queryClient: QueryClient): void {
   queryClient.invalidateQueries({ queryKey: departmentQueries.all() });
 }

@@ -1,3 +1,9 @@
+/**
+ * AgentRunCard - compact summary card for one multi-agent analysis run, used in
+ * the run list. Shows ticker, live pipeline status, rating/confidence once the
+ * run completes, three-scenario target prices for "full" (deep) runs, bull/bear
+ * summary lines, error message on failure, and a human-in-the-loop approval cue.
+ */
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -21,9 +27,13 @@ import type {
 } from '@shared/api.interface';
 
 interface AgentRunCardProps {
+  /** The run record (with its rating, if any) to render */
   run: AgentRunWithRating;
+  /** Optional risk-gate results, rendered as a RiskAlertBadge in the footer */
   riskGate?: RiskGateResult[];
+  /** Optional number of evidence items gathered by the run */
   evidenceCount?: number;
+  /** Callback when the card is clicked (opens the detail modal) */
   onClick?: () => void;
   /** Three-scenario target prices from deep report (optional) */
   targetBear?: string | null;
@@ -32,6 +42,17 @@ interface AgentRunCardProps {
   confidence?: string | null;
 }
 
+/**
+ * Tailwind outline-badge classes per pipeline status. Color encodes stage type:
+ *   pending/cancelled  -> slate (idle)
+ *   fetching           -> blue  (data collection)
+ *   debating           -> purple (multi-agent argumentation)
+ *   critiquing         -> amber (critic review)
+ *   risk_check         -> rose  (risk gate)
+ *   awaiting_human     -> amber-strong (needs human decision)
+ *   completed          -> emerald
+ *   failed             -> rose-strong
+ */
 const statusStyles: Record<AgentRunStatus, string> = {
   pending: 'bg-slate-500/15 text-slate-600 dark:text-slate-400 border-slate-500/30',
   fetching: 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/30',
@@ -44,6 +65,7 @@ const statusStyles: Record<AgentRunStatus, string> = {
   cancelled: 'bg-slate-500/15 text-slate-600 dark:text-slate-400 border-slate-500/30',
 };
 
+/** Chinese display labels for each pipeline status (shown verbatim in the badge) */
 const statusLabels: Record<AgentRunStatus, string> = {
   pending: '等待中',
   fetching: '取证中',
@@ -56,6 +78,12 @@ const statusLabels: Record<AgentRunStatus, string> = {
   cancelled: '已取消',
 };
 
+/**
+ * Renders one run row. Sections are conditionally shown by run state:
+ * in-progress runs get a live RunProgressBar; completed runs get rating +
+ * bull/bear summaries; failed runs show the error; awaiting_human runs show an
+ * approval call-to-action box.
+ */
 function AgentRunCard({
   run,
   riskGate,
@@ -67,7 +95,9 @@ function AgentRunCard({
 }: AgentRunCardProps) {
   const isAwaiting = run.status === 'awaiting_human';
   const isCompleted = run.status === 'completed';
+  // Stages that still have a live (polling) progress bar shown on the card
   const isInProgress = ['fetching', 'debating', 'critiquing', 'risk_check'].includes(run.status);
+  // 'full' runs produce the long-form deep report; quick runs do not
   const isDeep = run.runMode === 'full';
   const hasTargets = targetBear != null || targetBase != null || targetBull != null;
 
@@ -221,6 +251,10 @@ function AgentRunCard({
   );
 }
 
+/**
+ * Formats an ISO date string as a relative time ("just now", "5 min ago",
+ * "3 days ago") and falls back to a short absolute date older than 7 days.
+ */
 function formatDate(dateStr: string): string {
   const date = new Date(dateStr);
   const now = new Date();
@@ -236,6 +270,7 @@ function formatDate(dateStr: string): string {
   return date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
 }
 
+/** Loading placeholder that mirrors AgentRunCard's layout while runs are being fetched */
 export function AgentRunCardSkeleton() {
   return (
     <Card className="p-4 space-y-3">

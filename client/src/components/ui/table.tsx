@@ -1,9 +1,16 @@
 "use client"
 
+/**
+ * Data table primitives: Table, Header, Body, Footer, Row, Head, Cell, Caption.
+ *
+ * Vendored shadcn-style UI primitive (Radix UI + Tailwind CSS).
+ */
+
 import * as React from "react"
 
 import { cn } from "@/lib/utils"
 
+/** Data table wrapper (provides horizontal scroll container). */
 function Table({ className, ...props }: React.ComponentProps<"table">) {
   return (
     <div
@@ -19,6 +26,7 @@ function Table({ className, ...props }: React.ComponentProps<"table">) {
   )
 }
 
+/** Table header row group. */
 function TableHeader({ className, ...props }: React.ComponentProps<"thead">) {
   return (
     <thead
@@ -29,6 +37,7 @@ function TableHeader({ className, ...props }: React.ComponentProps<"thead">) {
   )
 }
 
+/** Table body row group. */
 function TableBody({ className, ...props }: React.ComponentProps<"tbody">) {
   return (
     <tbody
@@ -39,6 +48,7 @@ function TableBody({ className, ...props }: React.ComponentProps<"tbody">) {
   )
 }
 
+/** Table footer row group. */
 function TableFooter({ className, ...props }: React.ComponentProps<"tfoot">) {
   return (
     <tfoot
@@ -52,6 +62,7 @@ function TableFooter({ className, ...props }: React.ComponentProps<"tfoot">) {
   )
 }
 
+/** Table row. */
 function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
   return (
     <tr
@@ -65,6 +76,7 @@ function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
   )
 }
 
+/** Header cell. */
 function TableHead({ className, ...props }: React.ComponentProps<"th">) {
   return (
     <th
@@ -78,6 +90,7 @@ function TableHead({ className, ...props }: React.ComponentProps<"th">) {
   )
 }
 
+/** Data cell. */
 function TableCell({ className, ...props }: React.ComponentProps<"td">) {
   return (
     <td
@@ -91,6 +104,7 @@ function TableCell({ className, ...props }: React.ComponentProps<"td">) {
   )
 }
 
+/** Table caption. */
 function TableCaption({
   className,
   ...props

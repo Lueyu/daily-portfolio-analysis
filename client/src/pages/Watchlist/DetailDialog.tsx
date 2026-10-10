@@ -1,3 +1,12 @@
+/**
+ * @file pages/Watchlist/DetailDialog.tsx
+ * @description Detail / edit dialog for a single watch item.
+ *
+ * Read-only view shows signal/rating/sector badges, key price stats, a
+ * "below target" opportunity callout, and the analysis note. Toggling edit
+ * swaps in the shared `WatchForm`; save PATCHes the item. A secondary confirm
+ * dialog handles deletion.
+ */
 import { useState } from 'react';
 import { Pencil, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -23,6 +32,7 @@ import {
 } from '@/utils/format';
 import WatchForm, { type WatchFormData } from './WatchForm';
 
+/** Props for {@link DetailDialog}. */
 interface DetailDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -31,9 +41,15 @@ interface DetailDialogProps {
   onDeleted: () => void;
 }
 
+/** Selectable signal values. */
 const SIGNAL_OPTIONS: Signal[] = ['强烈买入', '买入', '观望', '回避'];
+/** Selectable rating values. */
 const RATING_OPTIONS = ['Strong Buy', 'Buy', 'Hold', 'Sell', 'Strong Sell'];
 
+/**
+ * Convert a WatchItem into the controlled form shape. Date is normalized to
+ * an ISO `YYYY-MM-DD` for the date input; null fields become empty strings.
+ */
 function toFormData(item: WatchItem | null): WatchFormData {
   if (!item) {
     return {
@@ -65,11 +81,17 @@ function toFormData(item: WatchItem | null): WatchFormData {
   };
 }
 
+/** Parse a string to a number, returning undefined for empty/NaN input. */
 function parseNumber(v: string): number | undefined {
   const n = parseFloat(v);
   return isNaN(n) ? undefined : n;
 }
 
+/**
+ * Compute how far the current price is below the target buy price, as a
+ * positive percent. Returns null when the price is at/above target or inputs
+ * are missing/invalid.
+ */
 function belowTargetPct(
   current: string | null,
   target: string | null
@@ -81,6 +103,9 @@ function belowTargetPct(
   return ((t - c) / t) * 100;
 }
 
+/**
+ * Render the watch-item detail dialog in either read-only or edit mode.
+ */
 function DetailDialog({
   open,
   onOpenChange,
@@ -93,7 +118,7 @@ function DetailDialog({
   const [submitting, setSubmitting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  // Reset state when dialog opens with new item
+  // Reset state when dialog opens with a new item.
   const handleOpenChange = (o: boolean) => {
     if (o) {
       setFormData(toFormData(item));
@@ -103,6 +128,7 @@ function DetailDialog({
     onOpenChange(o);
   };
 
+  /** PATCH the edited fields and exit edit mode. */
   const handleUpdate = async () => {
     if (!item) return;
     setSubmitting(true);
@@ -129,6 +155,7 @@ function DetailDialog({
     }
   };
 
+  /** Delete the watch item after confirmation, then close and refresh. */
   const handleDelete = async () => {
     if (!item) return;
     setSubmitting(true);
@@ -309,6 +336,7 @@ function DetailDialog({
   );
 }
 
+/** Small label/value stat block used in the read-only detail view. */
 function Stat({
   label,
   value,

@@ -1,5 +1,10 @@
 'use client';
 
+/**
+ * UserDisplay: displays one or more users as avatar+name chips. Accepts user IDs or
+ * user objects, normalizes them, and opens a UserProfile card popover on click.
+ * Part of the vendored business-ui component library.
+ */
 import React from 'react';
 
 import { normalizeUser, isValidUserId } from '@client/src/components/business-ui/utils/user';
@@ -13,9 +18,10 @@ import {
   PopoverTrigger,
 } from '@client/src/components/ui/popover';
 
+/** Props for UserDisplay. */
 export interface IUserDisplayProps {
   /**
-   * 用户列表
+   * List of users (IDs or user objects); a single value is also accepted.
    */
   value?: string | string[] | UserInput | UserInput[];
   size?: 'small' | 'medium' | 'large';
@@ -27,6 +33,7 @@ export interface IUserDisplayProps {
   user_id?: string;
 }
 
+/** Renders user avatar+name chips; clicking a chip opens the user profile popover. */
 export const UserDisplay: React.FC<IUserDisplayProps> = ({
   userId,
   user_id,
@@ -36,32 +43,32 @@ export const UserDisplay: React.FC<IUserDisplayProps> = ({
   style,
   showLabel = true,
 }) => {
-  // 统一规范化为 User[]，兼容所有格式
+  // Normalize the input into a User[] regardless of the incoming shape.
   const normalizedUsers = React.useMemo(() => {
     let list: UserInput[];
 
     if (value) {
-      // 处理 value 的不同类型
+      // Handle the different value shapes.
       if (Array.isArray(value)) {
-        // string[] 或 UserInput[]
+        // string[] or UserInput[]
         list = value.map((item: string | UserInput) =>
           typeof item === 'string' ? { user_id: item } : item,
         );
       } else {
-        // string 或 UserInput
+        // string or UserInput
         list = [typeof value === 'string' ? { user_id: value } : value];
       }
     } else if (userId) {
-      // userId 快捷方式：转换为对象
+      // userId shortcut: convert to an object.
       list = [{ user_id: userId }];
     } else if (user_id) {
-      // user_id 快捷方式：转换为对象
+      // user_id shortcut: convert to an object.
       list = [{ user_id }];
     } else {
       return [];
     }
 
-    // 转换为标准 User 类型并过滤无效 ID
+    // Convert to the standard User type and drop invalid IDs.
     return list
       .map(normalizeUser)
       .filter((user) => isValidUserId(user.user_id));

@@ -1,5 +1,11 @@
 'use client';
 
+/**
+ * UserSelectTag: renders a selected user as a closable tag. Shows a skeleton while
+ * user info is still loading in ID mode, otherwise renders a UserPill with a close
+ * button.
+ * Part of the vendored business-ui component library.
+ */
 import { X } from 'lucide-react';
 
 import {
@@ -13,6 +19,7 @@ import type {
 import { UserPill } from '@client/src/components/business-ui/user-select/user-pill';
 import { Skeleton } from '@client/src/components/ui/skeleton';
 
+/** Renders a selected user tag with an optional close button. */
 export const UserSelectTag = ({
   userValue,
   onClose,
@@ -30,11 +37,11 @@ export const UserSelectTag = ({
   size?: ComboboxSize;
   disabled?: boolean;
   /**
-   * 是否正在加载用户信息（ID 模式下查询中）
+   * Whether user info is still loading (in-flight ID-mode lookup).
    */
   isLoading?: boolean;
   /**
-   * 账户类型，用于 UserProfile 展示
+   * Account type, used by the UserProfile popover.
    */
   accountType?: AccountType;
 }) => {
@@ -56,7 +63,7 @@ export const UserSelectTag = ({
     </button>
   ) : null;
 
-  // 加载中状态显示 Skeleton（不触发 UserProfile）
+  // While loading with no user data yet, show a skeleton (do not trigger UserProfile).
   if (isLoading && !user) {
     return (
       <div className="inline-flex items-center gap-1 rounded-md bg-secondary px-1.5 py-0.5">

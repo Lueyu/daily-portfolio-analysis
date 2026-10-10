@@ -1,3 +1,11 @@
+/**
+ * @file components/Layout.tsx
+ * @description App-level shell: sidebar navigation, top bar, user menu, theme
+ * toggle, sign-out flow and the empty-data warning banner.
+ *
+ * Mounted as the layout route in `app.tsx`; every feature page renders inside
+ * its `<Outlet/>`. Also owns the market-status indicator shown in the top bar.
+ */
 import { Outlet, NavLink, useLocation } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { useCurrentUserProfile } from '@lark-apaas/client-toolkit/hooks/useCurrentUserProfile';
@@ -39,6 +47,10 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Skeleton } from '@/components/ui/skeleton';
 
+/**
+ * Sidebar navigation entries. `end: true` marks the index route so it is only
+ * active on the exact path rather than on every child route.
+ */
 const navItems = [
   { path: '/', label: '仪表盘', icon: LayoutDashboard, end: true },
   { path: '/holdings', label: '持仓', icon: Briefcase },
@@ -49,6 +61,16 @@ const navItems = [
   { path: '/settings/rules', label: '策略规则', icon: Settings },
 ];
 
+/**
+ * Root layout component. Renders the responsive sidebar (off-canvas on mobile),
+ * top bar with page title + market indicator, and the routed `<Outlet/>`.
+ *
+ * Side effects:
+ *  - Closes the mobile drawer on route change.
+ *  - Once the user profile loads, probes `/api/portfolio/dashboard/overview`
+ *    to detect an empty portfolio; combined with the phone-login check this
+ *    surfaces a warning banner guiding users to switch to their Feishu account.
+ */
 function Layout() {
   const { theme, toggleTheme } = useTheme();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -228,6 +250,11 @@ function Layout() {
   );
 }
 
+/**
+ * Top-bar market status dot. Polls the aggregate market phase every 30s and
+ * shows "交易中" (green) when at least one market is in continuous trading,
+ * otherwise "休市". Also exposes a refresh button that forces a quote refetch.
+ */
 function MarketStatusIndicator() {
   const [anyTrading, setAnyTrading] = useState(false);
 
@@ -270,6 +297,7 @@ function MarketStatusIndicator() {
   );
 }
 
+/** Sidebar avatar: shows the user's photo, falling back to an initial or generic icon. */
 function UserAvatar() {
   const user = useCurrentUserProfile();
   const name = user?.name || '';
@@ -291,12 +319,19 @@ function UserAvatar() {
   );
 }
 
+/** Sidebar display name; renders a skeleton until the profile resolves. */
 function UserName() {
   const user = useCurrentUserProfile();
   if (!user?.user_id) return <Skeleton className="h-4 w-16" />;
   return <span>{user.name || '未知用户'}</span>;
 }
 
+/**
+ * Badge indicating how the current user signed in.
+ * - Feishu (lark_user_id present) -> green "飞书账号" badge.
+ * - Phone login -> amber masked phone number.
+ * - Otherwise generic "当前账号".
+ */
 function LoginMethodBadge() {
   const user = useCurrentUserProfile();
   const [phoneNumber, setPhoneNumber] = useState<string>('');
@@ -343,6 +378,11 @@ function LoginMethodBadge() {
   return <span>当前账号</span>;
 }
 
+/**
+ * Confirmation dialog for signing out / switching accounts.
+ * On confirm it calls the aPaaS `authClient.session.signOut` and redirects to
+ * the login page regardless of success/failure (the user must re-authenticate).
+ */
 function SignOutDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
   const [signingOut, setSigningOut] = useState(false);
 

@@ -1,3 +1,13 @@
+/**
+ * @file pages/Transactions/AddTransactionDialog.tsx
+ * @description Create-a-transaction dialog.
+ *
+ * Supports Buy, Sell, Deposit, and Withdrawal types. Deposit/Withdrawal are
+ * cash flows (no ticker/price; shares field holds the amount). When a Buy
+ * fails with a server-side "insufficient cash" error, a secondary alert offers
+ * to either auto-deposit the shortfall and retry, or switch the form to a
+ * manual Deposit for the shortfall amount.
+ */
 import { useState, useEffect, useMemo } from 'react';
 import { toast } from 'sonner';
 import type { TxType, Currency, StockSearchResult } from '@shared/api.interface';
@@ -33,6 +43,7 @@ import {
 } from '@/components/ui/select';
 import TickerSearch from '@/components/ui/ticker-search';
 
+/** Props for {@link AddTransactionDialog}. */
 interface AddTransactionDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -42,6 +53,10 @@ interface AddTransactionDialogProps {
   defaultTxType?: TxType;
 }
 
+/**
+ * Render the add-transaction dialog with controlled form state and the
+ * cash-shortfall recovery flow.
+ */
 export default function AddTransactionDialog({
   open,
   onOpenChange,
@@ -91,6 +106,7 @@ export default function AddTransactionDialog({
 
   const isCashFlow = form.txType === 'Deposit' || form.txType === 'Withdrawal';
 
+  /** Estimated cash required for a Buy/Sell: shares × price + fees. */
   const requiredAmount = useMemo(() => {
     if (isCashFlow) return 0;
     const shares = parseFloat(form.shares) || 0;
@@ -99,6 +115,7 @@ export default function AddTransactionDialog({
     return shares * price + fees;
   }, [form.shares, form.price, form.fees, isCashFlow]);
 
+  /** Extract a human-readable error message from an unknown thrown value. */
   const extractErrMsg = (err: unknown): string => {
     const rawMsg = err instanceof Error ? err.message : '添加失败';
     const respErr = (err as { response?: { data?: { message?: string; error?: string } } })
@@ -106,6 +123,11 @@ export default function AddTransactionDialog({
     return respErr?.message || respErr?.error || rawMsg;
   };
 
+  /**
+   * Parse a server "insufficient cash" error message to extract the currency,
+   * current balance, required amount, and shortfall. Returns null when the
+   * message does not match the expected format.
+   */
   const parseCashShortfall = (msg: string): {
     currency: Currency;
     currentBalance: number;
@@ -126,6 +148,7 @@ export default function AddTransactionDialog({
     };
   };
 
+  /** Build the POST payload; cash flows use price=1 and empty ticker. */
   const buildPayload = (): Record<string, string | number> => {
     const payload: Record<string, string | number> = {
       txDate: form.txDate,
@@ -140,6 +163,7 @@ export default function AddTransactionDialog({
     return payload;
   };
 
+  /** Validate and submit; on insufficient-cash error for a Buy, open the recovery dialog. */
   const handleSubmit = async () => {
     if (!form.txDate) {
       toast.error('请选择日期');
@@ -179,6 +203,7 @@ export default function AddTransactionDialog({
     }
   };
 
+  /** Auto-deposit the shortfall and retry the buy in one server call. */
   const handleAutoDeposit = async () => {
     if (!shortfallInfo) return;
     setAutoDepositing(true);
@@ -198,6 +223,7 @@ export default function AddTransactionDialog({
     }
   };
 
+  /** Switch the main form to a Deposit prefilled with the shortfall amount. */
   const handleGoToDeposit = () => {
     if (!shortfallInfo) return;
     setForm({
@@ -214,6 +240,7 @@ export default function AddTransactionDialog({
     setShortfallInfo(null);
   };
 
+  /** Apply a ticker from the search dropdown and adopt its currency. */
   const handleTickerSelect = (result: StockSearchResult) => {
     setTickerInvalid(false);
     setForm((prev) => ({

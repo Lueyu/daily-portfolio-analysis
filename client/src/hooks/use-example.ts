@@ -1,3 +1,13 @@
+/**
+ * @file hooks/use-example.ts
+ * @brief Example hook kept as a reference template.
+ *
+ * This file is intentionally commented out. It demonstrates the standard
+ * shape for a data-fetching hook: local state ({ data, loading, error }),
+ * a `useEffect` that triggers the fetch on mount, and a returned `refetch`
+ * callback. Copy this file and adapt it when building a new hook.
+ */
+
 // import { useState, useEffect } from 'react';
 // import { axiosForBackend } from '@lark-apaas/client-toolkit/utils/getAxiosForBackend';
 // import { logger } from '@lark-apaas/client-toolkit/logger';
@@ -27,10 +37,10 @@
 //     try {
 //       setData(prev => ({ ...prev, loading: true, error: null }));
 
-//       // 使用axios实例获取数据
+//       // Use the shared axios instance to call the backend.
 //       const response = await axiosForBackend.get('/api/hello');
 
-//       // 提取响应数据中的 data 字段
+//       // Extract the payload field from the response envelope.
 //       const record = response.data.data;
 
 //       setData({
@@ -39,11 +49,11 @@
 //         error: null,
 //       });
 //     } catch (error) {
-//       logger.error('获取数据失败', error);
+//       logger.error('Failed to load record', error);
 //       setData(prev => ({
 //         ...prev,
 //         loading: false,
-//         error: '获取数据失败，请稍后重试',
+//         error: 'Failed to load record, please retry later',
 //       }));
 //     }
 //   };

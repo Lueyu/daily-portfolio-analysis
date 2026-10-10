@@ -1,8 +1,14 @@
 'use client';
 
+/**
+ * useFetchData: minimal data-fetching hook for the combobox. Calls fetchFn with
+ * the current search text when enabled, and tracks data/loading/error/success state.
+ * Part of the vendored business-ui component library.
+ */
 import { logger } from '@lark-apaas/client-toolkit/logger';
 import { useCallback, useEffect, useState } from 'react';
 
+/** Options for useFetchData. */
 export type UseFetchDataOptions<T> = {
   fetchFn: (search: string) => Promise<{ items: T[] }>;
   enabled: boolean;
@@ -10,6 +16,7 @@ export type UseFetchDataOptions<T> = {
   onSearch?: (search: string) => void;
 };
 
+/** Return value of useFetchData. */
 export type UseFetchDataResult<T> = {
   data: T[] | undefined;
   isFetching: boolean;
@@ -19,6 +26,7 @@ export type UseFetchDataResult<T> = {
   refetch: () => Promise<void>;
 };
 
+/** Fetches option data for the given search text and exposes request state. */
 export function useFetchData<T>({
   fetchFn,
   enabled,
@@ -65,7 +73,7 @@ export function useFetchData<T>({
     }
   }, [search, enabled, fetchData]);
 
-  // 单独处理 onSearch 回调
+  // Fire the onSearch callback separately from the fetch effect.
   useEffect(() => {
     onSearch?.(search);
   }, [search, onSearch]);

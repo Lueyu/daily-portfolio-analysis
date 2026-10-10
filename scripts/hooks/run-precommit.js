@@ -1,4 +1,12 @@
 #!/usr/bin/env node
+/**
+ * run-precommit.js — git pre-commit hook entry point.
+ *
+ * Simply runs `npm run lint` and aborts the commit if it exits non-zero.
+ * The detailed lint orchestration (eslint + type-check + stylelint, default
+ * vs. selective modes) lives in scripts/lint.js. Users can bypass with
+ * `git commit --no-verify`.
+ */
 // FULLSTACK_PRECOMMIT_V1
 'use strict';
 

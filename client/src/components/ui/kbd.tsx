@@ -1,5 +1,12 @@
+/**
+ * Keyboard-key (<kbd>) visual chip and a group wrapper for key combinations.
+ *
+ * Vendored shadcn-style UI primitive (Radix UI + Tailwind CSS).
+ */
+
 import { cn } from "@/lib/utils"
 
+/** Keyboard-key visual chip. */
 function Kbd({ className, ...props }: React.ComponentProps<"kbd">) {
   return (
     <kbd
@@ -15,6 +22,7 @@ function Kbd({ className, ...props }: React.ComponentProps<"kbd">) {
   )
 }
 
+/** Group of key chips shown together. */
 function KbdGroup({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <kbd

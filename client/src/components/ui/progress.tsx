@@ -1,10 +1,17 @@
 "use client"
 
+/**
+ * Horizontal progress bar showing a 0-100% completion value.
+ *
+ * Vendored shadcn-style UI primitive (Radix UI + Tailwind CSS).
+ */
+
 import * as React from "react"
 import * as ProgressPrimitive from "@radix-ui/react-progress"
 
 import { cn } from "@/lib/utils"
 
+/** Horizontal progress bar. */
 function Progress({
   className,
   value,

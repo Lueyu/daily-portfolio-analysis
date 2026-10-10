@@ -1,12 +1,24 @@
+/**
+ * RiskAlertBadge - summarizes the risk-gate check results as a single badge.
+ *
+ * A "risk gate" runs a set of rules against a rating before it is finalized.
+ * Rules are either 'hard' (blocking) or 'soft' (advisory). Display priority:
+ *   1. any failed HARD rule  -> rose badge: blocking violations exist
+ *   2. any failed SOFT rule  -> amber badge: warnings, not blocking
+ *   3. none failed           -> emerald badge: risk gate passed
+ */
 import { Badge } from '@/components/ui/badge';
 import { AlertTriangle, ShieldCheck } from 'lucide-react';
 import type { RiskGateResult } from '@shared/api.interface';
 
 interface RiskAlertBadgeProps {
+  /** All risk-gate rule results for the current agent run */
   results: RiskGateResult[];
 }
 
+/** Renders the aggregate risk-gate status badge (hard > soft > pass priority). */
 function RiskAlertBadge({ results }: RiskAlertBadgeProps) {
+  // Count blocking vs advisory rule failures separately
   const failedHard = results.filter((r: RiskGateResult) => r.ruleType === 'hard' && !r.passed).length;
   const failedSoft = results.filter((r: RiskGateResult) => r.ruleType === 'soft' && !r.passed).length;
 

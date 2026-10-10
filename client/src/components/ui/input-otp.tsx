@@ -1,11 +1,18 @@
 "use client"
 
+/**
+ * One-time-password input with grouped slots and separators.
+ *
+ * Vendored shadcn-style UI primitive (Radix UI + Tailwind CSS).
+ */
+
 import * as React from "react"
 import { OTPInput, OTPInputContext } from "input-otp"
 import { MinusIcon } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 
+/** One-time-password input root. */
 function InputOTP({
   className,
   containerClassName,
@@ -26,6 +33,7 @@ function InputOTP({
   )
 }
 
+/** Group of adjacent OTP slots. */
 function InputOTPGroup({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
@@ -36,6 +44,7 @@ function InputOTPGroup({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
+/** A single OTP character slot. */
 function InputOTPSlot({
   index,
   className,
@@ -66,6 +75,7 @@ function InputOTPSlot({
   )
 }
 
+/** Separator between OTP groups. */
 function InputOTPSeparator({ ...props }: React.ComponentProps<"div">) {
   return (
     <div data-slot="input-otp-separator" role="separator" {...props}>

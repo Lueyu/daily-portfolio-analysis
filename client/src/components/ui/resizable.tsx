@@ -1,11 +1,18 @@
 "use client"
 
+/**
+ * Draggable resizable panel layout groups (react-resizable-panels wrapper).
+ *
+ * Vendored shadcn-style UI primitive (Radix UI + Tailwind CSS).
+ */
+
 import * as React from "react"
 import { GripVerticalIcon } from "lucide-react"
 import * as ResizablePrimitive from "react-resizable-panels"
 
 import { cn } from "@/lib/utils"
 
+/** Group of resizable panels. */
 function ResizablePanelGroup({
   className,
   ...props
@@ -22,12 +29,14 @@ function ResizablePanelGroup({
   )
 }
 
+/** One independently resizable panel. */
 function ResizablePanel({
   ...props
 }: React.ComponentProps<typeof ResizablePrimitive.Panel>) {
   return <ResizablePrimitive.Panel data-slot="resizable-panel" {...props} />
 }
 
+/** Draggable divider between panels. */
 function ResizableHandle({
   withHandle,
   className,

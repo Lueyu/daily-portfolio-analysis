@@ -1,5 +1,12 @@
+/**
+ * Colorful Wiki Excel file-type icon.
+ *
+ * Vendored colorful file-type SVG icon component.
+ */
+
 import * as React from 'react';
 
+/** FileWikiExcelColorfulIcon component. */
 export function FileWikiExcelColorfulIcon(
   props: React.SVGProps<SVGSVGElement>,
 ) {

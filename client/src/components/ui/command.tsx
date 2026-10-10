@@ -1,5 +1,11 @@
 "use client"
 
+/**
+ * Command palette / combobox input with a search box, empty state, and grouped items (cmdk wrapper).
+ *
+ * Vendored shadcn-style UI primitive (Radix UI + Tailwind CSS).
+ */
+
 import * as React from "react"
 import { Command as CommandPrimitive } from "cmdk"
 import { SearchIcon } from "lucide-react"
@@ -13,6 +19,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 
+/** Command palette root. */
 function Command({
   className,
   ...props
@@ -29,6 +36,7 @@ function Command({
   )
 }
 
+/** Command palette presented inside a dialog. */
 function CommandDialog({
   title = "Command Palette",
   description = "Search for a command to run...",
@@ -60,6 +68,7 @@ function CommandDialog({
   )
 }
 
+/** Search input for the command palette. */
 function CommandInput({
   className,
   ...props
@@ -82,6 +91,7 @@ function CommandInput({
   )
 }
 
+/** Scrollable list of command items. */
 function CommandList({
   className,
   ...props
@@ -98,6 +108,7 @@ function CommandList({
   )
 }
 
+/** Empty state shown when no items match. */
 function CommandEmpty({
   ...props
 }: React.ComponentProps<typeof CommandPrimitive.Empty>) {
@@ -110,6 +121,7 @@ function CommandEmpty({
   )
 }
 
+/** Grouped section of command items. */
 function CommandGroup({
   className,
   ...props
@@ -126,6 +138,7 @@ function CommandGroup({
   )
 }
 
+/** Visual separator between command groups. */
 function CommandSeparator({
   className,
   ...props
@@ -139,6 +152,7 @@ function CommandSeparator({
   )
 }
 
+/** One selectable command entry. */
 function CommandItem({
   className,
   disabled,
@@ -179,6 +193,7 @@ function CommandItem({
   )
 }
 
+/** Keyboard shortcut hint displayed beside an item. */
 function CommandShortcut({
   className,
   ...props

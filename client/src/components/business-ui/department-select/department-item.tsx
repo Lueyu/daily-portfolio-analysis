@@ -1,5 +1,10 @@
 'use client';
 
+/**
+ * Renders a single department row in the DepartmentSelect dropdown: the
+ * department icon and a name with the active search keyword highlighted.
+ * Part of the vendored business-ui component library.
+ */
 import { IconDepartment } from '@client/src/components/business-ui/department-select/icon-department';
 import type { Department } from '@client/src/components/business-ui/department-select/types';
 import { BaseComboboxItem } from '@client/src/components/business-ui/entity-combobox/base-combobox-item';
@@ -12,6 +17,7 @@ import {
 } from '@client/src/components/business-ui/entity-combobox/size-variants';
 import { cn } from '@/lib/utils';
 
+/** One selectable department row. */
 export const DepartmentItem = ({
   departmentValue,
   isSelected,

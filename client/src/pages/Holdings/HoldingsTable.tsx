@@ -1,3 +1,12 @@
+/**
+ * @file pages/Holdings/HoldingsTable.tsx
+ * @description Desktop holdings table (hidden below `md`).
+ *
+ * Renders sortable columns for ticker, company, buy/current price, shares,
+ * market value, cost, P/L, return %, rating, AI rating badges, action and group.
+ * A footer row shows market-value subtotals and cash balances per currency.
+ * Mobile layout is delegated to `HoldingsMobileList`.
+ */
 import {
   ChevronDown,
   ChevronUp,
@@ -39,6 +48,7 @@ import type { Group, Market, Currency, AgentRating, AgentConfidence } from '@sha
 import RatingBadge from '@/components/MultiAgent/RatingBadge';
 import ConfidenceBadge from '@/components/MultiAgent/ConfidenceBadge';
 
+/** Columns the holdings table can sort by. */
 type SortKey =
   | 'ticker'
   | 'company'
@@ -50,6 +60,7 @@ type SortKey =
   | 'pl'
   | 'returnPct';
 
+/** Holding shape used by the table (raw fields + derived numerics). */
 interface DerivedHolding {
   id: string;
   ticker: string;
@@ -68,11 +79,13 @@ interface DerivedHolding {
   returnPct: number;
 }
 
+/** Cash account row used in the footer subtotals. */
 interface CashAccountRow {
   currency: Currency;
   balance: string;
 }
 
+/** AI rating info attached to a holding row. */
 interface AiRatingInfo {
   rating: AgentRating;
   confidence: AgentConfidence;
@@ -81,6 +94,7 @@ interface AiRatingInfo {
   bearSummary?: string | null;
 }
 
+/** Props for {@link HoldingsTable}. */
 interface HoldingsTableProps {
   loading: boolean;
   error: string | null;
@@ -96,6 +110,10 @@ interface HoldingsTableProps {
   onViewAiAnalysis?: (ticker: string, runId: string) => void;
 }
 
+/**
+ * Render the desktop holdings table with loading / error / empty states and
+ * per-currency subtotal footer.
+ */
 export default function HoldingsTable({
   loading,
   error,

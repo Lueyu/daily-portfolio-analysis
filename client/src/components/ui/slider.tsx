@@ -1,10 +1,17 @@
 "use client"
 
+/**
+ * Draggable range/value slider input (Radix Slider).
+ *
+ * Vendored shadcn-style UI primitive (Radix UI + Tailwind CSS).
+ */
+
 import * as React from "react"
 import * as SliderPrimitive from "@radix-ui/react-slider"
 
 import { cn } from "@/lib/utils"
 
+/** Draggable slider input. */
 function Slider({
   className,
   defaultValue,

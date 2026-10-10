@@ -1,5 +1,13 @@
 'use client';
 
+/**
+ * BaseCombobox: the public, reusable generic combobox component. Composes the
+ * EntityCombobox state provider with the PopoverWrapper (trigger + dropdown list),
+ * and exposes its subcomponents (Content/Search/List/Item/Empty/Loading) as static
+ * properties for custom compositions. This is the base that UserSelect,
+ * DepartmentSelect and ChatSelect build upon.
+ * Part of the vendored business-ui component library.
+ */
 import { BaseComboboxContent } from '@client/src/components/business-ui/entity-combobox/base-combobox-content';
 import { BaseComboboxEmpty } from '@client/src/components/business-ui/entity-combobox/base-combobox-empty';
 import { BaseComboboxItem } from '@client/src/components/business-ui/entity-combobox/base-combobox-item';
@@ -13,6 +21,7 @@ import type {
   ItemValue,
 } from '@client/src/components/business-ui/entity-combobox/types';
 
+/** Generic, reusable searchable single/multi-select combobox. */
 export function BaseCombobox<
   T = unknown,
   TRaw = unknown,
@@ -71,7 +80,7 @@ export function BaseCombobox<
     children,
   } = props;
 
-  // 浮层包装组件的通用 props
+  // Common props forwarded to the popover wrapper.
   const popoverProps = {
     size,
     triggerType,
@@ -123,7 +132,7 @@ export function BaseCombobox<
   );
 }
 
-// 导出子组件以支持自定义使用
+// Re-export subcomponents so they can be used for custom compositions.
 BaseCombobox.Content = BaseComboboxContent;
 BaseCombobox.Search = BaseComboboxSearch;
 BaseCombobox.List = BaseComboboxList;

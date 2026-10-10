@@ -1,17 +1,37 @@
+/**
+ * Closed positions service.
+ *
+ * Business logic and PostgreSQL (Drizzle) data access for realized, closed-out
+ * positions. Most closed rows are derived automatically by the transactions
+ * reconciliation, but this service also supports manual create/update/delete.
+ * All queries are owner-scoped. The `getRealizedSummary` aggregates realized P&L
+ * per ticker and per currency (currency is looked up from the transactions table,
+ * since closed rows themselves store no currency).
+ */
 import { Injectable, Inject, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '@lark-apaas/fullstack-nestjs-core';
 import { eq, and, desc, inArray } from 'drizzle-orm';
 import { closed, transactions } from '@server/database/schema';
 import type { ClosedPosition, CreateClosedDto, RealizedPlSummary, RealizedPlItem } from '@shared/api.interface';
 
+/** Partial-update variant of the create DTO. */
 type UpdateClosedDto = Partial<CreateClosedDto>;
 
+/**
+ * Provides closed-position CRUD and realized-P&L aggregation. Depends on the
+ * Drizzle database connection.
+ */
 @Injectable()
 export class ClosedService {
   private readonly logger = new Logger(ClosedService.name);
 
   constructor(@Inject(DRIZZLE_DATABASE) private readonly db: PostgresJsDatabase) {}
 
+  /**
+   * Lists all closed positions for a user, most recently closed first.
+   *
+   * @param userId Owner id from the authenticated request.
+   */
   async list(userId: string): Promise<ClosedPosition[]> {
     const rows = await this.db
       .select()
@@ -34,6 +54,12 @@ export class ClosedService {
     }));
   }
 
+  /**
+   * Manually creates a closed-position record.
+   *
+   * @param userId Owner id.
+   * @param dto    Create payload.
+   */
   async create(userId: string, dto: CreateClosedDto): Promise<ClosedPosition> {
     const rows = await this.db
       .insert(closed)
@@ -68,6 +94,15 @@ export class ClosedService {
     };
   }
 
+  /**
+   * Partially updates an owned closed position; refreshes `updatedAt`/`updatedBy`.
+   *
+   * @param userId Owner id used for the ownership filter and audit stamp.
+   * @param id     Closed-position primary key.
+   * @param dto    Partial update payload.
+   * @throws BadRequestException if no updatable field is supplied.
+   * @throws NotFoundException if the row does not belong to the user.
+   */
   async update(userId: string, id: string, dto: UpdateClosedDto): Promise<ClosedPosition> {
     const patch: Record<string, unknown> = {};
     if (dto.ticker !== undefined) patch.ticker = dto.ticker;
@@ -81,7 +116,9 @@ export class ClosedService {
     if (dto.returnPct !== undefined) patch.returnPct = String(dto.returnPct);
     if (dto.notes !== undefined) patch.notes = dto.notes;
 
-    if (Object.keys(patch).length === 0) throw new BadRequestException('未提供可更新字段');
+    if (Object.keys(patch).length === 0)
+      // NOTE: Chinese user-facing message (existing behavior; not mojibake).
+      throw new BadRequestException('未提供可更新字段');
 
     patch.updatedAt = new Date();
     patch.updatedBy = userId;
@@ -92,7 +129,9 @@ export class ClosedService {
       .where(and(eq(closed.id, id), eq(closed.owner, userId)))
       .returning();
 
-    if (rows.length === 0) throw new NotFoundException('已平仓记录不存在');
+    if (rows.length === 0)
+      // NOTE: Chinese user-facing message (existing behavior; not mojibake).
+      throw new NotFoundException('已平仓记录不存在');
 
     const row = rows[0];
     return {
@@ -110,15 +149,31 @@ export class ClosedService {
     };
   }
 
+  /**
+   * Deletes an owned closed position.
+   *
+   * @param userId Owner id used for the ownership filter.
+   * @param id     Closed-position primary key.
+   * @throws NotFoundException if the row does not belong to the user.
+   */
   async remove(userId: string, id: string): Promise<void> {
     const rows = await this.db
       .delete(closed)
       .where(and(eq(closed.id, id), eq(closed.owner, userId)))
       .returning({ id: closed.id });
 
-    if (rows.length === 0) throw new NotFoundException('已平仓记录不存在');
+    if (rows.length === 0)
+      // NOTE: Chinese user-facing message (existing behavior; not mojibake).
+      throw new NotFoundException('已平仓记录不存在');
   }
 
+  /**
+   * Aggregates realized P&L for the user's closed positions: totals per currency,
+   * winner/loser counts, and a per-ticker breakdown sorted by P&L. Currency per
+   * ticker is resolved from the transactions table (closed rows carry no currency).
+   *
+   * @param userId Owner id.
+   */
   async getRealizedSummary(userId: string): Promise<RealizedPlSummary> {
     const closedRows = await this.db
       .select()
@@ -144,7 +199,7 @@ export class ClosedService {
       }
     }
 
-    // Lookup distinct ticker -> currency from transactions table
+    // Look up distinct ticker -> currency from the transactions table.
     const currencyRows = await this.db
       .select({
         ticker: transactions.ticker,
@@ -166,7 +221,7 @@ export class ClosedService {
       }
     }
 
-    // Aggregate by ticker
+    // Aggregate closed rows by ticker.
     const byTicker = new Map<string, {
       company: string | null;
       totalPl: number;
@@ -181,6 +236,7 @@ export class ClosedService {
       const existing = byTicker.get(row.ticker);
       const pl = row.realizedPl != null ? Number(row.realizedPl) : 0;
       const shares = row.shares != null ? Number(row.shares) : 0;
+      // Cost basis for this closed lot = buyPrice * shares.
       const cost = row.buyPrice != null && row.shares != null
         ? Number(row.buyPrice) * Number(row.shares)
         : 0;
@@ -242,7 +298,7 @@ export class ClosedService {
       }
     }
 
-    // Sort by realizedPl descending
+    // Sort by realized P&L descending (best performers first).
     items.sort((a, b) => parseFloat(b.realizedPl) - parseFloat(a.realizedPl));
 
     const totalByCurrencyStr: Record<string, string> = {};

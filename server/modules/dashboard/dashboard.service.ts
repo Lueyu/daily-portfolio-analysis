@@ -1,3 +1,12 @@
+/**
+ * Dashboard service.
+ *
+ * Aggregates the user's portfolio into a single overview: it refreshes latest
+ * quotes, sums holdings market value/cost and cash balances per currency, converts
+ * everything to a chosen base currency via `FxService`, and builds per-market
+ * group summaries. It also serves the daily P&L time series from snapshots. FX
+ * conversions fall back to a 1:1 pass-through (logged) when a rate is missing.
+ */
 import { Injectable, Inject, Logger, forwardRef } from '@nestjs/common';
 import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '@lark-apaas/fullstack-nestjs-core';
 import { eq, desc, and, gte, sql } from 'drizzle-orm';
@@ -6,12 +15,14 @@ import type { DashboardOverview, GroupSummary, Currency, Market } from '@shared/
 import { FxService } from '../fx/fx.service';
 import { QuoteService } from '../quote/quote.service';
 
+/** Chinese display names for each supported market. */
 const MARKET_NAMES: Record<Market, string> = {
   US: '美股',
   HK: '港股',
   CN: 'A股',
 };
 
+/** A holdings row projected for dashboard aggregation. */
 interface HoldingRow {
   id: string;
   ticker: string;
@@ -22,11 +33,13 @@ interface HoldingRow {
   currency: string;
 }
 
+/** A cash account row projected for the dashboard. */
 interface CashRow {
   currency: string;
   balance: string;
 }
 
+/** A snapshot row projected for the dashboard. */
 interface SnapshotRow {
   snapshotDate: string;
   accountValue: string | null;
@@ -36,6 +49,10 @@ interface SnapshotRow {
   dailyPct: string | null;
 }
 
+/**
+ * Provides the portfolio overview and daily P&L series. Depends on the Drizzle
+ * database, `FxService` (injected via `forwardRef`), and `QuoteService`.
+ */
 @Injectable()
 export class DashboardService {
   private readonly logger = new Logger(DashboardService.name);
@@ -46,6 +63,15 @@ export class DashboardService {
     private readonly quoteService: QuoteService,
   ) {}
 
+  /**
+   * Converts an amount between currencies, returning the amount unchanged (and
+   * logging) if the rate lookup fails.
+   *
+   * @param amount Amount to convert.
+   * @param from   Source currency.
+   * @param to     Target currency.
+   * @param date   Optional rate date.
+   */
   private async safeConvert(amount: number, from: string, to: string, date?: string): Promise<number> {
     if (from.toUpperCase() === to.toUpperCase()) return amount;
     try {
@@ -60,10 +86,19 @@ export class DashboardService {
     }
   }
 
+  /**
+   * Builds the portfolio overview. Refreshes quotes, aggregates holdings and cash
+   * per currency and market, converts to the base currency, and computes totals and
+   * P&L.
+   *
+   * @param userId       Owner id.
+   * @param baseCurrency Target currency for the aggregated totals.
+   */
   async getOverview(userId: string, baseCurrency: string = 'USD'): Promise<DashboardOverview> {
     const base = baseCurrency.toUpperCase();
 
     try {
+      // Refresh latest prices for the user's holdings/watchlist first.
       await this.quoteService.batchRefreshPrices(userId);
     } catch (err) {
       this.logger.warn(
@@ -71,7 +106,7 @@ export class DashboardService {
       );
     }
 
-    // Holdings
+    // Holdings rows.
     const holdingRows = await this.db
       .select({
         id: holdings.id,
@@ -282,6 +317,15 @@ export class DashboardService {
     };
   }
 
+  /**
+   * Returns the daily P&L series for the last N days from snapshots. Snapshot
+   * values are stored in USD; if a non-USD base is requested, each day's account
+   * value and P&L are converted at that day's rate.
+   *
+   * @param userId       Owner id.
+   * @param days         Number of days to include (clamped 1..365).
+   * @param baseCurrency Target currency.
+   */
   async getDailyPlSeries(
     userId: string,
     days: number = 30,
@@ -290,7 +334,7 @@ export class DashboardService {
     const base = baseCurrency.toUpperCase();
     const daysNum = Math.max(1, Math.min(365, Math.floor(days)));
 
-    // Compute start date
+    // Compute start date.
     const endDate = new Date();
     const startDate = new Date();
     startDate.setDate(endDate.getDate() - daysNum + 1);
@@ -355,6 +399,11 @@ export class DashboardService {
     return result;
   }
 
+  /**
+   * Refreshes FX rates from the upstream provider.
+   *
+   * @returns Always true on success.
+   */
   async refreshRates(): Promise<boolean> {
     await this.fxService.refreshRates();
     return true;

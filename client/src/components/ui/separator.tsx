@@ -1,10 +1,17 @@
 "use client"
 
+/**
+ * Horizontal or vertical visual divider (Radix Separator).
+ *
+ * Vendored shadcn-style UI primitive (Radix UI + Tailwind CSS).
+ */
+
 import * as React from "react"
 import * as SeparatorPrimitive from "@radix-ui/react-separator"
 
 import { cn } from "@/lib/utils"
 
+/** Horizontal/vertical divider. */
 function Separator({
   className,
   orientation = "horizontal",

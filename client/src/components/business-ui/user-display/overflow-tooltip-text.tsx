@@ -1,3 +1,8 @@
+/**
+ * OverflowTooltipText: inline text that truncates when it overflows its container
+ * and shows a tooltip with the full text.
+ * Part of the vendored business-ui component library.
+ */
 import * as React from 'react';
 
 import { cn } from '@/lib/utils';

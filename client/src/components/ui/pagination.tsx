@@ -1,3 +1,9 @@
+/**
+ * Pagination controls with prev/next buttons and numbered page links.
+ *
+ * Vendored shadcn-style UI primitive (Radix UI + Tailwind CSS).
+ */
+
 import * as React from "react"
 import {
   ChevronLeftIcon,
@@ -8,6 +14,7 @@ import {
 import { cn } from "@/lib/utils"
 import { Button, buttonVariants } from "@/components/ui/button"
 
+/** Pagination root. */
 function Pagination({ className, ...props }: React.ComponentProps<"nav">) {
   return (
     <nav
@@ -20,6 +27,7 @@ function Pagination({ className, ...props }: React.ComponentProps<"nav">) {
   )
 }
 
+/** Row of pagination controls. */
 function PaginationContent({
   className,
   ...props
@@ -33,6 +41,7 @@ function PaginationContent({
   )
 }
 
+/** One pagination control cell. */
 function PaginationItem({ ...props }: React.ComponentProps<"li">) {
   return <li data-slot="pagination-item" {...props} />
 }
@@ -42,6 +51,7 @@ type PaginationLinkProps = {
 } & Pick<React.ComponentProps<typeof Button>, "size"> &
   React.ComponentProps<"a">
 
+/** Clickable page number link. */
 function PaginationLink({
   className,
   isActive,
@@ -65,6 +75,7 @@ function PaginationLink({
   )
 }
 
+/** Go-to-previous-page button. */
 function PaginationPrevious({
   className,
   ...props
@@ -82,6 +93,7 @@ function PaginationPrevious({
   )
 }
 
+/** Go-to-next-page button. */
 function PaginationNext({
   className,
   ...props
@@ -99,6 +111,7 @@ function PaginationNext({
   )
 }
 
+/** Ellipsis for hidden page ranges. */
 function PaginationEllipsis({
   className,
   ...props

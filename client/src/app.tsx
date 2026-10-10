@@ -1,3 +1,14 @@
+/**
+ * @file app.tsx
+ * @description Top-level route table for the React SPA.
+ * Declares every browser route, wraps all feature pages inside the shared
+ * <Layout> shell (navigation chrome + market-status badges), and performs
+ * one-time setup of the embedded multi-agent bridge (`initAgentAPI`) on mount.
+ *
+ * Architecture: this module is imported by index.tsx (the createRoot entry)
+ * and only owns routing — page components live under `pages/`, data access
+ * under `api/`, and shared layout under `components/Layout.tsx`.
+ */
 import React, { useEffect } from 'react';
 import { Route, Routes } from 'react-router-dom';
 import { initAgentAPI } from './utils/agent-api';
@@ -13,7 +24,17 @@ import TransactionsPage from './pages/Transactions/TransactionsPage';
 import StrategyRulesPage from './pages/StrategyRules/StrategyRulesPage';
 import NotFound from './pages/NotFound/NotFound';
 
+/**
+ * Root route component.
+ * Mounts the embedded agent API bridge once on first render, then renders the
+ * route table. Nested routes share the <Layout> element; an unmatched path
+ * (`*`) falls through to the NotFound page.
+ *
+ * @returns The React element tree for the whole application.
+ */
 const RoutesComponent = () => {
+  // One-time side effect: expose the in-page agent bridge so the host
+  // (Lark aPaaS container / embedded runtime) can call into this SPA.
   useEffect(() => {
     initAgentAPI();
   }, []);

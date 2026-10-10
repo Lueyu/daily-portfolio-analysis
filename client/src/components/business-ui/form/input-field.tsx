@@ -1,3 +1,8 @@
+/**
+ * InputField: a form-bound text input rendered inside FieldLayout, wired to the
+ * surrounding form field context.
+ * Part of the vendored business-ui component library.
+ */
 import { useFormGlobalProps } from '@client/src/components/business-ui/form/context';
 import { FieldLayout } from '@client/src/components/business-ui/form/field-layout';
 import { useFieldContext } from '@client/src/components/business-ui/form/hooks/form-context';
@@ -12,6 +17,7 @@ import type {
 } from '@client/src/components/business-ui/form/types';
 import { Input } from '@client/src/components/ui/input';
 
+/** Props for InputField. */
 type InputFieldProps = CommonFieldProps &
   React.ComponentProps<typeof Input> & {
     classNames?: Partial<
@@ -26,6 +32,7 @@ type InputFieldProps = CommonFieldProps &
     >;
   };
 
+/** Form-bound text input field with label and validation display. */
 export function InputField({
   label,
   description,

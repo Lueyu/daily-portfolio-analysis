@@ -1,17 +1,41 @@
+/**
+ * PortfolioContextService — assembles the per-user portfolio snapshot used by
+ * the pipeline, and evaluates hard/soft strategy rules against it.
+ *
+ * Responsibilities:
+ *  1. getPortfolioContext: read holdings + cash accounts, compute market
+ *     values, weights, PnL, and aggregate "company group" exposure (e.g.
+ *     Xiaomi's dual-listed 1810.HK / XIACF / XIACY count as one entity).
+ *  2. checkRiskRules: given a ticker + portfolio + the user's enabled rules,
+ *     evaluate each known ruleKey and return pass/fail + suggested action.
+ *     Hard-rule failures cap the final rating (see PipelineService.runRatingPhase).
+ *  3. applyRatingToHoldings: when a human approves a run, optionally write the
+ *     resulting rating/action/targetPrice back onto the holdings row.
+ */
 import { Injectable, Inject, Logger } from '@nestjs/common';
 import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '@lark-apaas/fullstack-nestjs-core';
 import { eq, and } from 'drizzle-orm';
 import { holdings, cashAccounts, agentRuns, agentRatings } from '@server/database/schema';
 import type { PortfolioContext, StrategyRule } from '@shared/api.interface';
 
+/**
+ * Tickers of well-known leveraged/inverse ETFs that get a stricter exposure
+ * cap. Hard-coded list; extend as needed.
+ */
 const LEVERAGE_ETF_TICKERS = new Set([
   'TQQQ', 'SQQQ', 'SOXL', 'SOXS', 'NUGT', 'DUST', 'JDST', 'JPNL',
   'UDOW', 'SDOW', 'UMDD', 'SMDD', 'UBOT', 'LABU', 'LABD', 'TMF',
   'TMV', 'UPRO', 'SPXU', 'QID', 'QLD', 'SDS', 'SSO',
 ]);
 
+/** Company-group key for Xiaomi (covers all dual-listed tickers). */
 const XIAOMI_GROUP = 'Xiaomi';
 
+/**
+ * Map a ticker to its canonical "company group" so that dual-listed shares
+ * count as one exposure. Strips the .HK suffix and leading zeros (e.g.
+ * 01810.HK → 1810). Special-cases Xiaomi's tickers to a single group.
+ */
 function getCompanyGroup(ticker: string): string {
   const upper = ticker.toUpperCase().replace(/\.HK$/, '').replace(/^0+/, '');
   if (upper === '1810' || upper === 'XIACF' || upper === 'XIACY') {
@@ -26,6 +50,11 @@ export class PortfolioContextService {
 
   constructor(@Inject(DRIZZLE_DATABASE) private readonly db: PostgresJsDatabase) {}
 
+  /**
+   * Build the per-user portfolio snapshot: total value, cash, weights, and
+   * per-company-group exposure. All money values are summed in whatever
+   * currency the rows store (no FX conversion today).
+   */
   async getPortfolioContext(userId: string): Promise<PortfolioContext> {
     const [holdingRows, cashRows] = await Promise.all([
       this.db.select().from(holdings).where(eq(holdings.owner, userId)),
@@ -57,7 +86,7 @@ export class PortfolioContextService {
         currentPrice,
         costPrice: buyPrice,
         marketValue,
-        weightPct: 0,
+        weightPct: 0, // filled in after totalValue is known
         pnlPct,
         companyGroup: getCompanyGroup(h.ticker),
       };
@@ -65,10 +94,12 @@ export class PortfolioContextService {
 
     const totalValue = totalMv + cash;
 
+    // Second pass: compute weightPct against total portfolio value.
     for (const h of holdingDetails) {
       h.weightPct = totalValue > 0 ? (h.marketValue / totalValue) * 100 : 0;
     }
 
+    // Aggregate weight by company group so dual-listed shares count once.
     const companyExposures: Record<string, number> = {};
     for (const h of holdingDetails) {
       companyExposures[h.companyGroup] = (companyExposures[h.companyGroup] ?? 0) + h.weightPct;
@@ -84,6 +115,20 @@ export class PortfolioContextService {
     };
   }
 
+  /**
+   * Evaluate the user's enabled strategy rules for a given ticker against the
+   * current portfolio. Only a subset of ruleKeys are implemented (see switch);
+   * unrecognized rules are skipped.
+   *
+   * Hard rules (ruleType='hard') that fail cap the final rating at Hold.
+   * Soft rules are advisory and surfaced to the LLM / user but do not cap the
+   * rating.
+   *
+   * @param ticker the ticker being analyzed.
+   * @param portfolio the snapshot from getPortfolioContext.
+   * @param rules the user's strategy rules (already filtered to owner).
+   * @returns one entry per implemented+enabled rule.
+   */
   checkRiskRules(
     ticker: string,
     portfolio: PortfolioContext,
@@ -118,6 +163,8 @@ export class PortfolioContextService {
       const threshold = rule.threshold ? Number(rule.threshold) : null;
 
       switch (rule.ruleKey) {
+        // Combined exposure across all tickers belonging to the same company
+        // group (e.g. 1810.HK + XIACF).
         case 'single_company_exposure': {
           const exposure = portfolio.companyExposures[companyGroup] ?? 0;
           const passed = threshold === null ? true : exposure <= threshold;
@@ -150,6 +197,8 @@ export class PortfolioContextService {
           break;
         }
 
+        // Small-cap heuristic: price < $5 counts as "small cap" (proxy; real
+        // market-cap data not yet wired in).
         case 'small_cap_weight': {
           const price = holding?.currentPrice ?? 0;
           const weight = holding?.weightPct ?? 0;
@@ -222,6 +271,8 @@ export class PortfolioContextService {
           break;
         }
 
+        // Cash ratio target band is hard-coded to 5–10%; the configured
+        // threshold is informational only.
         case 'cash_ratio': {
           const passed = threshold === null ? true : (portfolio.cashRatio >= 5 && portfolio.cashRatio <= 10);
           results.push({
@@ -237,6 +288,7 @@ export class PortfolioContextService {
           break;
         }
 
+        // Drawdown check: only fires when the position is at a loss.
         case 'drawdown_check': {
           const pnlPct = holding?.pnlPct;
           if (holding && pnlPct !== null && pnlPct < 0) {
@@ -279,6 +331,7 @@ export class PortfolioContextService {
         }
 
         default:
+          // Unimplemented rule keys are silently skipped.
           break;
       }
     }
@@ -286,6 +339,12 @@ export class PortfolioContextService {
     return results;
   }
 
+  /**
+   * After a human approves/modifies a run, optionally write the resulting
+   * rating/action/targetPrice back onto the caller's holdings row for that
+   * ticker. No-op if the ticker is not currently held.
+   * @returns true if a holdings row was updated.
+   */
   async applyRatingToHoldings(userId: string, runId: string): Promise<boolean> {
     const [runRow, ratingRow] = await Promise.all([
       this.db

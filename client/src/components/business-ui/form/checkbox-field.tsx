@@ -1,3 +1,8 @@
+/**
+ * CheckboxField: a form-bound checkbox rendered inside FieldLayout, wired to the
+ * surrounding form field context.
+ * Part of the vendored business-ui component library.
+ */
 import { useFormGlobalProps } from '@client/src/components/business-ui/form/context';
 import { FieldLayout } from '@client/src/components/business-ui/form/field-layout';
 import { useFieldContext } from '@client/src/components/business-ui/form/hooks/form-context';
@@ -13,6 +18,7 @@ import type {
 import { Checkbox } from '@client/src/components/ui/checkbox';
 import { Field, FieldLabel } from '@client/src/components/ui/field';
 
+/** Props for CheckboxField. */
 type CheckboxFieldProps = CommonFieldProps &
   React.ComponentProps<typeof Checkbox> & {
     options?: {
@@ -25,6 +31,7 @@ type CheckboxFieldProps = CommonFieldProps &
     >;
   };
 
+/** Form-bound checkbox field with label and validation display. */
 export function CheckboxField({
   label,
   description,

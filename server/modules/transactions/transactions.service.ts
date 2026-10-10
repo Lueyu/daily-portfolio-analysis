@@ -1,3 +1,15 @@
+/**
+ * Transactions service.
+ *
+ * The source-of-truth bookkeeping for the portfolio. Transactions (Buy / Sell /
+ * Deposit / Withdrawal / Opening) are entered directly by the user; holdings,
+ * closed positions (realized P&L), and per-currency cash balances are all DERIVED
+ * from them and rebuilt after every mutation. All writes run in a single DB
+ * transaction. Cash is tracked per currency and a balance may never go negative
+ * (`adjustCash` throws otherwise). For Buy orders without enough cash,
+ * `createWithAutoDeposit` auto-deposits the shortfall and records a paired Deposit
+ * row tagged `__AUTO_DEPOSIT_FOR_BUY__:<ticker>`.
+ */
 import {
   BadRequestException,
   Inject,
@@ -15,22 +27,43 @@ import type {
   Currency,
 } from '@shared/api.interface';
 
+/** Partial-update variant of the create DTO. */
 type UpdateTransactionDto = Partial<CreateTransactionDto>;
 
+/**
+ * Running state used while replaying a ticker's transactions in chronological
+ * order to recompute shares held and average cost basis.
+ */
 interface TxCursor {
+  /** Ticker being replayed. */
   ticker: string;
+  /** Net shares currently held. */
   shares: number;
+  /** Total cost basis of the remaining shares. */
   costBasis: number;
+  /** Date of the first open (buy) transaction, if any. */
   buyDate: string | null;
+  /** Company display name carried into derived holdings/closed rows. */
   company: string | null;
 }
 
+/**
+ * Provides transaction CRUD plus derived-state rebuild (holdings, closed
+ * positions, cash). Depends on the Drizzle database connection.
+ */
 @Injectable()
 export class TransactionsService {
   private readonly logger = new Logger(TransactionsService.name);
 
   constructor(@Inject(DRIZZLE_DATABASE) private readonly db: PostgresJsDatabase) {}
 
+  /**
+   * Lists the user's transactions, newest first, optionally filtered by ticker.
+   *
+   * @param userId Owner id from the authenticated request.
+   * @param ticker  Optional ticker filter.
+   * @param limit   Max rows (capped client-side by the caller; default 100).
+   */
   async list(userId: string, ticker?: string, limit: number = 100): Promise<Transaction[]> {
     const conditions = [eq(transactions.owner, userId)];
     if (ticker) conditions.push(eq(transactions.ticker, ticker));
@@ -45,22 +78,43 @@ export class TransactionsService {
     return rows.map((row) => this.mapRow(row));
   }
 
+  /**
+   * Fetches a single transaction by id, only when owned by the caller.
+   *
+   * @param userId Owner id used for the ownership filter.
+   * @param id     Transaction primary key.
+   * @throws NotFoundException if no matching (id, owner) row exists.
+   */
   async getById(userId: string, id: string): Promise<Transaction> {
     const rows = await this.db
       .select()
       .from(transactions)
       .where(and(eq(transactions.id, id), eq(transactions.owner, userId)));
 
-    if (rows.length === 0) throw new NotFoundException('交易记录不存在');
+    if (rows.length === 0)
+      // NOTE: Chinese user-facing message (existing behavior; not mojibake).
+      throw new NotFoundException('交易记录不存在');
 
     return this.mapRow(rows[0]);
   }
 
+  /**
+   * Creates a Buy transaction and, if the user's cash in the transaction's
+   * currency is insufficient, automatically deposits the shortfall first. The
+   * auto-deposit is recorded as a synthetic Deposit row paired by a notes tag.
+   * Everything (deposit, cash deduction, buy insert, holdings rebuild) runs in
+   * one transaction.
+   *
+   * @param userId Owner id.
+   * @param dto    Create payload (must be a Buy).
+   * @throws BadRequestException on validation failures.
+   */
   async createWithAutoDeposit(
     userId: string,
     dto: CreateTransactionDto,
   ): Promise<Transaction> {
     if (dto.txType !== 'Buy') {
+      // NOTE: Chinese user-facing message (existing behavior; not mojibake).
       throw new BadRequestException('自动充值仅支持买入交易');
     }
 
@@ -70,13 +124,20 @@ export class TransactionsService {
     const currency = (dto.currency as Currency) || 'USD';
     const ticker = dto.ticker?.trim().toUpperCase();
 
-    if (!dto.txDate) throw new BadRequestException('交易日期不能为空');
+    if (!dto.txDate)
+      // NOTE: Chinese user-facing message (existing behavior; not mojibake).
+      throw new BadRequestException('交易日期不能为空');
     if (sharesNum <= 0 || isNaN(sharesNum))
+      // NOTE: Chinese user-facing message (existing behavior; not mojibake).
       throw new BadRequestException('数量必须大于 0');
-    if (!ticker) throw new BadRequestException('代码不能为空');
+    if (!ticker)
+      // NOTE: Chinese user-facing message (existing behavior; not mojibake).
+      throw new BadRequestException('代码不能为空');
     if (priceNum <= 0 || isNaN(priceNum))
+      // NOTE: Chinese user-facing message (existing behavior; not mojibake).
       throw new BadRequestException('价格必须大于 0');
 
+    // Total cash outflow for the buy including fees.
     const costAmount = sharesNum * priceNum + feesNum;
 
     const result = await this.db.transaction(async (tx) => {
@@ -87,9 +148,11 @@ export class TransactionsService {
           and(eq(cashAccounts.owner, userId), eq(cashAccounts.currency, currency)),
         );
       const curBalance = existing.length > 0 ? Number(existing[0].balance) : 0;
+      // How much extra cash is needed to afford this buy.
       const shortfall = costAmount - curBalance;
 
       if (shortfall > 1e-9) {
+        // Top up the cash account by the shortfall (create or increment).
         if (existing.length === 0) {
           await tx.insert(cashAccounts).values({
             currency,
@@ -109,6 +172,7 @@ export class TransactionsService {
             .where(eq(cashAccounts.id, existing[0].id));
         }
 
+        // Record the paired synthetic deposit so it can be removed later if the buy is deleted.
         await tx.insert(transactions).values({
           txDate: dto.txDate,
           ticker: '',
@@ -124,6 +188,7 @@ export class TransactionsService {
         });
       }
 
+      // Spend the cash on the buy.
       await this.adjustCash(tx, userId, currency, -costAmount);
 
       const insertRows = await tx
@@ -143,6 +208,7 @@ export class TransactionsService {
         })
         .returning();
 
+      // Re-derive holdings/closed for this ticker from the updated transactions.
       await this.rebuildTickersFromTransactions(tx, userId, [ticker]);
 
       return insertRows[0];
@@ -151,6 +217,15 @@ export class TransactionsService {
     return this.mapRow(result);
   }
 
+  /**
+   * Creates a transaction of any valid type. Cash-flow types (Deposit/Withdrawal)
+   * adjust cash only; Buy/Sell/Opening adjust cash and then rebuild derived holdings
+   * for the affected ticker. All in one DB transaction.
+   *
+   * @param userId Owner id.
+   * @param dto    Create payload.
+   * @throws BadRequestException on validation failures.
+   */
   async create(userId: string, dto: CreateTransactionDto): Promise<Transaction> {
     const sharesNum = Number(dto.shares);
     const priceNum = Number(dto.price);
@@ -159,32 +234,40 @@ export class TransactionsService {
     const rawTxType = dto.txType;
 
     const validTypes = ['Buy', 'Sell', 'Deposit', 'Withdrawal', 'Opening'] as const;
-    if (!validTypes.includes(rawTxType as typeof validTypes[number])) {
+    if (!validTypes.includes(rawTxType as typeof validTypes[number]))
+      // NOTE: Chinese user-facing message (existing behavior; not mojibake).
       throw new BadRequestException('交易类型无效');
-    }
     const txType = rawTxType;
 
     const isCashFlow = txType === 'Deposit' || txType === 'Withdrawal';
     const isOpening = txType === 'Opening';
 
-    if (!dto.txDate) throw new BadRequestException('交易日期不能为空');
+    if (!dto.txDate)
+      // NOTE: Chinese user-facing message (existing behavior; not mojibake).
+      throw new BadRequestException('交易日期不能为空');
 
     if (sharesNum <= 0 || isNaN(sharesNum)) {
+      // Amount validation differs for cash flows vs share trades.
+      // NOTE: Chinese user-facing messages (existing behavior; not mojibake).
       throw new BadRequestException(isCashFlow ? '金额必须大于 0' : '数量必须大于 0');
     }
 
     if (!isCashFlow && !isOpening) {
       if (!dto.ticker || !dto.ticker.trim()) {
+        // NOTE: Chinese user-facing message (existing behavior; not mojibake).
         throw new BadRequestException('代码不能为空');
       }
       if (priceNum <= 0 || isNaN(priceNum)) {
+        // NOTE: Chinese user-facing message (existing behavior; not mojibake).
         throw new BadRequestException('价格必须大于 0');
       }
     }
 
+    // Cash flows/opening use a blank or optional ticker; share trades require one.
     const ticker = (isCashFlow || isOpening) ? (isOpening ? dto.ticker?.trim().toUpperCase() ?? '' : '') : dto.ticker.trim().toUpperCase();
 
     if (isCashFlow) {
+      // Deposit adds cash, Withdrawal removes it.
       const amount = txType === 'Deposit' ? sharesNum : -sharesNum;
       const result = await this.db.transaction(async (tx) => {
         const insertRows = await tx
@@ -210,12 +293,14 @@ export class TransactionsService {
       return this.mapRow(result);
     }
 
+    // Share trade (Buy/Sell/Opening): compute cash sign first.
     const result = await this.db.transaction(async (tx) => {
       const cashDelta =
         txType === 'Buy'
           ? -(sharesNum * priceNum + feesNum)
           : sharesNum * priceNum - feesNum;
 
+    // Buy spends cash; an Opening position does not move cash (it sets the starting lot).
     if (txType === 'Buy' || txType === 'Opening') {
          await this.adjustCash(tx, userId, currency, txType === 'Buy' ? cashDelta : 0);
        }
@@ -238,10 +323,12 @@ export class TransactionsService {
          .returning();
 
       if (txType === 'Sell') {
+        // Sell proceeds (minus fees) add cash.
         await this.adjustCash(tx, userId, currency, cashDelta);
       }
 
       if (txType === 'Buy' || txType === 'Sell' || txType === 'Opening') {
+        // Re-derive holdings/closed for the affected ticker.
         await this.rebuildTickersFromTransactions(tx, userId, [ticker]);
       }
 
@@ -251,13 +338,26 @@ export class TransactionsService {
     return this.mapRow(result);
   }
 
+  /**
+   * Updates a transaction. It recomputes the old vs. new cash impact, applies the
+   * net cash difference to the account, then rebuilds derived holdings/closed for
+   * any ticker touched by the change. All in one transaction.
+   *
+   * @param userId Owner id.
+   * @param id     Transaction primary key.
+   * @param dto    Partial update payload.
+   * @throws NotFoundException if the row is not owned by the user.
+   * @throws BadRequestException if no updatable field is supplied.
+   */
   async update(userId: string, id: string, dto: UpdateTransactionDto): Promise<Transaction> {
     const existing = await this.db
       .select()
       .from(transactions)
       .where(and(eq(transactions.id, id), eq(transactions.owner, userId)));
 
-    if (existing.length === 0) throw new NotFoundException('交易记录不存在');
+    if (existing.length === 0)
+      // NOTE: Chinese user-facing message (existing behavior; not mojibake).
+      throw new NotFoundException('交易记录不存在');
     const oldRow = existing[0];
 
     const patch: Record<string, unknown> = {};
@@ -270,11 +370,14 @@ export class TransactionsService {
     if (dto.notes !== undefined) patch.notes = dto.notes;
     if (dto.currency !== undefined) patch.currency = dto.currency;
 
-    if (Object.keys(patch).length === 0) throw new BadRequestException('未提供可更新字段');
+    if (Object.keys(patch).length === 0)
+      // NOTE: Chinese user-facing message (existing behavior; not mojibake).
+      throw new BadRequestException('未提供可更新字段');
 
     patch.updatedAt = new Date();
     patch.updatedBy = userId;
 
+    // A rebuild is needed if any financial/identity field changed.
     const needsReconcile =
       dto.ticker !== undefined ||
       dto.txType !== undefined ||
@@ -305,6 +408,7 @@ export class TransactionsService {
           newCashDelta = 0;
         }
 
+      // Apply only the NET cash difference caused by the edit.
       const cashDiff = newCashDelta - oldCashDelta;
       if (Math.abs(cashDiff) > 1e-9) {
         await this.adjustCash(tx, userId, newCurrency, cashDiff);
@@ -316,7 +420,9 @@ export class TransactionsService {
         .where(and(eq(transactions.id, id), eq(transactions.owner, userId)))
         .returning();
 
-      if (updatedRows.length === 0) throw new NotFoundException('交易记录不存在');
+      if (updatedRows.length === 0)
+        // NOTE: Chinese user-facing message (existing behavior; not mojibake).
+        throw new NotFoundException('交易记录不存在');
 
       if (needsReconcile) {
         const oldType = oldRow.txType as string;
@@ -325,6 +431,7 @@ export class TransactionsService {
         const newTicker = (dto.ticker || oldRow.ticker).trim().toUpperCase();
         const tickersOld: string[] = [];
         const tickersNew: string[] = [];
+        // Rebuild both the old and new tickers in case the ticker was changed.
         if (oldTicker && (oldType === 'Buy' || oldType === 'Sell' || oldType === 'Opening')) {
           tickersOld.push(oldTicker);
         }
@@ -341,20 +448,34 @@ export class TransactionsService {
     return this.mapRow(result);
   }
 
+  /**
+   * Deletes a transaction. Reverses its cash impact, removes any paired
+   * auto-deposit row if this was the matching Buy, and rebuilds the affected
+   * ticker's derived holdings/closed. All in one transaction.
+   *
+   * @param userId Owner id.
+   * @param id     Transaction primary key.
+   * @throws NotFoundException if the row is not owned by the user.
+   */
   async remove(userId: string, id: string): Promise<void> {
     const existing = await this.db
       .select()
       .from(transactions)
       .where(and(eq(transactions.id, id), eq(transactions.owner, userId)));
 
-    if (existing.length === 0) throw new NotFoundException('交易记录不存在');
+    if (existing.length === 0)
+      // NOTE: Chinese user-facing message (existing behavior; not mojibake).
+      throw new NotFoundException('交易记录不存在');
     const oldRow = existing[0];
 
     await this.db.transaction(async (tx) => {
       const currency = (oldRow.currency as Currency) || 'USD';
+      // Removing a transaction reverses its cash delta.
       let cashDelta = -this.getCashDeltaFromRow(oldRow);
       const idsToDelete: string[] = [id];
 
+      // For a plain Buy (not already an auto-deposit buy), also delete the paired
+      // synthetic Deposit rows created by createWithAutoDeposit.
       if (
         oldRow.txType === 'Buy' &&
         (!oldRow.notes || !oldRow.notes.startsWith('__AUTO_DEPOSIT_FOR_BUY__:'))
@@ -376,6 +497,7 @@ export class TransactionsService {
           .orderBy(desc(transactions.createdAt))
           .limit(10);
 
+        // Reclaim the deposited cash by removing the deposits, largest first.
         let remaining = costAmount;
         for (const dep of matchingDeposits) {
           if (remaining <= 1e-9) break;
@@ -402,6 +524,17 @@ export class TransactionsService {
     });
   }
 
+  /**
+   * Applies a Buy directly to a holdings row (creates or averages up).
+   * NOTE: legacy helper; the live rebuild path uses `rebuildTickersFromTransactions`.
+   *
+   * @param tx        Active transaction.
+   * @param userId    Owner id.
+   * @param ticker    Ticker to update.
+   * @param sharesNum Shares bought.
+   * @param priceNum  Price per share.
+   * @param feesNum   Fees paid.
+   */
   private async applyBuyToHoldings(
     tx: PostgresJsDatabase,
     userId: string,
@@ -420,6 +553,7 @@ export class TransactionsService {
         ticker,
         company: ticker,
         shares: String(sharesNum),
+        // Average buy price including fees spread over shares.
         buyPrice: String((sharesNum * priceNum + feesNum) / sharesNum),
         buyDate: new Date().toISOString().slice(0, 10),
         market: 'US',
@@ -449,6 +583,17 @@ export class TransactionsService {
       .where(eq(holdings.id, h.id));
   }
 
+  /**
+   * Reduces a holdings row by a sold amount (clamped to current shares).
+   * NOTE: legacy helper; the live rebuild path uses `rebuildTickersFromTransactions`.
+   *
+   * @param tx        Active transaction.
+   * @param userId    Owner id.
+   * @param ticker    Ticker to update.
+   * @param sharesNum Shares sold.
+   * @param _priceNum Unused (kept for signature symmetry).
+   * @param _feesNum  Unused (kept for signature symmetry).
+   */
   private async applySellToHoldings(
     tx: PostgresJsDatabase,
     userId: string,
@@ -466,6 +611,7 @@ export class TransactionsService {
 
     const h = existing[0];
     const curShares = Number(h.shares);
+    // Never sell more than currently held.
     const sellShares = Math.min(sharesNum, curShares);
     const newShares = curShares - sellShares;
 
@@ -483,6 +629,17 @@ export class TransactionsService {
       .where(eq(holdings.id, h.id));
   }
 
+  /**
+   * Reverses a prior Buy from a holdings row (used on delete/update).
+   * NOTE: legacy helper; the live rebuild path uses `rebuildTickersFromTransactions`.
+   *
+   * @param tx        Active transaction.
+   * @param userId    Owner id.
+   * @param ticker    Ticker to update.
+   * @param sharesNum Shares of the reversed buy.
+   * @param priceNum  Price per share.
+   * @param feesNum   Fees paid.
+   */
   private async revertBuyFromHoldings(
     tx: PostgresJsDatabase,
     userId: string,
@@ -520,6 +677,17 @@ export class TransactionsService {
       .where(eq(holdings.id, h.id));
   }
 
+  /**
+   * Reverses a prior Sell from a holdings row (re-adds shares and cost).
+   * NOTE: legacy helper; the live rebuild path uses `rebuildTickersFromTransactions`.
+   *
+   * @param tx        Active transaction.
+   * @param userId    Owner id.
+   * @param ticker    Ticker to update.
+   * @param sharesNum Shares of the reversed sell.
+   * @param priceNum  Price per share.
+   * @param feesNum   Fees paid.
+   */
   private async revertSellFromHoldings(
     tx: PostgresJsDatabase,
     userId: string,
@@ -555,6 +723,15 @@ export class TransactionsService {
       .where(eq(holdings.id, h.id));
   }
 
+  /**
+   * Full reconciliation: replays ALL of the user's transactions in chronological
+   * order to recompute holdings (average cost), closed positions (realized P&L),
+   * and per-currency cash balances from scratch. Used by the `/reconcile` route as
+   * a self-healing operation. Runs in one transaction.
+   *
+   * @param userId Owner id.
+   * @returns Counts of resulting holdings, closed positions, and processed txs.
+   */
   async reconcileAll(userId: string): Promise<ReconcileResult> {
     const allTx = await this.db
       .select()
@@ -575,11 +752,13 @@ export class TransactionsService {
       };
     }
 
+    // Recompute expected cash per currency from the transaction history.
     const cashByCurrency = this.computeCashFromTransactions(allTx);
 
     const result = await this.db.transaction(async (tx) => {
       const txByTicker = new Map<string, typeof allTx>();
       for (const t of allTx) {
+         // Skip cash flows when grouping by ticker.
          if (!t.ticker || t.txType === 'Deposit' || t.txType === 'Withdrawal') continue;
         const arr = txByTicker.get(t.ticker) ?? [];
         arr.push(t);
@@ -596,6 +775,7 @@ export class TransactionsService {
        const hasBuyOrOpening = txs.some(
           (t: (typeof txs)[number]) => t.txType === 'Buy' || t.txType === 'Opening',
         );
+        // Only tickers that ever opened a position produce a holding.
         if (hasBuyOrOpening) rebuiltTickers.push(ticker);
       }
 
@@ -632,6 +812,7 @@ export class TransactionsService {
           } else if (t.txType === 'Sell') {
             if (cursor.shares <= 1e-9) continue;
 
+            // Average-cost accounting for the realized P&L of this sell.
             const avgCost = cursor.shares > 0 ? cursor.costBasis / cursor.shares : 0;
             const sellShares = Math.min(sharesNum, cursor.shares);
             const sellCost = avgCost * sellShares;
@@ -659,6 +840,7 @@ export class TransactionsService {
             cursor.costBasis -= sellCost;
 
             if (cursor.shares <= 1e-9) {
+              // Position fully closed: reset the cursor.
               cursor.shares = 0;
               cursor.costBasis = 0;
               cursor.buyDate = null;
@@ -676,6 +858,7 @@ export class TransactionsService {
               buyDate: cursor.buyDate,
             });
           } else {
+            // Position closed out: remove the holding row.
             await tx.delete(holdings).where(eq(holdings.id, existingH.id));
           }
         } else if (cursor.shares > 0) {
@@ -710,6 +893,7 @@ export class TransactionsService {
         await tx.insert(holdings).values(newHoldings);
       }
 
+      // Rebuild closed positions for the affected tickers from scratch.
       if (rebuiltTickers.length > 0) {
         await tx.delete(closed).where(
           and(eq(closed.owner, userId), inArray(closed.ticker, rebuiltTickers)),
@@ -730,6 +914,7 @@ export class TransactionsService {
         .from(closed)
         .where(eq(closed.owner, userId));
 
+      // Overwrite each currency's cash balance with the recomputed value.
       for (const [currency, balance] of cashByCurrency) {
         const existing = await tx
           .select()
@@ -767,6 +952,13 @@ export class TransactionsService {
     return result;
   }
 
+  /**
+   * Computes the signed cash impact of a single transaction row. Positive = cash
+   * in, negative = cash out.
+   *
+   * @param row Transaction row.
+   * @returns Signed cash delta in the row's currency.
+   */
   private getCashDeltaFromRow(row: typeof transactions.$inferSelect): number {
     const sharesNum = Number(row.shares);
     const priceNum = Number(row.price);
@@ -780,6 +972,12 @@ export class TransactionsService {
     return 0;
   }
 
+  /**
+   * Sums cash deltas across all transactions, grouped by currency.
+   *
+   * @param allTx Transaction rows.
+   * @returns Map of currency -> net cash balance.
+   */
   private computeCashFromTransactions(
     allTx: Array<typeof transactions.$inferSelect>,
   ): Map<string, number> {
@@ -793,6 +991,17 @@ export class TransactionsService {
     return cashByCurrency;
   }
 
+  /**
+   * Applies a cash balance change to a user's currency account. Creates the
+   * account if missing and the change is positive; rejects (throws) any change
+   * that would drive the balance below zero.
+   *
+   * @param tx       Active transaction.
+   * @param userId   Owner id.
+   * @param currency Account currency.
+   * @param delta    Signed amount to add (negative to withdraw).
+   * @throws BadRequestException if the resulting balance would be negative.
+   */
   private async adjustCash(
     tx: PostgresJsDatabase,
     userId: string,
@@ -808,6 +1017,7 @@ export class TransactionsService {
 
     if (existing.length === 0) {
       if (delta < 0) {
+        // NOTE: Chinese user-facing message (existing behavior; not mojibake).
         throw new BadRequestException(`现金不足：${currency} 账户余额为 0`);
       }
       await tx.insert(cashAccounts).values({
@@ -823,6 +1033,8 @@ export class TransactionsService {
     const curBalance = Number(existing[0].balance);
     const newBalance = curBalance + delta;
     if (newBalance < -1e-9) {
+      // Cash non-negative risk gate: reject trades that overdraw the account.
+      // NOTE: Chinese user-facing message (existing behavior; not mojibake).
       throw new BadRequestException(
         `现金不足：${currency} 余额 ${curBalance.toFixed(2)}，需要 ${Math.abs(delta).toFixed(2)}`,
       );
@@ -838,6 +1050,15 @@ export class TransactionsService {
       .where(eq(cashAccounts.id, existing[0].id));
   }
 
+  /**
+   * Incrementally rebuilds derived holdings and closed positions for a specific
+   * set of tickers from their transactions (used after create/update/delete,
+   * instead of a full reconciliation).
+   *
+   * @param tx       Active transaction.
+   * @param userId   Owner id.
+   * @param tickers  Tickers to rebuild.
+   */
   private async rebuildTickersFromTransactions(
     tx: PostgresJsDatabase,
     userId: string,
@@ -912,6 +1133,7 @@ export class TransactionsService {
         } else if (t.txType === 'Sell') {
           if (cursor.shares <= 1e-9) continue;
 
+          // Average-cost realized P&L for this sell.
           const avgCost = cursor.shares > 0 ? cursor.costBasis / cursor.shares : 0;
           const sellShares = Math.min(sharesNum, cursor.shares);
           const sellCost = avgCost * sellShares;
@@ -954,6 +1176,7 @@ export class TransactionsService {
           buyDate: cursor.buyDate,
         });
       } else {
+        // Position closed out: schedule the holding for deletion.
         deleteHoldingTickers.push(ticker);
       }
     }
@@ -992,6 +1215,7 @@ export class TransactionsService {
         );
     }
 
+    // Rebuild closed positions for these tickers from scratch.
     await tx
       .delete(closed)
       .where(and(eq(closed.owner, userId), inArray(closed.ticker, validTickers)));
@@ -1001,6 +1225,12 @@ export class TransactionsService {
     }
   }
 
+  /**
+   * Maps a raw transaction row to the API `Transaction` shape, defaulting currency
+   * to USD and fees to 0.
+   *
+   * @param row Raw transactions table row.
+   */
   private mapRow(row: typeof transactions.$inferSelect): Transaction {
     return {
       id: row.id,

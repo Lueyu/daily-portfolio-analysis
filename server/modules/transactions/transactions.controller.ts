@@ -1,14 +1,34 @@
+/**
+ * Transactions controller.
+ *
+ * Exposes endpoints for the user's stock transactions (Buy/Sell/Deposit/Withdrawal/
+ * Opening) under `/api/portfolio/transactions`. Requires login on every route
+ * (`@NeedLogin()` at the class level). Transactions are the source of truth;
+ * holdings, closed positions, and cash balances are derived server-side in
+ * `TransactionsService`.
+ */
 import { Controller, Get, Post, Patch, Delete, Body, Param, Query, Req } from '@nestjs/common';
 import { NeedLogin } from '@lark-apaas/fullstack-nestjs-core';
 import type { Request } from 'express';
 import { TransactionsService } from './transactions.service';
 import type { Transaction, CreateTransactionDto, ReconcileResult } from '@shared/api.interface';
 
+/**
+ * REST controller for transactions. Delegates all bookkeeping to
+ * `TransactionsService`.
+ */
 @NeedLogin()
 @Controller('api/portfolio/transactions')
 export class TransactionsController {
   constructor(private readonly transactionsService: TransactionsService) {}
 
+  /**
+   * Lists transactions for the current user, newest first, optionally by ticker.
+   *
+   * @param req    Authenticated request carrying `req.userContext.userId`.
+   * @param ticker  Optional ticker filter.
+   * @param limit   Optional row limit (clamped to 500; default 100).
+   */
   @Get()
   async list(
     @Req() req: Request,
@@ -21,18 +41,37 @@ export class TransactionsController {
     return { items };
   }
 
+  /**
+   * Fetches a single transaction by id, only if owned by the caller.
+   *
+   * @param req Authenticated request.
+   * @param id  Transaction primary key.
+   */
   @Get(':id')
   async getById(@Req() req: Request, @Param('id') id: string): Promise<Transaction> {
     const { userId } = req.userContext;
     return this.transactionsService.getById(userId, id);
   }
 
+  /**
+   * Creates a transaction of any valid type.
+   *
+   * @param req Authenticated request.
+   * @param dto Create payload.
+   */
   @Post()
   async create(@Req() req: Request, @Body() dto: CreateTransactionDto): Promise<Transaction> {
     const { userId } = req.userContext;
     return this.transactionsService.create(userId, dto);
   }
 
+  /**
+   * Partially updates a transaction, adjusting derived cash/holdings accordingly.
+   *
+   * @param req Authenticated request.
+   * @param id  Transaction primary key.
+   * @param dto Partial update payload.
+   */
   @Patch(':id')
   async update(
     @Req() req: Request,
@@ -43,18 +82,36 @@ export class TransactionsController {
     return this.transactionsService.update(userId, id, dto);
   }
 
+  /**
+   * Deletes a transaction and reverses its derived effects (cash/holdings).
+   *
+   * @param req Authenticated request.
+   * @param id  Transaction primary key.
+   */
   @Delete(':id')
   async remove(@Req() req: Request, @Param('id') id: string): Promise<void> {
     const { userId } = req.userContext;
     return this.transactionsService.remove(userId, id);
   }
 
+  /**
+   * Full reconciliation: rebuild holdings, closed positions, and cash balances
+   * from the user's entire transaction history.
+   *
+   * @param req Authenticated request.
+   */
   @Post('reconcile')
   async reconcile(@Req() req: Request): Promise<ReconcileResult> {
     const { userId } = req.userContext;
     return this.transactionsService.reconcileAll(userId);
   }
 
+  /**
+   * Creates a Buy transaction, auto-depositing any cash shortfall first.
+   *
+   * @param req Authenticated request.
+   * @param dto Create payload (must be a Buy).
+   */
   @Post('auto-deposit-buy')
   async createWithAutoDeposit(
     @Req() req: Request,

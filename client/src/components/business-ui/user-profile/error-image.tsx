@@ -1,3 +1,9 @@
+/**
+ * ErrorImage: decorative illustration shown in UserProfile when profile data fails
+ * to load.
+ * Part of the vendored business-ui component library.
+ */
+/** Renders the "load failed" illustration. */
 export function ErrorImage() {
   return (
     <svg

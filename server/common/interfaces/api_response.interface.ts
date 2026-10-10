@@ -1,20 +1,26 @@
-// 错误统一响应
+/**
+ * Unified error response envelope.
+ *
+ * Every failed API response is serialized as this shape by `GlobalExceptionFilter`,
+ * so the frontend always receives `{ error: { code, message, ... } }` regardless
+ * of the underlying exception type.
+ */
 export interface ApiErrorResponse {
-  /** 错误详情 */
+  /** Wrapped error payload. */
   error: {
-    /** 错误代码 */
+    /** Stable business error code (see `ResponseCode`). */
     code: string;
-    /** 错误消息 */
+    /** Human-readable error message. */
     message: string;
-    /** 错误详情 */
+    /** Additional structured detail (often a JSON string). */
     details?: string;
-    /** 字段验证错误 */
+    /** Per-field validation errors, keyed by field name. */
     fieldErrors?: Record<string, string[]>;
-    /** 调用栈（仅开发环境） */
+    /** Stack trace, included only for unexpected server errors. */
     stack?: string;
-    /** 错误原因 */
+    /** Underlying error cause. */
     cause?: string;
-    /** 错误发生时间 */
+    /** Unix-millisecond timestamp of when the error occurred. */
     timestamp?: number;
   };
 }

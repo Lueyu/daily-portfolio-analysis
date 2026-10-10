@@ -1,8 +1,15 @@
+/**
+ * Small status/label pill with default / secondary / destructive / outline variants.
+ *
+ * Vendored shadcn-style UI primitive (Radix UI + Tailwind CSS).
+ */
+
 import * as React from "react"
 import { cva, type VariantProps } from "class-variance-authority"
 
 import { cn } from "@/lib/utils"
 
+/** Cva variant classes for Badge. */
 const badgeVariants = cva(
   // Whitespace-nowrap: Badges should never wrap.
   // hover-elevate: adds subtle dark overlay on hover for interactive feedback
@@ -33,6 +40,7 @@ export interface BadgeProps
   extends React.HTMLAttributes<HTMLDivElement>,
     VariantProps<typeof badgeVariants> {}
 
+/** Status/label pill. */
 function Badge({ className, variant, ...props }: BadgeProps) {
   return (
     <div className={cn(badgeVariants({ variant }), className)} {...props} />

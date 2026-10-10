@@ -1,3 +1,12 @@
+/**
+ * @file pages/Transactions/TransactionList.tsx
+ * @description Mobile card list of transactions (shown on small screens; the
+ * desktop table lives inline in TransactionsPage).
+ *
+ * Each card shows ticker, Buy/Sell badge, date, signed amount, shares/price/
+ * fees, and optional notes. Buy amounts include fees; sell amounts subtract
+ * fees.
+ */
 import { Receipt, Plus } from 'lucide-react';
 import type { Transaction } from '@shared/api.interface';
 import {
@@ -30,6 +39,7 @@ import {
 } from '@/components/ui/empty';
 import { Trash2 } from 'lucide-react';
 
+/** Props for {@link TransactionList}. */
 interface TransactionListProps {
   loading: boolean;
   error: string | null;
@@ -38,6 +48,9 @@ interface TransactionListProps {
   onDelete: (id: string) => void;
 }
 
+/**
+ * Render the mobile transaction card list.
+ */
 export default function TransactionList({
   loading,
   error,

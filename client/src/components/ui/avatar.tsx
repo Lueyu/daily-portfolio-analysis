@@ -1,10 +1,17 @@
 "use client"
 
+/**
+ * User avatar with image and a fallback shown while the image loads.
+ *
+ * Vendored shadcn-style UI primitive (Radix UI + Tailwind CSS).
+ */
+
 import * as React from "react"
 import * as AvatarPrimitive from "@radix-ui/react-avatar"
 
 import { cn } from "@/lib/utils"
 
+/** Avatar root. */
 function Avatar({
   className,
   ...props
@@ -21,6 +28,7 @@ function Avatar({
   )
 }
 
+/** The avatar image. */
 function AvatarImage({
   className,
   ...props
@@ -34,6 +42,7 @@ function AvatarImage({
   )
 }
 
+/** Content shown while the image loads or if it fails. */
 function AvatarFallback({
   className,
   ...props

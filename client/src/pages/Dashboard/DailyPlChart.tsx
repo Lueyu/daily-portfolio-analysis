@@ -1,22 +1,39 @@
+/**
+ * @file pages/Dashboard/DailyPlChart.tsx
+ * @description ECharts dual-axis chart: account equity line + daily P/L bars.
+ *
+ * Left Y-axis = account net value (line, area gradient); right Y-axis = daily
+ * P/L (green/red bars). Bars are colored by sign (green = gain, red = loss).
+ * Tooltip shows both series with adaptive currency symbol.
+ */
 import { useMemo } from 'react';
 import ReactECharts from 'echarts-for-react';
 
+/** Props for {@link DailyPlChart}. */
 interface DailyPlChartProps {
+  /** Daily series: date, account value, daily P/L, daily P/L percent. */
   data: Array<{ date: string; accountValue: string; dailyPl: string; dailyPct: string }>;
+  /** Base currency code for axis labels / tooltip; defaults to USD. */
   baseCurrency?: string;
 }
 
+/** Currency symbol lookup used by axis/tooltip formatting. */
 const CURRENCY_SYMBOL: Record<string, string> = {
   USD: '$',
   HKD: 'HK$',
   CNY: '¥',
 };
 
+/**
+ * Render the dual-axis daily P/L chart.
+ * @param props - See {@link DailyPlChartProps}.
+ */
 export default function DailyPlChart({ data, baseCurrency = 'USD' }: DailyPlChartProps) {
   const symbol = CURRENCY_SYMBOL[baseCurrency.toUpperCase()] || '$';
 
   const option = useMemo(() => {
     if (data.length === 0) return {};
+    // X-axis labels show MM-DD (year dropped) to save horizontal space.
     const dates = data.map((d) => d.date.slice(5));
     const accountValues = data.map((d) => Number(d.accountValue) || 0);
     const dailyPls = data.map((d) => Number(d.dailyPl) || 0);

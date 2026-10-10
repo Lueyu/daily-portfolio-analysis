@@ -1,34 +1,45 @@
 "use client"
 
+/**
+ * Slide-in side sheet for mobile-sized overlays built over the dialog primitive.
+ *
+ * Vendored shadcn-style UI primitive (Radix UI + Tailwind CSS).
+ */
+
 import * as React from "react"
 import { Drawer as DrawerPrimitive } from "vaul"
 
 import { cn } from "@/lib/utils"
 
+/** Drawer root. */
 function Drawer({
   ...props
 }: React.ComponentProps<typeof DrawerPrimitive.Root>) {
   return <DrawerPrimitive.Root data-slot="drawer" {...props} />
 }
 
+/** Button that opens the drawer. */
 function DrawerTrigger({
   ...props
 }: React.ComponentProps<typeof DrawerPrimitive.Trigger>) {
   return <DrawerPrimitive.Trigger data-slot="drawer-trigger" {...props} />
 }
 
+/** Portal rendering the drawer. */
 function DrawerPortal({
   ...props
 }: React.ComponentProps<typeof DrawerPrimitive.Portal>) {
   return <DrawerPrimitive.Portal data-slot="drawer-portal" {...props} />
 }
 
+/** Button that closes the drawer. */
 function DrawerClose({
   ...props
 }: React.ComponentProps<typeof DrawerPrimitive.Close>) {
   return <DrawerPrimitive.Close data-slot="drawer-close" {...props} />
 }
 
+/** Backdrop behind the drawer. */
 function DrawerOverlay({
   className,
   ...props
@@ -45,6 +56,7 @@ function DrawerOverlay({
   )
 }
 
+/** Sliding drawer panel. */
 function DrawerContent({
   className,
   children,
@@ -72,6 +84,7 @@ function DrawerContent({
   )
 }
 
+/** Container for the drawer title/description. */
 function DrawerHeader({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
@@ -85,6 +98,7 @@ function DrawerHeader({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
+/** Container for the drawer action buttons. */
 function DrawerFooter({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
@@ -95,6 +109,7 @@ function DrawerFooter({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
+/** Heading inside the drawer. */
 function DrawerTitle({
   className,
   ...props
@@ -108,6 +123,7 @@ function DrawerTitle({
   )
 }
 
+/** Supporting body text inside the drawer. */
 function DrawerDescription({
   className,
   ...props

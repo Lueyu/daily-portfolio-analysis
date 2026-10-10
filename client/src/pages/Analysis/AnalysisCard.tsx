@@ -1,3 +1,13 @@
+/**
+ * @file pages/Analysis/AnalysisCard.tsx
+ * @description One daily analysis card (stock or portfolio-level).
+ *
+ * Stock cards show target price, action recommendation, conclusion, catalysts
+ * and risks; collapsed by default with an expand toggle. When a deep report
+ * exists, catalysts/risks are truncated to 3 and a "view deep report" link
+ * navigates to DeepReportPage. The portfolio card (ticker === 'PORTFOLIO')
+ * is always expanded and styled as a special strategy-review banner.
+ */
 import { useState } from 'react';
 import {
   Target,
@@ -28,6 +38,10 @@ import {
 } from '@/utils/format';
 import { inferMarket } from '@/hooks/use-market-quotes';
 
+/**
+ * Split a semicolon/newline-delimited string into a clean list, stripping
+ * leading "1." / "1)" / "1、" numbering. Returns null when empty.
+ */
 export function parseNumberedList(
   text: string | null
 ): string[] | null {
@@ -41,8 +55,10 @@ export function parseNumberedList(
   return parts.length > 0 ? parts : null;
 }
 
+/** Sentinel ticker for the portfolio-level analysis card. */
 const PORTFOLIO_TICKER = 'PORTFOLIO';
 
+/** Tailwind text color for a rating string (green/yellow/red). */
 function ratingTextColor(rating: string | null | undefined): string {
   if (!rating) return 'text-muted-foreground';
   switch (rating) {
@@ -59,6 +75,11 @@ function ratingTextColor(rating: string | null | undefined): string {
   }
 }
 
+/**
+ * Reduce a free-text action recommendation to a short label (买入/减仓/持有/
+ * 观望/卖出). Handles negations ("不买入") and maps longer phrases to the
+ * nearest bucket. Falls back to the first 5 chars.
+ */
 function actionShortLabel(action: string | null | undefined): string {
   if (!action) return '—';
   const text = String(action);
@@ -71,6 +92,7 @@ function actionShortLabel(action: string | null | undefined): string {
   return text.length > 5 ? text.slice(0, 5) + '…' : text;
 }
 
+/** Tailwind text color for a short action label. */
 function actionTextColor(action: string | null | undefined): string {
   if (!action) return 'text-muted-foreground';
   const label = actionShortLabel(action);
@@ -90,12 +112,18 @@ function actionTextColor(action: string | null | undefined): string {
   }
 }
 
+/** Props for {@link AnalysisCard}. */
 interface AnalysisCardProps {
   analysis: AnalysisType;
   companyName?: string | null;
+  /** Run id of a related deep report; when present, a "view deep report" link is shown. */
   deepReportRunId?: string | null;
 }
 
+/**
+ * Render an analysis card. Stock cards are collapsed by default; the
+ * portfolio card is always expanded.
+ */
 function AnalysisCard({ analysis, companyName, deepReportRunId }: AnalysisCardProps) {
   const navigate = useNavigate();
   const [expanded, setExpanded] = useState(false);
@@ -115,6 +143,7 @@ function AnalysisCard({ analysis, companyName, deepReportRunId }: AnalysisCardPr
 
   const isCollapsed = !isPortfolio && !expanded;
 
+  /** Navigate to the deep-report detail page. */
   const handleDeepReportClick = () => {
     if (deepReportRunId) {
       navigate(`/analysis/deep-report/${deepReportRunId}`);

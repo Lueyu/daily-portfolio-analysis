@@ -1,17 +1,25 @@
 "use client"
 
+/**
+ * Right-click context menu with nested items, checkboxes, separators, and labels.
+ *
+ * Vendored shadcn-style UI primitive (Radix UI + Tailwind CSS).
+ */
+
 import * as React from "react"
 import * as ContextMenuPrimitive from "@radix-ui/react-context-menu"
 import { CheckIcon, ChevronRightIcon, CircleIcon } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 
+/** Context menu root. */
 function ContextMenu({
   ...props
 }: React.ComponentProps<typeof ContextMenuPrimitive.Root>) {
   return <ContextMenuPrimitive.Root data-slot="context-menu" {...props} />
 }
 
+/** Element that opens the context menu on right-click. */
 function ContextMenuTrigger({
   ...props
 }: React.ComponentProps<typeof ContextMenuPrimitive.Trigger>) {
@@ -20,6 +28,7 @@ function ContextMenuTrigger({
   )
 }
 
+/** Group of related context menu items. */
 function ContextMenuGroup({
   ...props
 }: React.ComponentProps<typeof ContextMenuPrimitive.Group>) {
@@ -28,6 +37,7 @@ function ContextMenuGroup({
   )
 }
 
+/** Portal rendering the menu into a top-layer container. */
 function ContextMenuPortal({
   ...props
 }: React.ComponentProps<typeof ContextMenuPrimitive.Portal>) {
@@ -36,12 +46,14 @@ function ContextMenuPortal({
   )
 }
 
+/** Nested submenu container. */
 function ContextMenuSub({
   ...props
 }: React.ComponentProps<typeof ContextMenuPrimitive.Sub>) {
   return <ContextMenuPrimitive.Sub data-slot="context-menu-sub" {...props} />
 }
 
+/** ContextMenuRadioGroup component. */
 function ContextMenuRadioGroup({
   ...props
 }: React.ComponentProps<typeof ContextMenuPrimitive.RadioGroup>) {
@@ -53,6 +65,7 @@ function ContextMenuRadioGroup({
   )
 }
 
+/** Entry that opens a nested submenu. */
 function ContextMenuSubTrigger({
   className,
   inset,
@@ -77,6 +90,7 @@ function ContextMenuSubTrigger({
   )
 }
 
+/** Floating panel of a nested submenu. */
 function ContextMenuSubContent({
   className,
   ...props
@@ -93,6 +107,7 @@ function ContextMenuSubContent({
   )
 }
 
+/** Floating context menu panel. */
 function ContextMenuContent({
   className,
   ...props
@@ -111,6 +126,7 @@ function ContextMenuContent({
   )
 }
 
+/** One context menu entry. */
 function ContextMenuItem({
   className,
   inset,
@@ -158,6 +174,7 @@ function ContextMenuItem({
   )
 }
 
+/** Checkable context menu entry. */
 function ContextMenuCheckboxItem({
   className,
   children,
@@ -208,6 +225,7 @@ function ContextMenuCheckboxItem({
   )
 }
 
+/** Radio context menu entry. */
 function ContextMenuRadioItem({
   className,
   children,
@@ -256,6 +274,7 @@ function ContextMenuRadioItem({
   )
 }
 
+/** Non-interactive label inside the menu. */
 function ContextMenuLabel({
   className,
   inset,
@@ -276,6 +295,7 @@ function ContextMenuLabel({
   )
 }
 
+/** Separator line between menu entries. */
 function ContextMenuSeparator({
   className,
   ...props
@@ -289,6 +309,7 @@ function ContextMenuSeparator({
   )
 }
 
+/** Keyboard shortcut hint beside an entry. */
 function ContextMenuShortcut({
   className,
   ...props

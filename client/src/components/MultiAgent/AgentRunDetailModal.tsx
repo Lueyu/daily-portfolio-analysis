@@ -1,3 +1,17 @@
+/**
+ * AgentRunDetailModal - full-screen dialog inspecting one multi-agent analysis run.
+ *
+ * Loads the run detail (getAgentRun) when opened and presents five tabs:
+ *   overview - pipeline timeline + rating summary + failure info
+ *   evidence - gathered evidence grouped by role (fundamental/news/technical/macro)
+ *   debate   - bull vs bear arguments plus critic challenge records
+ *   risk     - risk-gate rule results in a table
+ *   rating   - final rating, catalysts, risks, and uncertainties
+ *
+ * When the run is 'awaiting_human', a human-in-the-loop (HITL) action bar lets
+ * the user approve, modify, or reject the AI rating; approve/modify syncs the
+ * rating back to holdings and the analysis log (submitHumanDecision).
+ */
 import { useState, useEffect, useCallback } from 'react';
 import { toast } from 'sonner';
 import {
@@ -75,11 +89,15 @@ import type {
 } from '@shared/api.interface';
 
 interface AgentRunDetailModalProps {
+  /** Whether the dialog is open */
   open: boolean;
+  /** Called by the dialog to request open/close changes */
   onOpenChange: (open: boolean) => void;
+  /** ID of the run to inspect; null when closed/loading */
   runId: string | null;
 }
 
+/** Chinese display labels for each pipeline status */
 const statusLabels: Record<AgentRunStatus, string> = {
   pending: '等待中',
   fetching: '取证中',
@@ -92,6 +110,7 @@ const statusLabels: Record<AgentRunStatus, string> = {
   cancelled: '已取消',
 };
 
+/** Chinese display labels per evidence category */
 const roleLabels: Record<EvidenceRole, string> = {
   fundamental: '基本面',
   news: '新闻资讯',
@@ -99,6 +118,7 @@ const roleLabels: Record<EvidenceRole, string> = {
   macro: '宏观经济',
 };
 
+/** Lucide icon per evidence category, used as the section header icon */
 const roleIcons: Record<EvidenceRole, typeof FileText> = {
   fundamental: FileText,
   news: Newspaper,
@@ -106,6 +126,7 @@ const roleIcons: Record<EvidenceRole, typeof FileText> = {
   macro: Globe,
 };
 
+/** Ordered pipeline stages shown in the overview timeline (with their icons) */
 const pipelineSteps = [
   { key: 'fetching', label: '取证', icon: FileText },
   { key: 'debating', label: '多空辩论', icon: TrendingUp },
@@ -114,6 +135,7 @@ const pipelineSteps = [
   { key: 'completed', label: '最终评级', icon: Target },
 ] as const;
 
+/** Linear order of pipeline stages used to compute done/active/pending per step */
 const stepStatusOrder: AgentRunStatus[] = [
   'fetching',
   'debating',
@@ -122,6 +144,10 @@ const stepStatusOrder: AgentRunStatus[] = [
   'completed',
 ];
 
+/**
+ * Computes the timeline state of one pipeline step. Completed/awaiting runs show
+ * every step done; failed/cancelled runs mark steps after the failure point pending.
+ */
 function getPipelineStepState(
   stepKey: string,
   status: AgentRunStatus,
@@ -141,6 +167,10 @@ function getPipelineStepState(
   return 'pending';
 }
 
+/**
+ * Dialog body: fetches the run detail, renders the tabbed view, and owns the
+ * human-decision flow. Rendered content branches on loading/error/data states.
+ */
 function AgentRunDetailModal({
   open,
   onOpenChange,
@@ -150,6 +180,7 @@ function AgentRunDetailModal({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('overview');
+  // Which HITL control panel is shown: none | modify form open
   const [decisionMode, setDecisionMode] = useState<'none' | 'approve' | 'modify' | 'reject'>('none');
   const [submitting, setSubmitting] = useState(false);
 
@@ -160,6 +191,7 @@ function AgentRunDetailModal({
   const [modifyAction, setModifyAction] = useState('');
   const [modifyNote, setModifyNote] = useState('');
 
+  /** Loads the run detail and pre-fills the modify-form fields from the existing rating */
   const loadRun = useCallback(async (id: string) => {
     setLoading(true);
     setError(null);
@@ -180,6 +212,9 @@ function AgentRunDetailModal({
     }
   }, []);
 
+  // (Re)load whenever the dialog opens with a runId; reset tab/decision state and
+  // clear data when closed. Note: this modal loads once per open; live updates
+  // for in-progress runs are driven by the parent run list.
   useEffect(() => {
     if (open && runId) {
       loadRun(runId);
@@ -191,6 +226,11 @@ function AgentRunDetailModal({
     }
   }, [open, runId, loadRun]);
 
+  /**
+   * Submits the human decision for an awaiting_human run. 'modified' includes the
+   * edited rating fields; 'approved'/'modified' also flag syncToHoldings +
+   * syncToAnalysis so the rating propagates to the portfolio.
+   */
   const handleSubmitDecision = async (
     decision: 'approved' | 'modified' | 'rejected',
   ) => {
@@ -242,6 +282,7 @@ function AgentRunDetailModal({
     }
   };
 
+  // Group evidence items by their role for the Evidence tab accordions
   const evidenceByRole = run
     ? run.evidence.reduce<Record<EvidenceRole, typeof run.evidence>>(
         (acc, item) => {
@@ -253,6 +294,7 @@ function AgentRunDetailModal({
       )
     : ({} as Record<EvidenceRole, typeof run.evidence>);
 
+  // Split the debate into bull / bear sides and isolate critic challenge records
   const bullArguments = run?.arguments.filter(
     (a: BullBearArgument) => a.side === 'bull',
   ) || [];
@@ -1016,6 +1058,7 @@ function AgentRunDetailModal({
   );
 }
 
+/** Loading placeholder that mirrors the modal's pipeline timeline layout */
 function DetailSkeleton() {
   return (
     <div className="p-6 space-y-6">

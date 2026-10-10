@@ -1,5 +1,11 @@
 'use client';
 
+/**
+ * Scrollable list area of the combobox dropdown. Reads data/loading/error state
+ * from context and switches between placeholder, skeleton, spinner-overlay, error,
+ * empty and result states, rendering each item via the provided renderItem.
+ * Part of the vendored business-ui component library.
+ */
 import React, { useCallback } from 'react';
 
 import { BaseComboboxEmpty } from '@client/src/components/business-ui/entity-combobox/base-combobox-empty';
@@ -15,6 +21,7 @@ import { CommandGroup, CommandList } from '@client/src/components/ui/command';
 import { ScrollArea } from '@client/src/components/ui/scroll-area';
 import { Skeleton } from '@client/src/components/ui/skeleton';
 
+/** Props for BaseComboboxList. */
 export type BaseComboboxListProps<T = unknown> = {
   renderItem: (
     item: T,
@@ -24,7 +31,7 @@ export type BaseComboboxListProps<T = unknown> = {
   ) => React.ReactNode;
   getItemValue: (item: T) => ItemValue;
   /**
-   * 判断选项是否禁用
+   * Returns whether a given option should be disabled.
    */
   getOptionDisabled?: (value: ItemValue) => boolean;
   emptyText?: string;
@@ -38,6 +45,7 @@ export type BaseComboboxListProps<T = unknown> = {
   };
 };
 
+/** Renders the scrolling option list and its various loading/empty/error states. */
 export function BaseComboboxList<T>({
   renderItem,
   getItemValue,
@@ -79,17 +87,17 @@ export function BaseComboboxList<T>({
 
   const hasSearchQuery = debouncedSearch.trim() !== '';
 
-  // 1. 没有搜索词时显示 placeholder
+  // 1. No search query yet: show the "type a keyword" placeholder.
   const shouldShowPlaceHolder = !hasSearchQuery;
-  // 2. 搜索出错时显示错误状态
+  // 2. Search failed: show the error state.
   const shouldShowError = isError && hasSearchQuery;
-  // 3. 首次搜索无已有数据时显示骨架屏
+  // 3. First search with no existing data: show the skeleton.
   const shouldShowSkeleton =
     isFetching && (data === undefined || data?.length === 0) && hasSearchQuery;
-  // 4. 有已有内容触发搜索时显示蒙层 loading
+  // 4. Refreshing existing results: show a spinner overlay.
   const shouldShowSpinner =
     isFetching && data !== undefined && data.length > 0 && hasSearchQuery;
-  // 5. 搜索完成结果为空时显示空状态
+  // 5. Search finished with no results: show the empty state.
   const shouldShowEmpty =
     !isFetching && isSuccess && data?.length === 0 && hasSearchQuery;
 

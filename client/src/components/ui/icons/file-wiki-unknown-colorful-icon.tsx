@@ -1,5 +1,12 @@
+/**
+ * Colorful Wiki unknown file-type icon.
+ *
+ * Vendored colorful file-type SVG icon component.
+ */
+
 import * as React from 'react';
 
+/** FileWikiUnknownColorfulIcon component. */
 export function FileWikiUnknownColorfulIcon(
   props: React.SVGProps<SVGSVGElement>,
 ) {

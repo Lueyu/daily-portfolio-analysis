@@ -1,3 +1,11 @@
+/**
+ * @file pages/Analysis/DeepReportPage.tsx
+ * @description Route `/analysis/deep-report/:runId`: full-screen reader for a
+ * versioned Multi-Agent deep research report.
+ *
+ * Fetches the report by run id and delegates rendering to the shared
+ * `DeepReportView` component. Styled as a dark, immersive reader.
+ */
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Sparkles, Loader2 } from 'lucide-react';
@@ -15,6 +23,9 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import DeepReportView from '@/components/MultiAgent/DeepReportView';
 
+/**
+ * Deep report reader page.
+ */
 function DeepReportPage() {
   const { runId = '' } = useParams<{ runId: string }>();
   const navigate = useNavigate();

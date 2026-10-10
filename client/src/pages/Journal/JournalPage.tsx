@@ -1,3 +1,12 @@
+/**
+ * @file pages/Journal/JournalPage.tsx
+ * @description Route `/journal`: daily trading review journal.
+ *
+ * Shows a date navigator, an equity-curve chart from snapshots, and five
+ * editable sections (market summary, portfolio summary, actions, plan,
+ * lessons). A sidebar lists the most recent dates that have either a journal
+ * entry or a snapshot, for quick navigation.
+ */
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import { Edit3, Save, X } from 'lucide-react';
 import { toast } from 'sonner';
@@ -12,6 +21,7 @@ import { DateNavigator } from './DateNavigator';
 import { JournalChart } from './JournalChart';
 import { sections, JournalSectionCard } from './JournalSectionCard';
 
+/** Format a Date as a `YYYY-MM-DD` string for date inputs and API params. */
 function formatDateInput(d: Date): string {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -19,11 +29,19 @@ function formatDateInput(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
+/** Coerce a date value to a `YYYY-MM-DD` string, returning '' for invalid input. */
 function safeDateStr(value: string | null | undefined): string {
   const d = toDate(value);
   return d ? formatDateInput(d) : '';
 }
 
+/**
+ * Journal page component.
+ *
+ * State tracks the currently selected date, snapshots (for the chart and
+ * current-day summary), the journal entry for that date, edit-mode form
+ * values, and loading/saving flags.
+ */
 export default function JournalPage() {
   const [currentDate, setCurrentDate] = useState<Date>(() => new Date());
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
@@ -37,6 +55,7 @@ export default function JournalPage() {
 
   const dateStr = formatDateInput(currentDate);
 
+  /** Load the journal entries for a given date (takes the first one if several exist). */
   const loadJournal = useCallback(async (date: string) => {
     setLoadingJournal(true);
     try {
@@ -80,33 +99,39 @@ export default function JournalPage() {
     loadJournal(dateStr);
   }, [dateStr, loadJournal]);
 
+  /** Find the snapshot matching the currently selected date. */
   const currentSnapshot = useMemo(() => {
     return snapshots.find(
       (s) => safeDateStr(s.snapshotDate) === dateStr
     );
   }, [snapshots, dateStr]);
 
+  /** Step the selected date back by one day. */
   const handlePrevDay = () => {
     const d = new Date(currentDate);
     d.setDate(d.getDate() - 1);
     setCurrentDate(d);
   };
 
+  /** Step the selected date forward by one day. */
   const handleNextDay = () => {
     const d = new Date(currentDate);
     d.setDate(d.getDate() + 1);
     setCurrentDate(d);
   };
 
+  /** Set the selected date directly from the date picker. */
   const handleDateChange = (d: Date) => {
     setCurrentDate(d);
   };
 
+  /** Navigate to a date chosen from the history sidebar. */
   const handleSelectHistory = (date: string) => {
     const d = toDate(date);
     if (d) setCurrentDate(d);
   };
 
+  /** Copy the current journal values into the edit form and enter edit mode. */
   const startEdit = () => {
     setEditValues({
       marketSummary: journal?.marketSummary || '',
@@ -118,11 +143,16 @@ export default function JournalPage() {
     setEditing(true);
   };
 
+  /** Discard edits and exit edit mode. */
   const cancelEdit = () => {
     setEditing(false);
     setEditValues({});
   };
 
+  /**
+   * POST the edited journal sections. Empty fields are sent as undefined so
+   * the backend clears them. Refetches the journal on success.
+   */
   const saveJournal = async () => {
     setSaving(true);
     try {
@@ -151,6 +181,10 @@ export default function JournalPage() {
     }
   };
 
+  /**
+   * Build the history sidebar list: distinct dates that have either a journal
+   * entry or a snapshot, sorted descending, capped at 30.
+   */
   const historyDates = useMemo(() => {
     const dates = new Set<string>();
     journalList.forEach((j) => dates.add(j.journalDate));

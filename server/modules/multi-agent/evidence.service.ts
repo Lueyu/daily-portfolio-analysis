@@ -1,3 +1,22 @@
+/**
+ * EvidenceService — collects the evidence that feeds the multi-agent debate.
+ *
+ * Evidence is split into three parallel streams (fundamental, news, technical)
+ * collected via Promise.allSettled so that one failing source does not abort
+ * the others. When a stream rejects, a placeholder evidence row is inserted
+ * (with low relevanceScore) so the LLM debate still has context about what
+ * data is missing.
+ *
+ * Current state:
+ *  - Fundamental: live quote + portfolio position / watchlist row + a
+ *    placeholder note about missing valuation metrics.
+ *  - News: two placeholder rows (news source not yet integrated).
+ *  - Technical: intraday price action + estimated support/resistance + volume
+ *    placeholder (historical K-line data not yet integrated).
+ *
+ * Relevance score (0–1) is attached to each row; the pipeline does not use it
+ * for filtering today, but it is stored for future prompt-side ranking.
+ */
 import { Injectable, Inject, Logger } from '@nestjs/common';
 import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '@lark-apaas/fullstack-nestjs-core';
 import { eq } from 'drizzle-orm';
@@ -5,8 +24,10 @@ import { holdings, watchlist } from '@server/database/schema';
 import { QuoteService } from '@server/modules/quote/quote.service';
 import type { QuoteResponse } from '@shared/api.interface';
 
+/** High-level category of evidence; used to label evidence rows in the UI. */
 export type EvidenceRole = 'fundamental' | 'news' | 'technical';
 
+/** A single evidence item ready to be fed into an LLM prompt or persisted. */
 export interface EvidenceInput {
   role: EvidenceRole;
   evidenceType: string;
@@ -26,6 +47,13 @@ export class EvidenceService {
     private readonly quoteService: QuoteService,
   ) {}
 
+  /**
+   * Collect all evidence for a ticker. Runs the three collectors in parallel;
+   * partial failures are downgraded to placeholder rows rather than thrown.
+   * @param ticker the stock ticker to analyze.
+   * @param userId owner, used to fetch the caller's holdings/watchlist.
+   * @param portfolioContext caller's total portfolio value (for weight calc).
+   */
   async collectEvidence(
     ticker: string,
     userId: string,
@@ -81,6 +109,10 @@ export class EvidenceService {
     return allEvidence;
   }
 
+  /**
+   * Fundamental evidence: live quote, position/watchlist context, and a
+   * placeholder noting that valuation multiples (PE/PB/PS) are not yet wired in.
+   */
   private async collectFundamental(
     ticker: string,
     userId: string,
@@ -158,6 +190,7 @@ export class EvidenceService {
     return evidence;
   }
 
+  /** Build a single evidence row from a live quote response. */
   private buildQuoteEvidence(quote: QuoteResponse): EvidenceInput {
     const changePct = Number(quote.changePercent);
     const direction = changePct > 0 ? '上涨' : changePct < 0 ? '下跌' : '持平';
@@ -172,6 +205,11 @@ export class EvidenceService {
     };
   }
 
+  /**
+   * News evidence: currently two placeholder rows. A real news/sentiment feed
+   * has not been integrated; the placeholders nudge the LLM to treat news as
+   * neutral and to flag the gap.
+   */
   private async collectNews(ticker: string): Promise<EvidenceInput[]> {
     return [
       {
@@ -193,6 +231,11 @@ export class EvidenceService {
     ];
   }
 
+  /**
+   * Technical evidence: derived purely from the current quote (intraday range,
+   * trend, estimated support/resistance, volume). Historical indicators
+   * (MA/MACD/RSI/Bollinger) are not yet computed.
+   */
   private async collectTechnical(ticker: string): Promise<EvidenceInput[]> {
     const quote = await this.quoteService.getQuote(ticker);
 

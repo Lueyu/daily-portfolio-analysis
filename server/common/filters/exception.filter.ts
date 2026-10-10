@@ -1,17 +1,41 @@
+/**
+ * Global exception filter.
+ *
+ * Catches every unhandled exception thrown anywhere in the request lifecycle and
+ * normalizes it into the standard `ApiErrorResponse` JSON envelope, selecting the
+ * HTTP status and business `ResponseCode` based on the exception type:
+ *   1. `BusinessException`   -> its own code/message/httpStatus.
+ *   2. Nest `HttpException`  -> status mapped back to a `ResponseCode`.
+ *   3. Postgres error `22P02` (invalid text representation, e.g. malformed UUID)
+ *      -> treated as 404 NOT_FOUND so a bad UUID reads as "resource missing"
+ *         rather than a 500.
+ *   4. Anything else         -> 500 INTERNAL_ERROR (with stack/cause attached).
+ * Registered as `APP_FILTER` in `AppModule`.
+ */
 import { ExceptionFilter, Catch, ArgumentsHost, HttpException, HttpStatus } from '@nestjs/common';
 import type { Response } from 'express';
 import { BusinessException } from '../interfaces/exception.interface';
 import { HTTP_STATUS_TO_RESPONSE_CODE_MAP, ResponseCode } from '../constants/api_response_code';
 import { ApiErrorResponse } from '../interfaces/api_response.interface';
 
-// 全局异常过滤器，用于捕获所有未处理的异常
+/**
+ * Catch-all exception filter that turns exceptions into the unified error JSON
+ * body. It never throws; it always writes a response (unless headers were already
+ * sent).
+ */
 @Catch()
 export class GlobalExceptionFilter implements ExceptionFilter {
+  /**
+   * Handles a single thrown exception for the current HTTP request.
+   *
+   * @param exception The thrown value of any type.
+   * @param host      Nest arguments host, used to extract the Express response.
+   */
   catch(exception: unknown, host: ArgumentsHost) {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
-     
-    // 如果响应头已发送，则不处理
+
+    // If the response has already been committed, we cannot safely write again.
     if (response.headersSent) {
       return;
     }
@@ -20,7 +44,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     let httpStatus: HttpStatus;
 
     if (exception instanceof BusinessException) {
-      // 业务异常
+      // Domain-level business exception: trust its explicit code/message/status.
       httpStatus = exception.httpStatus;
       errorResponse = {
         error: {
@@ -32,7 +56,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         },
       };
     } else if (exception instanceof HttpException) {
-      // HTTP异常
+      // Standard Nest HTTP exception (e.g. NotFoundException, UnauthorizedException).
       httpStatus = exception.getStatus() as HttpStatus;
       const exceptionResponse = exception.getResponse();
 
@@ -49,22 +73,25 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       exception !== null &&
       (exception as { code?: unknown }).code === '22P02'
     ) {
-      // Postgres invalid_text_representation：路径/查询参数与列类型不匹配（最常见是非法 UUID）
-      // 与「合法 UUID 但记录不存在」走同一条 not-found 语义，避免 500 噪声
+      // Postgres 22P02 = invalid_text_representation: a path/query value did not
+      // match a column type (most often a malformed UUID). We fold it into the
+      // same "not found" semantics as a well-formed-but-missing UUID to avoid 500 noise.
       httpStatus = HttpStatus.NOT_FOUND;
       errorResponse = {
         error: {
           code: ResponseCode.NOT_FOUND,
+          // NOTE: Chinese user-facing message returned to the client (existing behavior).
           message: '资源不存在',
           timestamp: Date.now(),
         },
       };
     } else {
-      // 未知异常
+      // Unknown/unexpected exception: surface as a 500 with diagnostic info.
       httpStatus = HttpStatus.INTERNAL_SERVER_ERROR;
       errorResponse = {
         error: {
           code: ResponseCode.INTERNAL_ERROR,
+          // NOTE: Chinese user-facing message returned to the client (existing behavior).
           message: '服务器内部错误',
           stack: (exception as Error).stack,
           cause: (exception as Error).cause as string,

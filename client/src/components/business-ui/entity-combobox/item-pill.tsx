@@ -1,5 +1,11 @@
 'use client';
 
+/**
+ * ItemPill: a badge-style pill used to display a selected entity (user, chat,
+ * department) as a removable tag. Also exports helpers to detect hex colors and to
+ * render the pill avatar (image, colored fallback, or initial letter).
+ * Part of the vendored business-ui component library.
+ */
 import React from 'react';
 
 import {
@@ -16,87 +22,86 @@ import {
 } from '@client/src/components/ui/avatar';
 import { Badge } from '@client/src/components/ui/badge';
 
+/** Props for ItemPill. */
 export type ItemPillProps = {
   /**
-   * 显示的文本
+   * Text shown inside the pill.
    */
   label: string;
 
   /**
-   * 尺寸
+   * Pill size.
    * @default "medium"
    */
   size?: ComboboxSize;
 
   /**
-   * 头像 URL
+   * Avatar image URL.
    */
   avatarUrl?: string;
 
   /**
-   * 头像内容（用于自定义头像显示）
+   * Custom avatar node (overrides avatarUrl rendering).
    */
   avatar?: React.ReactNode;
 
   /**
-   * 是否显示头像占位符（当没有头像 URL 时显示）
+   * Whether to render an initial-letter fallback when no avatar URL is present.
    * @default false
    *
    */
   avatarFallback?: boolean;
 
   /**
-   * 自定义样式
+   * Custom className.
    */
   className?: string;
   /**
-   * 是否禁用
+   * Whether the pill is disabled.
    */
   disabled?: boolean;
   /**
-   * 最大文本长度
+   * Truncate the label after this many characters.
    */
   maxTextLength?: number;
 
   /**
-   * 后缀
+   * Optional suffix node (e.g. a close button) rendered after the label.
    */
   suffix?: React.ReactNode;
 };
 
-// 检查是否是 16 进制 RGB 颜色（如 #RRGGBB 或 #RGB）
+/** Returns whether the string is a hex RGB color (#RGB or #RRGGBB). */
 export const isHexColor = (str?: string): boolean => {
   if (!str) return false;
   return /^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(str);
 };
 
-/**
- * renderPillAvatar 的参数类型
- */
+/** Options for renderPillAvatar. */
 export type RenderPillAvatarOptions = {
   /**
-   * 头像 URL
+   * Avatar image URL.
    */
   avatarUrl?: string;
   /**
-   * 显示的文本（用于 fallback 首字母）
+   * Label used to derive the fallback initial letter.
    */
   label: string;
   /**
-   * 尺寸
+   * Avatar size.
    * @default "medium"
    */
   size?: ComboboxSize;
   /**
-   * 是否显示头像占位符（当没有头像 URL 时显示）
+   * Whether to render an initial-letter fallback when no avatar URL is present.
    * @default true
    */
   avatarFallback?: boolean;
 };
 
 /**
- * 渲染 Pill 头像的辅助函数
- * 可被其他组件复用（如 UserPill）
+ * Renders the avatar for a pill: image, colored circle for a hex color, or an
+ * initial-letter fallback. Reusable by other components (e.g. UserPill).
  */
 export const renderPillAvatar = ({
   avatarUrl,
@@ -105,7 +110,7 @@ export const renderPillAvatar = ({
   avatarFallback = true,
 }: RenderPillAvatarOptions): React.ReactNode => {
   if (avatarUrl) {
-    // 如果是 16 进制颜色，渲染带背景色的头像和用户名首字
+    // A hex color renders as a colored circle with the user's first initial.
     if (isHexColor(avatarUrl)) {
       return (
         <Avatar className={tagAvatarVariants({ size })}>
@@ -133,6 +138,7 @@ export const renderPillAvatar = ({
   return null;
 };
 
+/** Badge-style pill showing an avatar and a (truncated) label, with an optional suffix. */
 export const ItemPill: React.FC<ItemPillProps> = ({
   className,
   avatarUrl,
@@ -168,9 +174,9 @@ export const ItemPill: React.FC<ItemPillProps> = ({
         className,
       )}
     >
-      {/* 头像 */}
+      {/* Avatar */}
       {avatarElement}
-      {/* 文本 */}
+      {/* Label text */}
       <span className={itemPillTextVariants({ size })}>{displayLabel}</span>
 
       {suffix}

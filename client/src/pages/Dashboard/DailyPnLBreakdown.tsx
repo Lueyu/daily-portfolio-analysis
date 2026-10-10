@@ -1,3 +1,12 @@
+/**
+ * @file pages/Dashboard/DailyPnLBreakdown.tsx
+ * @description Per-holding daily P/L table on the Dashboard.
+ *
+ * For each holding, multiplies share count by the quote's day change to derive
+ * daily P/L, then sorts by P/L descending and computes each row's contribution
+ * share against the sum of absolute P/Ls. Shows at most 10 rows by default with
+ * an expand toggle.
+ */
 import { useMemo, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import type { Holding, Currency, QuoteResponse, Market } from '@shared/api.interface';
@@ -25,13 +34,21 @@ import {
   EmptyDescription,
 } from '@/components/ui/empty';
 
+/** Props for {@link DailyPnLBreakdown}. */
 interface DailyPnLBreakdownProps {
+  /** Current open positions. */
   holdings: Holding[];
+  /** Live quote map keyed by ticker (from useMarketQuotes). */
   quotes: Record<string, QuoteResponse>;
+  /** Reporting currency for converted amounts. */
   baseCurrency: Currency;
+  /** Shows a placeholder while quotes are still warming up. */
   loading?: boolean;
 }
 
+/**
+ * Pick a display company name, returning empty string when it duplicates the ticker.
+ */
 function displayCompany(
   company: string | null | undefined,
   ticker: string,
@@ -43,12 +60,17 @@ function displayCompany(
   return name;
 }
 
+/** Chinese labels per market for the row badges. */
 const MARKET_LABELS: Record<Market, string> = {
   US: '美股',
   HK: '港股',
   CN: 'A股',
 };
 
+/**
+ * Render the per-holding daily P/L breakdown table.
+ * @param props - See {@link DailyPnLBreakdownProps}.
+ */
 export default function DailyPnLBreakdown({
   holdings,
   quotes,

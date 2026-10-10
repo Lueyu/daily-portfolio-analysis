@@ -1,5 +1,11 @@
 "use client"
 
+/**
+ * Horizontally scrolling carousel/slider with navigation controls (Embla wrapper).
+ *
+ * Vendored shadcn-style UI primitive (Radix UI + Tailwind CSS).
+ */
+
 import * as React from "react"
 import useEmblaCarousel, {
   type UseEmblaCarouselType,
@@ -30,8 +36,10 @@ type CarouselContextProps = {
   canScrollNext: boolean
 } & CarouselProps
 
+/** CarouselContext component. */
 const CarouselContext = React.createContext<CarouselContextProps | null>(null)
 
+/** useCarousel component. */
 function useCarousel() {
   const context = React.useContext(CarouselContext)
 
@@ -42,6 +50,7 @@ function useCarousel() {
   return context
 }
 
+/** Carousel root. */
 function Carousel({
   orientation = "horizontal",
   opts,
@@ -132,6 +141,7 @@ function Carousel({
   )
 }
 
+/** Scrollable track of slides. */
 function CarouselContent({ className, ...props }: React.ComponentProps<"div">) {
   const { carouselRef, orientation } = useCarousel()
 
@@ -153,6 +163,7 @@ function CarouselContent({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
+/** One slide in the carousel. */
 function CarouselItem({ className, ...props }: React.ComponentProps<"div">) {
   const { orientation } = useCarousel()
 
@@ -171,6 +182,7 @@ function CarouselItem({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
+/** Previous-slide control. */
 function CarouselPrevious({
   className,
   variant = "outline",
@@ -201,6 +213,7 @@ function CarouselPrevious({
   )
 }
 
+/** Next-slide control. */
 function CarouselNext({
   className,
   variant = "outline",

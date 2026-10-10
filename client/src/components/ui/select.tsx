@@ -1,12 +1,20 @@
 "use client"
 
+/**
+ * Custom single-option select dropdown with searchable content and items (Radix Select).
+ *
+ * Vendored shadcn-style UI primitive (Radix UI + Tailwind CSS).
+ */
+
 import * as React from "react"
 import * as SelectPrimitive from "@radix-ui/react-select"
 import { CheckIcon, ChevronDownIcon, ChevronUpIcon } from "lucide-react"
 
 import { cn } from "@/lib/utils"
+/** EMPTY_SENTINEL component. */
 const EMPTY_SENTINEL = "__dont__use__this__empty__value__"
 
+/** Select dropdown root. */
 function Select({
   value,
   defaultValue,
@@ -29,18 +37,21 @@ function Select({
   )
 }
 
+/** Group of select items. */
 function SelectGroup({
   ...props
 }: React.ComponentProps<typeof SelectPrimitive.Group>) {
   return <SelectPrimitive.Group data-slot="select-group" {...props} />
 }
 
+/** Placeholder/selected value display. */
 function SelectValue({
   ...props
 }: React.ComponentProps<typeof SelectPrimitive.Value>) {
   return <SelectPrimitive.Value data-slot="select-value" {...props} />
 }
 
+/** Button that opens the dropdown. */
 function SelectTrigger({
   className,
   size = "default",
@@ -73,6 +84,7 @@ function SelectTrigger({
   )
 }
 
+/** Floating options panel. */
 function SelectContent({
   className,
   children,
@@ -110,6 +122,7 @@ function SelectContent({
   )
 }
 
+/** Non-interactive group label. */
 function SelectLabel({
   className,
   ...props
@@ -130,6 +143,7 @@ type SelectItemProps = Omit<
   value: string
 }
 
+/** One selectable option. */
 function SelectItem({
   className,
   children,
@@ -180,6 +194,7 @@ function SelectItem({
   )
 }
 
+/** Separator between options. */
 function SelectSeparator({
   className,
   ...props
@@ -193,6 +208,7 @@ function SelectSeparator({
   )
 }
 
+/** Scroll-up affordance in long lists. */
 function SelectScrollUpButton({
   className,
   ...props
@@ -211,6 +227,7 @@ function SelectScrollUpButton({
   )
 }
 
+/** Scroll-down affordance in long lists. */
 function SelectScrollDownButton({
   className,
   ...props

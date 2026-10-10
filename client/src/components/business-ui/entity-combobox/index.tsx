@@ -1,3 +1,9 @@
+/**
+ * Public entry point for the generic combobox foundation: re-exports the
+ * EntityCombobox state container, BaseCombobox and its subcomponents, the ItemPill
+ * tag, and the shared prop/value types.
+ * Part of the vendored business-ui component library.
+ */
 // Entity Combobox
 export { EntityCombobox } from '@client/src/components/business-ui/entity-combobox/entity-combobox';
 export { useEntityComboboxContext } from '@client/src/components/business-ui/entity-combobox/context';

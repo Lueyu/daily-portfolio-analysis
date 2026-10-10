@@ -1,4 +1,11 @@
-// /* 模板代码 仅作示例 */
+/**
+ * Hello example service (template/disabled).
+ *
+ * Fully commented-out scaffold showing the expected service pattern: inject the
+ * Drizzle PostgreSQL database via `DRIZZLE_DATABASE`, write owner-scoped queries
+ * (filtering on the requesting `userId`), and log/rerwrap failures. Not active.
+ */
+// /* Template code, example only. */
 // import { Injectable, Inject, Logger } from '@nestjs/common';
 // import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '@lark-apaas/fullstack-nestjs-core';
 // import { record } from '@server/database/schema';

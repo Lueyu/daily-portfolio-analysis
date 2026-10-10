@@ -1,5 +1,12 @@
 'use client';
 
+/**
+ * useChatValue: normalizes ChatSelect's external value into the Chat objects
+ * expected by BaseCombobox. In ID mode it fetches full chat metadata for the
+ * provided chat IDs, creates "unknown chat" placeholders for unresolved IDs, and
+ * converts internal values back to the external string/object shape on change.
+ * Part of the vendored business-ui component library.
+ */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { listChatsByIds } from '@client/src/components/business-ui/api/chats/service';
@@ -17,19 +24,18 @@ import { logger } from '@lark-apaas/client-toolkit/logger';
 
 export type UseChatValueResult = {
   /**
-   * 标准化后的内部 value（Chat 对象格式）
-   * 用于传递给 BaseCombobox
+   * Normalized internal value (Chat object format), passed to BaseCombobox.
    */
   internalValue: Chat | Chat[] | null;
 
   /**
-   * 是否正在加载群组信息
+   * Whether chat info is still being loaded.
    */
   isLoading: boolean;
 
   /**
-   * 将内部 Chat 对象转换回外部格式
-   * ID 模式时返回字符串，对象模式时返回 Chat
+   * Converts the internal Chat objects back to the external shape:
+   * a string/string[] in ID mode, or the Chat object(s) in object mode.
    */
   toExternalValue: (
     internalVal: Chat | Chat[] | null,
@@ -38,15 +44,15 @@ export type UseChatValueResult = {
 };
 
 /**
- * 处理 ChatSelect 的 value 类型转换
+ * Handles value-type conversion for ChatSelect.
  *
- * - 根据 valueType 决定 value 是 chatID 字符串还是 Chat 对象
- * - ID 模式下调用搜索 API 获取完整群组信息
- * - 无效 ID 生成 "未知群组" 占位
+ * - valueType decides whether value is a chatID string or a Chat object.
+ * - In ID mode it calls the search API to fetch full chat info.
+ * - Invalid IDs get an "unknown chat" placeholder.
  *
- * @param value - 外部传入的 value
- * @param multiple - 是否多选模式
- * @param valueType - 值类型，'string' 表示 ID 模式，'object' 表示 Chat 对象模式
+ * @param value - The externally provided value.
+ * @param multiple - Whether multi-select mode is enabled.
+ * @param valueType - 'string' for ID mode, 'object' for Chat-object mode.
  */
 export function useChatValue(
   value: ChatSelectValue,
@@ -67,7 +73,7 @@ export function useChatValue(
     return currentIds.filter((id) => !resolvedChats.has(String(id)));
   }, [isIdMode, currentIds, resolvedChats]);
 
-  // 稳定化 missingIds 引用
+  // Stabilize the missingIds reference so the effect depends on a string key.
   const missingIdsKey = missingIds.join(',');
 
   useEffect(() => {
@@ -91,7 +97,7 @@ export function useChatValue(
             const chat = chatInfoToChat(chatInfo);
             next.set(String(chatId), chat);
           }
-          // 标记未找到的 ID 为未知群组
+          // Mark IDs that were not found as unknown-chat placeholders.
           for (const id of ids) {
             if (!next.has(String(id))) {
               next.set(String(id), createUnknownChat(id));
@@ -160,14 +166,14 @@ export function useChatValue(
       }
 
       if (isIdMode) {
-        // ID 模式：返回 string 或 string[]
+        // ID mode: return a string or string[].
         if (isMultiple) {
           return (internalVal as Chat[]).map((c) => String(c.id));
         }
         return String((internalVal as Chat).id);
       }
 
-      // Object 模式：直接返回 Chat 对象
+      // Object mode: return the Chat object(s) as-is.
       return internalVal;
     },
     [isIdMode],

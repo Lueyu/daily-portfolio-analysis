@@ -1,5 +1,11 @@
 'use client';
 
+/**
+ * Toast notification <Toaster> provider configured with the app theme.
+ *
+ * Vendored shadcn-style UI primitive (Radix UI + Tailwind CSS).
+ */
+
 import * as React from 'react';
 import { cn } from '@/lib/utils';
 import {
@@ -13,6 +19,7 @@ import {
 import { useTheme } from 'next-themes';
 import { Toaster as Sonner, type ToasterProps } from 'sonner';
 
+/** Toast notification renderer (sonner). */
 function Toaster({ className, style, icons, ...props }: ToasterProps) {
   const { theme = 'system' } = useTheme();
 

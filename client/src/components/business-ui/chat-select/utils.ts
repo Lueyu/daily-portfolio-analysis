@@ -1,24 +1,24 @@
+/**
+ * Pure helpers for ChatSelect: internationalized text resolution, conversion from
+ * raw ChatInfo to the normalized Chat item, unknown-chat placeholders, and value/ID
+ * extraction utilities.
+ * Part of the vendored business-ui component library.
+ */
 import type { Chat, ChatInfo, ChatSelectValue, I18nText } from './types';
 
-/**
- * 获取国际化文本显示值（独立实现，不依赖其他组件）
- */
+/** Resolves the display value of an internationalized text (standalone implementation). */
 function getI18nText(text: I18nText | string | undefined): string {
   if (!text) return '';
   if (typeof text === 'string') return text;
   return text.zh_cn || text.en_us || text.ja_jp || '';
 }
 
-/**
- * 获取群组显示名称
- */
+/** Returns the display name for a chat. */
 export function getChatDisplayName(name: ChatInfo['name']): string {
   return getI18nText(name);
 }
 
-/**
- * ChatInfo → Chat 标准化转换
- */
+/** Normalizes a raw ChatInfo into a Chat item used by BaseCombobox. */
 export function chatInfoToChat(chatInfo: ChatInfo): Chat {
   return {
     id: chatInfo.chatID,
@@ -28,9 +28,7 @@ export function chatInfoToChat(chatInfo: ChatInfo): Chat {
   };
 }
 
-/**
- * 创建未知群组占位（ID 无法解析时使用）
- */
+/** Creates an "unknown chat" placeholder for an ID that cannot be resolved. */
 export function createUnknownChat(id: string): Chat {
   return {
     id,
@@ -40,9 +38,7 @@ export function createUnknownChat(id: string): Chat {
   };
 }
 
-/**
- * 判断 value 是否为 ID 模式（字符串或字符串数组）
- */
+/** Returns whether the value is in ID mode (a string or string array). */
 export function isIdModeValue(
   value: ChatSelectValue,
 ): value is string | string[] {
@@ -58,9 +54,7 @@ export function isIdModeValue(
   return false;
 }
 
-/**
- * 从 value 中提取 ID 列表
- */
+/** Extracts the list of chat IDs from a value (string or Chat object shape). */
 export function extractIdsFromValue(value: ChatSelectValue): string[] {
   if (value === null || value === undefined) {
     return [];

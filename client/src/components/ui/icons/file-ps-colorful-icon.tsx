@@ -1,5 +1,12 @@
+/**
+ * Colorful Adobe Photoshop file-type icon.
+ *
+ * Vendored colorful file-type SVG icon component.
+ */
+
 import * as React from 'react';
 
+/** FilePsColorfulIcon component. */
 export function FilePsColorfulIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
     <svg {...props} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">

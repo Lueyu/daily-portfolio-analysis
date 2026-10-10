@@ -1,7 +1,14 @@
+/**
+ * Styled single-line text input field.
+ *
+ * Vendored shadcn-style UI primitive (Radix UI + Tailwind CSS).
+ */
+
 import * as React from "react"
 
 import { cn } from "@/lib/utils"
 
+/** Styled text input. */
 function Input({ className, type, ...props }: React.ComponentProps<"input">) {
   return (
     <input

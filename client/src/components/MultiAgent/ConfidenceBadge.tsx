@@ -1,11 +1,22 @@
+/**
+ * ConfidenceBadge - renders the AI analyst's confidence level as a colored outline badge.
+ *
+ * Confidence levels are produced by the multi-agent rating pipeline (AgentConfidence):
+ *   - high   -> emerald (strong evidence, low uncertainty)
+ *   - medium -> amber   (mixed / partial evidence)
+ *   - low    -> slate   (weak evidence, high uncertainty)
+ */
 import { Badge } from '@/components/ui/badge';
 import type { AgentConfidence } from '@shared/api.interface';
 
 interface ConfidenceBadgeProps {
+  /** Confidence level assigned by the multi-agent rating */
   confidence: AgentConfidence;
+  /** Badge size: 'sm' for dense lists/cards, 'md' for headers (default 'md') */
   size?: 'sm' | 'md';
 }
 
+/** Human-readable label + Tailwind color classes per confidence level */
 const confidenceMap: Record<AgentConfidence, { label: string; className: string }> = {
   high: {
     label: '高置信度',
@@ -21,11 +32,16 @@ const confidenceMap: Record<AgentConfidence, { label: string; className: string 
   },
 };
 
+/** Compact padding/typography presets for the two supported sizes */
 const sizeClasses: Record<'sm' | 'md', string> = {
   sm: 'text-xs px-2 py-0 h-5',
   md: 'text-sm px-2.5 py-0.5 h-6',
 };
 
+/**
+ * Renders an outline Badge whose color encodes the confidence level.
+ * Looks up label + color pair from confidenceMap, then overlays sizeClasses.
+ */
 function ConfidenceBadge({ confidence, size = 'md' }: ConfidenceBadgeProps) {
   const { label, className } = confidenceMap[confidence];
   return (

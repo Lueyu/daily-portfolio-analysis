@@ -1,3 +1,11 @@
+/**
+ * @file pages/Transactions/AddClosedDialog.tsx
+ * @description Create-a-closed-position dialog.
+ *
+ * Only ticker is required. Realized P/L and return % can be entered manually
+ * or auto-derived from shares × (sellPrice − buyPrice); a live preview card
+ * shows the derived P/L and return while the user types.
+ */
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { createClosed } from '@/api';
@@ -20,12 +28,16 @@ import {
   cn,
 } from '@/utils/format';
 
+/** Props for {@link AddClosedDialog}. */
 interface AddClosedDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onCreated: () => void;
 }
 
+/**
+ * Render the add-closed-position dialog with live P/L preview.
+ */
 export default function AddClosedDialog({
   open,
   onOpenChange,
@@ -52,6 +64,7 @@ export default function AddClosedDialog({
   const autoReturn =
     shares > 0 && buyPrice > 0 ? ((sellPrice - buyPrice) / buyPrice) * 100 : 0;
 
+  /** Reset the form to blank after a successful create. */
   const reset = () => {
     setForm({
       ticker: '',
@@ -67,6 +80,10 @@ export default function AddClosedDialog({
     });
   };
 
+  /**
+   * Validate and submit. If realized P/L / return % are left blank, derive
+   * them from shares, buyPrice, and sellPrice.
+   */
   const handleSubmit = async () => {
     if (!form.ticker.trim()) {
       toast.error('请输入代码');

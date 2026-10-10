@@ -1,5 +1,11 @@
 'use client';
 
+/**
+ * UserItem: renders one user row in the UserSelect dropdown — avatar (with a
+ * conversion spinner overlay), highlighted name, an "external user" tag, and the
+ * department/subtitle line.
+ * Part of the vendored business-ui component library.
+ */
 import { Loader2 } from 'lucide-react';
 
 import { BaseComboboxItem } from '@client/src/components/business-ui/entity-combobox/base-combobox-item';
@@ -21,12 +27,14 @@ import {
   AvatarImage,
 } from '@client/src/components/ui/avatar';
 
+/** Small inline badge marking a user as external. */
 const ExternalUserTag = () => (
   <span className="dark:blue-200 inline-flex shrink-0 items-center rounded-sm bg-blue-500/20 px-1.5 py-0.5 text-xs leading-4 text-blue-900">
     外部
   </span>
 );
 
+/** Renders a single selectable user row. */
 export const UserItem = ({
   userValue,
   isSelected,

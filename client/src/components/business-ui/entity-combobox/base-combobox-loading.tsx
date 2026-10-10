@@ -1,8 +1,13 @@
 'use client';
 
+/**
+ * Centered spinner shown in the combobox dropdown while results are loading.
+ * Part of the vendored business-ui component library.
+ */
 import { cn } from '@/lib/utils';
 import { Spinner } from '@client/src/components/ui/spinner';
 
+/** Renders the loading spinner. */
 export const BaseComboboxLoading = ({
   className,
 }: {

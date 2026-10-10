@@ -1,17 +1,25 @@
 "use client"
 
+/**
+ * Collapsible accordion container with items, trigger headers, and expandable content panels.
+ *
+ * Vendored shadcn-style UI primitive (Radix UI + Tailwind CSS).
+ */
+
 import * as React from "react"
 import * as AccordionPrimitive from "@radix-ui/react-accordion"
 import { ChevronDownIcon } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 
+/** Accordion root container. */
 function Accordion({
   ...props
 }: React.ComponentProps<typeof AccordionPrimitive.Root>) {
   return <AccordionPrimitive.Root data-slot="accordion" {...props} />
 }
 
+/** One collapsible accordion section. */
 function AccordionItem({
   className,
   ...props
@@ -25,6 +33,7 @@ function AccordionItem({
   )
 }
 
+/** Clickable header that toggles its section open/closed. */
 function AccordionTrigger({
   className,
   children,
@@ -47,6 +56,7 @@ function AccordionTrigger({
   )
 }
 
+/** Expandable body panel of an accordion section. */
 function AccordionContent({
   className,
   children,

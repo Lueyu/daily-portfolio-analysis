@@ -1,3 +1,9 @@
+/**
+ * Thin service wrapper around the platform UserService for searching users,
+ * batch-fetching users, and converting external contacts, used by UserSelect
+ * and the user display components.
+ * Part of the vendored business-ui component library.
+ */
 import {
   UserService,
   type AccountType,
@@ -9,18 +15,14 @@ import {
 
 const userService = new UserService();
 
-/**
- * 搜索用户
- */
+/** Searches users matching the query string, including external contacts. */
 export async function searchUsers(
   params: SearchUsersParams,
 ): Promise<SearchUsersResponse> {
   return userService.searchUsers({ ...params, searchExternalContact: true });
 }
 
-/**
- * 批量根据用户 ID 查询用户信息
- */
+/** Batch-fetches user info for a list of user IDs (numeric IDs only). */
 export async function listUsersByIds(
   userIds: string[],
 ): Promise<BatchGetUsersResponse> {
@@ -28,9 +30,7 @@ export async function listUsersByIds(
   return userService.listUsersByIds(numericIds);
 }
 
-/**
- * 调用开户接口，将外部联系人的 larkUserID 转换为已注册用户
- */
+/** Calls the onboarding API to convert an external contact's larkUserID into a registered user. */
 export async function convertExternalContact(
   larkUserID: string,
 ): Promise<ConvertExternalContactResponse> {

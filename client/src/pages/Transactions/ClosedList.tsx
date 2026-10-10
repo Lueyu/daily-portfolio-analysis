@@ -1,3 +1,10 @@
+/**
+ * @file pages/Transactions/ClosedList.tsx
+ * @description Mobile card list of closed positions (realized trades).
+ *
+ * Each card shows ticker, realized P/L (colored by sign), return %, open/close
+ * dates, buy/sell prices, shares, and optional notes.
+ */
 import { TrendingDown, Plus } from 'lucide-react';
 import type { ClosedPosition } from '@shared/api.interface';
 import {
@@ -21,6 +28,7 @@ import {
   EmptyTitle,
 } from '@/components/ui/empty';
 
+/** Props for {@link ClosedList}. */
 interface ClosedListProps {
   loading: boolean;
   error: string | null;
@@ -28,6 +36,9 @@ interface ClosedListProps {
   onAdd: () => void;
 }
 
+/**
+ * Render the mobile closed-position card list.
+ */
 export default function ClosedList({
   loading,
   error,

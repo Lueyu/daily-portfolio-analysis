@@ -1,5 +1,11 @@
 "use client"
 
+/**
+ * Recharts chart wrapper providing themed ChartContainer, tooltip, legend, and legend-tooltip primitives.
+ *
+ * Vendored shadcn-style UI primitive (Radix UI + Tailwind CSS).
+ */
+
 import * as React from "react"
 import * as RechartsPrimitive from "recharts"
 
@@ -22,8 +28,10 @@ type ChartContextProps = {
   config: ChartConfig
 }
 
+/** ChartContext component. */
 const ChartContext = React.createContext<ChartContextProps | null>(null)
 
+/** useChart component. */
 function useChart() {
   const context = React.useContext(ChartContext)
 
@@ -34,6 +42,7 @@ function useChart() {
   return context
 }
 
+/** Responsive wrapper that themes a Recharts chart. */
 function ChartContainer({
   id,
   className,
@@ -69,6 +78,7 @@ function ChartContainer({
   )
 }
 
+/** ChartStyle component. */
 const ChartStyle = ({ id, config }: { id: string; config: ChartConfig }) => {
   const colorConfig = Object.entries(config).filter(
     ([, config]) => config.theme || config.color
@@ -102,8 +112,10 @@ ${colorConfig
   )
 }
 
+/** Themed chart tooltip content. */
 const ChartTooltip = RechartsPrimitive.Tooltip
 
+/** Formatted tooltip body with labels/values. */
 function ChartTooltipContent({
   active,
   payload,
@@ -250,8 +262,10 @@ function ChartTooltipContent({
   )
 }
 
+/** Themed chart legend content. */
 const ChartLegend = RechartsPrimitive.Legend
 
+/** Formatted legend body. */
 function ChartLegendContent({
   className,
   hideIcon = false,

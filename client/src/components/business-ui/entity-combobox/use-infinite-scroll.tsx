@@ -1,47 +1,54 @@
 'use client';
 
+/**
+ * useInfiniteScroll: scroll-based pagination helper. Uses IntersectionObserver on
+ * a sentinel element at the list bottom to trigger loading more results.
+ * Part of the vendored business-ui component library.
+ */
 import { useCallback, useEffect, useRef } from 'react';
 
+/** Options for useInfiniteScroll. */
 export type UseInfiniteScrollOptions = {
   /**
-   * 加载更多数据的回调函数
+   * Callback that loads more data.
    */
   onLoadMore: () => void;
   /**
-   * 是否还有更多数据
+   * Whether more data remains to load.
    */
   hasMore: boolean;
   /**
-   * 是否正在加载中
+   * Whether a page is currently loading.
    */
   isLoading: boolean;
   /**
-   * 是否启用无限滚动
+   * Whether infinite scrolling is enabled.
    * @default true
    */
   enabled?: boolean;
   /**
-   * IntersectionObserver 的 threshold
+   * IntersectionObserver threshold.
    * @default 0.1
    */
   threshold?: number;
   /**
-   * IntersectionObserver 的 rootMargin，用于提前触发加载
+   * IntersectionObserver rootMargin; triggers loading slightly ahead of reaching the bottom.
    * @default '50px'
    */
   rootMargin?: string;
 };
 
+/** Return value of useInfiniteScroll. */
 export type UseInfiniteScrollResult = {
   /**
-   * 绑定到触发元素的 ref
+   * Ref to attach to the sentinel trigger element.
    */
   triggerRef: React.RefObject<HTMLDivElement | null>;
 };
 
 /**
- * 无限滚动加载 hook
- * 使用 IntersectionObserver 检测滚动触底，自动触发加载更多
+ * Infinite-scroll hook: observes a bottom sentinel and auto-loads more when it
+ * enters the viewport.
  *
  * @example
  * ```tsx

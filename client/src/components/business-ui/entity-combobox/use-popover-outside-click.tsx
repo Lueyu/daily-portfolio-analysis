@@ -1,8 +1,12 @@
+/**
+ * usePopoverOutsideClick: closes the popover when the user clicks outside both the
+ * popover and the trigger. Currently used in search mode.
+ * Part of the vendored business-ui component library.
+ */
 import { useEffect } from 'react';
 
 /**
- * 处理点击外部关闭浮层的 Hook
- * 仅在 search 模式下使用
+ * Closes the popover on an outside mousedown while it is open and enabled.
  */
 export function usePopoverOutsideClick(
   open: boolean,

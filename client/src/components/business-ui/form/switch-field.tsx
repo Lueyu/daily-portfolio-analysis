@@ -1,3 +1,8 @@
+/**
+ * SwitchField: a form-bound toggle switch rendered inside FieldLayout, wired to
+ * the surrounding form field context.
+ * Part of the vendored business-ui component library.
+ */
 import { FieldLayout } from '@client/src/components/business-ui/form/field-layout';
 import { useFieldContext } from '@client/src/components/business-ui/form/hooks/form-context';
 import {
@@ -11,12 +16,14 @@ import type {
 } from '@client/src/components/business-ui/form/types';
 import { Switch } from '@client/src/components/ui/switch';
 
+/** Props for SwitchField. */
 type SwitchFieldProps = CommonFieldProps &
   React.ComponentProps<typeof Switch> & {
     classNames?: Partial<FieldLayoutClassNames & Record<'switch', string>>;
     styles?: Partial<FieldLayoutStyles & Record<'switch', React.CSSProperties>>;
   };
 
+/** Form-bound toggle switch field with label and validation display. */
 export function SwitchField(props: SwitchFieldProps) {
   const {
     label,

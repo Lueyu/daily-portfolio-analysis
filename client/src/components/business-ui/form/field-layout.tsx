@@ -1,3 +1,9 @@
+/**
+ * FieldLayout: shared layout wrapper for a single form field. Renders the label
+ * (with required asterisk), description, control, and error message in the chosen
+ * orientation.
+ * Part of the vendored business-ui component library.
+ */
 import { Asterisk } from 'lucide-react';
 
 import type { FieldLayoutProps } from '@client/src/components/business-ui/form/types';
@@ -10,6 +16,7 @@ import {
   FieldLabel,
 } from '@client/src/components/ui/field';
 
+/** Renders the label/description/control/error layout for a form field. */
 export function FieldLayout({
   label,
   children,

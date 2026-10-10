@@ -1,5 +1,11 @@
 "use client"
 
+/**
+ * Compound input group that can prefix/suffix icons or add-ons around a text input.
+ *
+ * Vendored shadcn-style UI primitive (Radix UI + Tailwind CSS).
+ */
+
 import * as React from "react"
 import { cva, type VariantProps } from "class-variance-authority"
 
@@ -8,6 +14,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 
+/** Input group root. */
 function InputGroup({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
@@ -36,6 +43,7 @@ function InputGroup({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
+/** inputGroupAddonVariants component. */
 const inputGroupAddonVariants = cva(
   "text-muted-foreground flex h-auto cursor-text items-center justify-center gap-2 py-1.5 text-sm font-medium select-none [&>svg:not([class*='size-'])]:size-4 [&>kbd]:rounded-[calc(var(--radius)-5px)] group-data-[disabled=true]/input-group:opacity-50",
   {
@@ -57,6 +65,7 @@ const inputGroupAddonVariants = cva(
   }
 )
 
+/** InputGroupAddon component. */
 function InputGroupAddon({
   className,
   align = "inline-start",
@@ -79,6 +88,7 @@ function InputGroupAddon({
   )
 }
 
+/** inputGroupButtonVariants component. */
 const inputGroupButtonVariants = cva("text-sm flex gap-2 items-center", {
   variants: {
     size: {
@@ -93,6 +103,7 @@ const inputGroupButtonVariants = cva("text-sm flex gap-2 items-center", {
   },
 })
 
+/** Inline button add-on inside an input group. */
 function InputGroupButton({
   className,
   type = "button",
@@ -112,6 +123,7 @@ function InputGroupButton({
   )
 }
 
+/** Inline add-on text inside an input group. */
 function InputGroupText({ className, ...props }: React.ComponentProps<"span">) {
   return (
     <span
@@ -124,6 +136,7 @@ function InputGroupText({ className, ...props }: React.ComponentProps<"span">) {
   )
 }
 
+/** InputGroupInput component. */
 function InputGroupInput({
   className,
   ...props
@@ -140,6 +153,7 @@ function InputGroupInput({
   )
 }
 
+/** InputGroupTextarea component. */
 function InputGroupTextarea({
   className,
   ...props

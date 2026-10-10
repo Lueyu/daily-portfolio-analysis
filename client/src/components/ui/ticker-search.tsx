@@ -1,3 +1,9 @@
+/**
+ * Searchable stock-ticker search box with suggestions (app-specific, not a generic primitive).
+ *
+ * Vendored shadcn-style UI primitive (Radix UI + Tailwind CSS).
+ */
+
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Search, TrendingUp } from 'lucide-react';
 import { logger } from '@lark-apaas/client-toolkit/logger';
@@ -17,6 +23,7 @@ interface TickerSearchProps {
   invalid?: boolean;
 }
 
+/** DEBOUNCE_MS component. */
 const DEBOUNCE_MS = 250;
 
 export default function TickerSearch({

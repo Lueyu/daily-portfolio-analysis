@@ -1,10 +1,17 @@
 "use client"
 
+/**
+ * Tabbed interface: Tabs root, List, Trigger buttons, and Content panels.
+ *
+ * Vendored shadcn-style UI primitive (Radix UI + Tailwind CSS).
+ */
+
 import * as React from "react"
 import * as TabsPrimitive from "@radix-ui/react-tabs"
 
 import { cn } from "@/lib/utils"
 
+/** Tabs root. */
 function Tabs({
   className,
   ...props
@@ -18,6 +25,7 @@ function Tabs({
   )
 }
 
+/** Row of tab triggers. */
 function TabsList({
   className,
   ...props
@@ -34,6 +42,7 @@ function TabsList({
   )
 }
 
+/** One tab button. */
 function TabsTrigger({
   className,
   ...props
@@ -50,6 +59,7 @@ function TabsTrigger({
   )
 }
 
+/** Panel shown when its tab is active. */
 function TabsContent({
   className,
   ...props

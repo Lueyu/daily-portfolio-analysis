@@ -1,17 +1,25 @@
 "use client"
 
+/**
+ * Modal confirmation dialog (Radix AlertDialog) for destructive / blocking user actions.
+ *
+ * Vendored shadcn-style UI primitive (Radix UI + Tailwind CSS).
+ */
+
 import * as React from "react"
 import * as AlertDialogPrimitive from "@radix-ui/react-alert-dialog"
 
 import { cn } from "@/lib/utils"
 import { buttonVariants } from "@/components/ui/button"
 
+/** Alert dialog root. */
 function AlertDialog({
   ...props
 }: React.ComponentProps<typeof AlertDialogPrimitive.Root>) {
   return <AlertDialogPrimitive.Root data-slot="alert-dialog" {...props} />
 }
 
+/** Button that opens the alert dialog. */
 function AlertDialogTrigger({
   ...props
 }: React.ComponentProps<typeof AlertDialogPrimitive.Trigger>) {
@@ -20,6 +28,7 @@ function AlertDialogTrigger({
   )
 }
 
+/** Portal that renders the dialog into a top-layer container. */
 function AlertDialogPortal({
   ...props
 }: React.ComponentProps<typeof AlertDialogPrimitive.Portal>) {
@@ -28,6 +37,7 @@ function AlertDialogPortal({
   )
 }
 
+/** Dimmed backdrop behind the alert dialog. */
 function AlertDialogOverlay({
   className,
   ...props
@@ -44,6 +54,7 @@ function AlertDialogOverlay({
   )
 }
 
+/** Main dialog panel with title, description, and actions. */
 function AlertDialogContent({
   className,
   ...props
@@ -63,6 +74,7 @@ function AlertDialogContent({
   )
 }
 
+/** Container for the dialog title/description. */
 function AlertDialogHeader({
   className,
   ...props
@@ -76,6 +88,7 @@ function AlertDialogHeader({
   )
 }
 
+/** Container for the dialog action buttons. */
 function AlertDialogFooter({
   className,
   ...props
@@ -92,6 +105,7 @@ function AlertDialogFooter({
   )
 }
 
+/** Heading text inside the alert dialog. */
 function AlertDialogTitle({
   className,
   ...props
@@ -105,6 +119,7 @@ function AlertDialogTitle({
   )
 }
 
+/** Supporting body text inside the alert dialog. */
 function AlertDialogDescription({
   className,
   ...props
@@ -118,6 +133,7 @@ function AlertDialogDescription({
   )
 }
 
+/** Confirm/accept action button. */
 function AlertDialogAction({
   className,
   ...props
@@ -130,6 +146,7 @@ function AlertDialogAction({
   )
 }
 
+/** Dismiss/cancel action button. */
 function AlertDialogCancel({
   className,
   ...props
