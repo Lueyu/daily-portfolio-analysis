@@ -1,3 +1,5 @@
+English | [简体中文](README.zh-CN.md)
+
 # Daily Portfolio Analysis
 
 A full-stack **stock portfolio terminal** that runs a daily, multi-agent investment workflow:
