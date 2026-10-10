@@ -1,0 +1,1017 @@
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
+import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '@lark-apaas/fullstack-nestjs-core';
+import { eq, and, desc, asc, inArray, sql } from 'drizzle-orm';
+import { transactions, holdings, closed, cashAccounts } from '@server/database/schema';
+import type {
+  Transaction,
+  CreateTransactionDto,
+  ReconcileResult,
+  Currency,
+} from '@shared/api.interface';
+
+type UpdateTransactionDto = Partial<CreateTransactionDto>;
+
+interface TxCursor {
+  ticker: string;
+  shares: number;
+  costBasis: number;
+  buyDate: string | null;
+  company: string | null;
+}
+
+@Injectable()
+export class TransactionsService {
+  private readonly logger = new Logger(TransactionsService.name);
+
+  constructor(@Inject(DRIZZLE_DATABASE) private readonly db: PostgresJsDatabase) {}
+
+  async list(userId: string, ticker?: string, limit: number = 100): Promise<Transaction[]> {
+    const conditions = [eq(transactions.owner, userId)];
+    if (ticker) conditions.push(eq(transactions.ticker, ticker));
+
+    const rows = await this.db
+      .select()
+      .from(transactions)
+      .where(and(...conditions))
+      .orderBy(desc(transactions.txDate), desc(transactions.id))
+      .limit(limit);
+
+    return rows.map((row) => this.mapRow(row));
+  }
+
+  async getById(userId: string, id: string): Promise<Transaction> {
+    const rows = await this.db
+      .select()
+      .from(transactions)
+      .where(and(eq(transactions.id, id), eq(transactions.owner, userId)));
+
+    if (rows.length === 0) throw new NotFoundException('交易记录不存在');
+
+    return this.mapRow(rows[0]);
+  }
+
+  async createWithAutoDeposit(
+    userId: string,
+    dto: CreateTransactionDto,
+  ): Promise<Transaction> {
+    if (dto.txType !== 'Buy') {
+      throw new BadRequestException('自动充值仅支持买入交易');
+    }
+
+    const sharesNum = Number(dto.shares);
+    const priceNum = Number(dto.price);
+    const feesNum = dto.fees !== undefined ? Number(dto.fees) : 0;
+    const currency = (dto.currency as Currency) || 'USD';
+    const ticker = dto.ticker?.trim().toUpperCase();
+
+    if (!dto.txDate) throw new BadRequestException('交易日期不能为空');
+    if (sharesNum <= 0 || isNaN(sharesNum))
+      throw new BadRequestException('数量必须大于 0');
+    if (!ticker) throw new BadRequestException('代码不能为空');
+    if (priceNum <= 0 || isNaN(priceNum))
+      throw new BadRequestException('价格必须大于 0');
+
+    const costAmount = sharesNum * priceNum + feesNum;
+
+    const result = await this.db.transaction(async (tx) => {
+      const existing = await tx
+        .select()
+        .from(cashAccounts)
+        .where(
+          and(eq(cashAccounts.owner, userId), eq(cashAccounts.currency, currency)),
+        );
+      const curBalance = existing.length > 0 ? Number(existing[0].balance) : 0;
+      const shortfall = costAmount - curBalance;
+
+      if (shortfall > 1e-9) {
+        if (existing.length === 0) {
+          await tx.insert(cashAccounts).values({
+            currency,
+            balance: String(shortfall),
+            owner: userId,
+            createdBy: userId,
+            updatedBy: userId,
+          });
+        } else {
+          await tx
+            .update(cashAccounts)
+            .set({
+              balance: sql`${cashAccounts.balance} + ${shortfall}::numeric`,
+              updatedAt: new Date(),
+              updatedBy: userId,
+            })
+            .where(eq(cashAccounts.id, existing[0].id));
+        }
+
+        await tx.insert(transactions).values({
+          txDate: dto.txDate,
+          ticker: '',
+          txType: 'Deposit',
+          shares: String(shortfall),
+          price: String(1),
+          fees: String(0),
+          notes: `__AUTO_DEPOSIT_FOR_BUY__:${ticker}`,
+          currency,
+          owner: userId,
+          createdBy: userId,
+          updatedBy: userId,
+        });
+      }
+
+      await this.adjustCash(tx, userId, currency, -costAmount);
+
+      const insertRows = await tx
+        .insert(transactions)
+        .values({
+          txDate: dto.txDate,
+          ticker,
+          txType: 'Buy',
+          shares: String(sharesNum),
+          price: String(priceNum),
+          fees: String(feesNum),
+          notes: dto.notes,
+          currency,
+          owner: userId,
+          createdBy: userId,
+          updatedBy: userId,
+        })
+        .returning();
+
+      await this.rebuildTickersFromTransactions(tx, userId, [ticker]);
+
+      return insertRows[0];
+    });
+
+    return this.mapRow(result);
+  }
+
+  async create(userId: string, dto: CreateTransactionDto): Promise<Transaction> {
+    const sharesNum = Number(dto.shares);
+    const priceNum = Number(dto.price);
+    const feesNum = dto.fees !== undefined ? Number(dto.fees) : 0;
+    const currency = (dto.currency as Currency) || 'USD';
+    const rawTxType = dto.txType;
+
+    const validTypes = ['Buy', 'Sell', 'Deposit', 'Withdrawal', 'Opening'] as const;
+    if (!validTypes.includes(rawTxType as typeof validTypes[number])) {
+      throw new BadRequestException('交易类型无效');
+    }
+    const txType = rawTxType;
+
+    const isCashFlow = txType === 'Deposit' || txType === 'Withdrawal';
+    const isOpening = txType === 'Opening';
+
+    if (!dto.txDate) throw new BadRequestException('交易日期不能为空');
+
+    if (sharesNum <= 0 || isNaN(sharesNum)) {
+      throw new BadRequestException(isCashFlow ? '金额必须大于 0' : '数量必须大于 0');
+    }
+
+    if (!isCashFlow && !isOpening) {
+      if (!dto.ticker || !dto.ticker.trim()) {
+        throw new BadRequestException('代码不能为空');
+      }
+      if (priceNum <= 0 || isNaN(priceNum)) {
+        throw new BadRequestException('价格必须大于 0');
+      }
+    }
+
+    const ticker = (isCashFlow || isOpening) ? (isOpening ? dto.ticker?.trim().toUpperCase() ?? '' : '') : dto.ticker.trim().toUpperCase();
+
+    if (isCashFlow) {
+      const amount = txType === 'Deposit' ? sharesNum : -sharesNum;
+      const result = await this.db.transaction(async (tx) => {
+        const insertRows = await tx
+          .insert(transactions)
+          .values({
+            txDate: dto.txDate,
+            ticker,
+            txType,
+            shares: String(sharesNum),
+            price: String(priceNum || 1),
+            fees: String(feesNum),
+            notes: dto.notes,
+            currency,
+            owner: userId,
+            createdBy: userId,
+            updatedBy: userId,
+          })
+          .returning();
+
+        await this.adjustCash(tx, userId, currency, amount);
+        return insertRows[0];
+      });
+      return this.mapRow(result);
+    }
+
+    const result = await this.db.transaction(async (tx) => {
+      const cashDelta =
+        txType === 'Buy'
+          ? -(sharesNum * priceNum + feesNum)
+          : sharesNum * priceNum - feesNum;
+
+    if (txType === 'Buy' || txType === 'Opening') {
+         await this.adjustCash(tx, userId, currency, txType === 'Buy' ? cashDelta : 0);
+       }
+
+       const insertRows = await tx
+         .insert(transactions)
+         .values({
+           txDate: dto.txDate,
+           ticker,
+           txType,
+           shares: String(sharesNum),
+           price: String(priceNum),
+           fees: String(feesNum),
+           notes: dto.notes,
+           currency,
+           owner: userId,
+           createdBy: userId,
+           updatedBy: userId,
+         })
+         .returning();
+
+      if (txType === 'Sell') {
+        await this.adjustCash(tx, userId, currency, cashDelta);
+      }
+
+      if (txType === 'Buy' || txType === 'Sell' || txType === 'Opening') {
+        await this.rebuildTickersFromTransactions(tx, userId, [ticker]);
+      }
+
+      return insertRows[0];
+    });
+
+    return this.mapRow(result);
+  }
+
+  async update(userId: string, id: string, dto: UpdateTransactionDto): Promise<Transaction> {
+    const existing = await this.db
+      .select()
+      .from(transactions)
+      .where(and(eq(transactions.id, id), eq(transactions.owner, userId)));
+
+    if (existing.length === 0) throw new NotFoundException('交易记录不存在');
+    const oldRow = existing[0];
+
+    const patch: Record<string, unknown> = {};
+    if (dto.txDate !== undefined) patch.txDate = dto.txDate;
+    if (dto.ticker !== undefined) patch.ticker = dto.ticker;
+    if (dto.txType !== undefined) patch.txType = dto.txType;
+    if (dto.shares !== undefined) patch.shares = String(dto.shares);
+    if (dto.price !== undefined) patch.price = String(dto.price);
+    if (dto.fees !== undefined) patch.fees = String(dto.fees);
+    if (dto.notes !== undefined) patch.notes = dto.notes;
+    if (dto.currency !== undefined) patch.currency = dto.currency;
+
+    if (Object.keys(patch).length === 0) throw new BadRequestException('未提供可更新字段');
+
+    patch.updatedAt = new Date();
+    patch.updatedBy = userId;
+
+    const needsReconcile =
+      dto.ticker !== undefined ||
+      dto.txType !== undefined ||
+      dto.shares !== undefined ||
+      dto.price !== undefined ||
+      dto.fees !== undefined ||
+      dto.txDate !== undefined ||
+      dto.currency !== undefined;
+
+    const result = await this.db.transaction(async (tx) => {
+      const oldCashDelta = this.getCashDeltaFromRow(oldRow);
+      const newShares = dto.shares !== undefined ? Number(dto.shares) : Number(oldRow.shares);
+      const newPrice = dto.price !== undefined ? Number(dto.price) : Number(oldRow.price);
+      const newFees = dto.fees !== undefined ? Number(dto.fees) : Number(oldRow.fees || 0);
+      const newType = (dto.txType || oldRow.txType) as string;
+      const newCurrency = (dto.currency || oldRow.currency) as Currency;
+
+      let newCashDelta = 0;
+        if (newType === 'Buy') {
+          newCashDelta = -(newShares * newPrice + newFees);
+        } else if (newType === 'Sell') {
+          newCashDelta = newShares * newPrice - newFees;
+        } else if (newType === 'Deposit') {
+          newCashDelta = newShares;
+        } else if (newType === 'Withdrawal') {
+          newCashDelta = -newShares;
+        } else if (newType === 'Opening') {
+          newCashDelta = 0;
+        }
+
+      const cashDiff = newCashDelta - oldCashDelta;
+      if (Math.abs(cashDiff) > 1e-9) {
+        await this.adjustCash(tx, userId, newCurrency, cashDiff);
+      }
+
+      const updatedRows = await tx
+        .update(transactions)
+        .set(patch)
+        .where(and(eq(transactions.id, id), eq(transactions.owner, userId)))
+        .returning();
+
+      if (updatedRows.length === 0) throw new NotFoundException('交易记录不存在');
+
+      if (needsReconcile) {
+        const oldType = oldRow.txType as string;
+        const newType = (dto.txType || oldRow.txType) as string;
+        const oldTicker = oldRow.ticker;
+        const newTicker = (dto.ticker || oldRow.ticker).trim().toUpperCase();
+        const tickersOld: string[] = [];
+        const tickersNew: string[] = [];
+        if (oldTicker && (oldType === 'Buy' || oldType === 'Sell' || oldType === 'Opening')) {
+          tickersOld.push(oldTicker);
+        }
+        if (newTicker && (newType === 'Buy' || newType === 'Sell' || newType === 'Opening')) {
+          tickersNew.push(newTicker);
+        }
+        const tickersToRebuild = Array.from(new Set([...tickersOld, ...tickersNew].filter((t) => t && t.length > 0)));
+        await this.rebuildTickersFromTransactions(tx, userId, tickersToRebuild);
+      }
+
+      return updatedRows[0];
+    });
+
+    return this.mapRow(result);
+  }
+
+  async remove(userId: string, id: string): Promise<void> {
+    const existing = await this.db
+      .select()
+      .from(transactions)
+      .where(and(eq(transactions.id, id), eq(transactions.owner, userId)));
+
+    if (existing.length === 0) throw new NotFoundException('交易记录不存在');
+    const oldRow = existing[0];
+
+    await this.db.transaction(async (tx) => {
+      const currency = (oldRow.currency as Currency) || 'USD';
+      let cashDelta = -this.getCashDeltaFromRow(oldRow);
+      const idsToDelete: string[] = [id];
+
+      if (
+        oldRow.txType === 'Buy' &&
+        (!oldRow.notes || !oldRow.notes.startsWith('__AUTO_DEPOSIT_FOR_BUY__:'))
+      ) {
+        const costAmount =
+          Number(oldRow.shares) * Number(oldRow.price) + Number(oldRow.fees || 0);
+        const autoNote = `__AUTO_DEPOSIT_FOR_BUY__:${oldRow.ticker}`;
+        const matchingDeposits = await tx
+          .select()
+          .from(transactions)
+          .where(
+            and(
+              eq(transactions.owner, userId),
+              eq(transactions.txType, 'Deposit'),
+              eq(transactions.currency, currency),
+              eq(transactions.notes, autoNote),
+            ),
+          )
+          .orderBy(desc(transactions.createdAt))
+          .limit(10);
+
+        let remaining = costAmount;
+        for (const dep of matchingDeposits) {
+          if (remaining <= 1e-9) break;
+          const depAmt = Number(dep.shares);
+          if (depAmt <= remaining + 1e-9) {
+            idsToDelete.push(dep.id);
+            cashDelta -= depAmt;
+            remaining -= depAmt;
+          }
+        }
+      }
+
+      if (Math.abs(cashDelta) > 1e-9) {
+        await this.adjustCash(tx, userId, currency, cashDelta);
+      }
+
+      await tx
+        .delete(transactions)
+        .where(inArray(transactions.id, idsToDelete));
+
+      if (oldRow.ticker && (oldRow.txType === 'Buy' || oldRow.txType === 'Sell' || oldRow.txType === 'Opening')) {
+        await this.rebuildTickersFromTransactions(tx, userId, [oldRow.ticker]);
+      }
+    });
+  }
+
+  private async applyBuyToHoldings(
+    tx: PostgresJsDatabase,
+    userId: string,
+    ticker: string,
+    sharesNum: number,
+    priceNum: number,
+    feesNum: number,
+  ): Promise<void> {
+    const existing = await tx
+      .select()
+      .from(holdings)
+      .where(and(eq(holdings.owner, userId), eq(holdings.ticker, ticker)));
+
+    if (existing.length === 0) {
+      await tx.insert(holdings).values({
+        ticker,
+        company: ticker,
+        shares: String(sharesNum),
+        buyPrice: String((sharesNum * priceNum + feesNum) / sharesNum),
+        buyDate: new Date().toISOString().slice(0, 10),
+        market: 'US',
+        currency: 'USD',
+        owner: userId,
+        createdBy: userId,
+        updatedBy: userId,
+      });
+      return;
+    }
+
+    const h = existing[0];
+    const curShares = Number(h.shares);
+    const curCost = curShares * Number(h.buyPrice);
+    const newShares = curShares + sharesNum;
+    const newCost = curCost + sharesNum * priceNum + feesNum;
+    const newAvg = newCost / newShares;
+
+    await tx
+      .update(holdings)
+      .set({
+        shares: String(newShares),
+        buyPrice: String(newAvg),
+        updatedAt: new Date(),
+        updatedBy: userId,
+      })
+      .where(eq(holdings.id, h.id));
+  }
+
+  private async applySellToHoldings(
+    tx: PostgresJsDatabase,
+    userId: string,
+    ticker: string,
+    sharesNum: number,
+    _priceNum: number,
+    _feesNum: number,
+  ): Promise<void> {
+    const existing = await tx
+      .select()
+      .from(holdings)
+      .where(and(eq(holdings.owner, userId), eq(holdings.ticker, ticker)));
+
+    if (existing.length === 0) return;
+
+    const h = existing[0];
+    const curShares = Number(h.shares);
+    const sellShares = Math.min(sharesNum, curShares);
+    const newShares = curShares - sellShares;
+
+    if (newShares <= 1e-9) {
+      return;
+    }
+
+    await tx
+      .update(holdings)
+      .set({
+        shares: String(newShares),
+        updatedAt: new Date(),
+        updatedBy: userId,
+      })
+      .where(eq(holdings.id, h.id));
+  }
+
+  private async revertBuyFromHoldings(
+    tx: PostgresJsDatabase,
+    userId: string,
+    ticker: string,
+    sharesNum: number,
+    priceNum: number,
+    feesNum: number,
+  ): Promise<void> {
+    const existing = await tx
+      .select()
+      .from(holdings)
+      .where(and(eq(holdings.owner, userId), eq(holdings.ticker, ticker)));
+
+    if (existing.length === 0) return;
+
+    const h = existing[0];
+    const curShares = Number(h.shares);
+    const curCost = curShares * Number(h.buyPrice);
+    const newShares = Math.max(0, curShares - sharesNum);
+    const newCost = Math.max(0, curCost - (sharesNum * priceNum + feesNum));
+
+    if (newShares <= 1e-9) {
+      return;
+    }
+
+    const newAvg = newCost / newShares;
+    await tx
+      .update(holdings)
+      .set({
+        shares: String(newShares),
+        buyPrice: String(newAvg),
+        updatedAt: new Date(),
+        updatedBy: userId,
+      })
+      .where(eq(holdings.id, h.id));
+  }
+
+  private async revertSellFromHoldings(
+    tx: PostgresJsDatabase,
+    userId: string,
+    ticker: string,
+    sharesNum: number,
+    priceNum: number,
+    feesNum: number,
+  ): Promise<void> {
+    const existing = await tx
+      .select()
+      .from(holdings)
+      .where(and(eq(holdings.owner, userId), eq(holdings.ticker, ticker)));
+
+    if (existing.length === 0) return;
+
+    const h = existing[0];
+    const curShares = Number(h.shares);
+    const curCost = curShares * Number(h.buyPrice);
+    const addShares = sharesNum;
+    const addCost = sharesNum * priceNum + feesNum;
+    const newShares = curShares + addShares;
+    const newCost = curCost + addCost;
+    const newAvg = newShares > 0 ? newCost / newShares : 0;
+
+    await tx
+      .update(holdings)
+      .set({
+        shares: String(newShares),
+        buyPrice: String(newAvg),
+        updatedAt: new Date(),
+        updatedBy: userId,
+      })
+      .where(eq(holdings.id, h.id));
+  }
+
+  async reconcileAll(userId: string): Promise<ReconcileResult> {
+    const allTx = await this.db
+      .select()
+      .from(transactions)
+      .where(eq(transactions.owner, userId))
+      .orderBy(asc(transactions.txDate), asc(transactions.id));
+
+    const allHoldings = await this.db
+      .select()
+      .from(holdings)
+      .where(eq(holdings.owner, userId));
+
+    if (allTx.length === 0) {
+      return {
+        holdingsCount: allHoldings.length,
+        closedCount: 0,
+        processedTxCount: 0,
+      };
+    }
+
+    const cashByCurrency = this.computeCashFromTransactions(allTx);
+
+    const result = await this.db.transaction(async (tx) => {
+      const txByTicker = new Map<string, typeof allTx>();
+      for (const t of allTx) {
+         if (!t.ticker || t.txType === 'Deposit' || t.txType === 'Withdrawal') continue;
+        const arr = txByTicker.get(t.ticker) ?? [];
+        arr.push(t);
+        txByTicker.set(t.ticker, arr);
+      }
+
+      const holdingByTicker = new Map<string, typeof allHoldings[number]>();
+      for (const h of allHoldings) {
+        holdingByTicker.set(h.ticker, h);
+      }
+
+      const rebuiltTickers: string[] = [];
+      for (const [ticker, txs] of txByTicker) {
+       const hasBuyOrOpening = txs.some(
+          (t: (typeof txs)[number]) => t.txType === 'Buy' || t.txType === 'Opening',
+        );
+        if (hasBuyOrOpening) rebuiltTickers.push(ticker);
+      }
+
+      const updatedHoldings: Array<{
+        id: string;
+        shares: string;
+        buyPrice: string;
+        buyDate: string | null;
+      }> = [];
+      const newHoldings: Array<typeof holdings.$inferInsert> = [];
+      const closedRows: Array<typeof closed.$inferInsert> = [];
+
+       for (const ticker of rebuiltTickers) {
+         const txs = txByTicker.get(ticker) ?? [];
+         const existingH = holdingByTicker.get(ticker);
+
+         const cursor: TxCursor = {
+           ticker,
+           shares: 0,
+           costBasis: 0,
+           buyDate: null,
+           company: existingH?.company ?? ticker,
+         };
+
+         for (const t of txs) {
+          const sharesNum = Number(t.shares);
+          const priceNum = Number(t.price);
+          const feesNum = t.fees ? Number(t.fees) : 0;
+
+          if (t.txType === 'Buy' || t.txType === 'Opening') {
+            cursor.costBasis += sharesNum * priceNum + feesNum;
+            cursor.shares += sharesNum;
+            if (!cursor.buyDate) cursor.buyDate = String(t.txDate);
+          } else if (t.txType === 'Sell') {
+            if (cursor.shares <= 1e-9) continue;
+
+            const avgCost = cursor.shares > 0 ? cursor.costBasis / cursor.shares : 0;
+            const sellShares = Math.min(sharesNum, cursor.shares);
+            const sellCost = avgCost * sellShares;
+            const sellProceeds = sellShares * priceNum - feesNum;
+            const realizedPl = sellProceeds - sellCost;
+            const returnPct = sellCost > 0 ? (realizedPl / sellCost) * 100 : 0;
+
+            closedRows.push({
+              ticker,
+              company: cursor.company,
+              openDate: cursor.buyDate,
+              closeDate: String(t.txDate),
+              buyPrice: avgCost > 0 ? String(avgCost) : null,
+              sellPrice: String(priceNum),
+              shares: String(sellShares),
+              realizedPl: String(realizedPl),
+              returnPct: String(returnPct),
+              notes: t.notes,
+              owner: userId,
+              createdBy: userId,
+              updatedBy: userId,
+            });
+
+            cursor.shares -= sellShares;
+            cursor.costBasis -= sellCost;
+
+            if (cursor.shares <= 1e-9) {
+              cursor.shares = 0;
+              cursor.costBasis = 0;
+              cursor.buyDate = null;
+            }
+          }
+        }
+
+        if (existingH) {
+          if (cursor.shares > 0) {
+            const avgBuyPrice = cursor.costBasis / cursor.shares;
+            updatedHoldings.push({
+              id: existingH.id,
+              shares: String(cursor.shares),
+              buyPrice: String(avgBuyPrice),
+              buyDate: cursor.buyDate,
+            });
+          } else {
+            await tx.delete(holdings).where(eq(holdings.id, existingH.id));
+          }
+        } else if (cursor.shares > 0) {
+          const avgBuyPrice = cursor.costBasis / cursor.shares;
+          newHoldings.push({
+            ticker,
+            company: cursor.company ?? ticker,
+            shares: String(cursor.shares),
+            buyPrice: String(avgBuyPrice),
+            buyDate: cursor.buyDate,
+            owner: userId,
+            createdBy: userId,
+            updatedBy: userId,
+          });
+        }
+      }
+
+      for (const h of updatedHoldings) {
+        await tx
+          .update(holdings)
+          .set({
+            shares: h.shares,
+            buyPrice: h.buyPrice,
+            buyDate: h.buyDate,
+            updatedAt: new Date(),
+            updatedBy: userId,
+          })
+          .where(eq(holdings.id, h.id));
+      }
+
+      if (newHoldings.length > 0) {
+        await tx.insert(holdings).values(newHoldings);
+      }
+
+      if (rebuiltTickers.length > 0) {
+        await tx.delete(closed).where(
+          and(eq(closed.owner, userId), inArray(closed.ticker, rebuiltTickers)),
+        );
+      }
+
+      if (closedRows.length > 0) {
+        await tx.insert(closed).values(closedRows);
+      }
+
+      const remainingHoldings = await tx
+        .select({ id: holdings.id })
+        .from(holdings)
+        .where(eq(holdings.owner, userId));
+
+      const allClosed = await tx
+        .select({ id: closed.id })
+        .from(closed)
+        .where(eq(closed.owner, userId));
+
+      for (const [currency, balance] of cashByCurrency) {
+        const existing = await tx
+          .select()
+          .from(cashAccounts)
+          .where(
+            and(eq(cashAccounts.owner, userId), eq(cashAccounts.currency, currency)),
+          );
+        if (existing.length === 0) {
+          await tx.insert(cashAccounts).values({
+            currency,
+            balance: String(balance),
+            owner: userId,
+            createdBy: userId,
+            updatedBy: userId,
+          });
+        } else {
+          await tx
+            .update(cashAccounts)
+            .set({
+              balance: String(balance),
+              updatedAt: new Date(),
+              updatedBy: userId,
+            })
+            .where(eq(cashAccounts.id, existing[0].id));
+        }
+      }
+
+      return {
+        holdingsCount: remainingHoldings.length,
+        closedCount: allClosed.length,
+        processedTxCount: allTx.length,
+      };
+    });
+
+    return result;
+  }
+
+  private getCashDeltaFromRow(row: typeof transactions.$inferSelect): number {
+    const sharesNum = Number(row.shares);
+    const priceNum = Number(row.price);
+    const feesNum = row.fees ? Number(row.fees) : 0;
+    const type = row.txType;
+    if (type === 'Buy') return -(sharesNum * priceNum + feesNum);
+    if (type === 'Sell') return sharesNum * priceNum - feesNum;
+    if (type === 'Deposit') return sharesNum;
+    if (type === 'Withdrawal') return -sharesNum;
+    if (type === 'Opening') return 0;
+    return 0;
+  }
+
+  private computeCashFromTransactions(
+    allTx: Array<typeof transactions.$inferSelect>,
+  ): Map<string, number> {
+    const cashByCurrency = new Map<string, number>();
+    for (const t of allTx) {
+      const currency = (t.currency as string) || 'USD';
+      const delta = this.getCashDeltaFromRow(t);
+      const current = cashByCurrency.get(currency) ?? 0;
+      cashByCurrency.set(currency, current + delta);
+    }
+    return cashByCurrency;
+  }
+
+  private async adjustCash(
+    tx: PostgresJsDatabase,
+    userId: string,
+    currency: string,
+    delta: number,
+  ): Promise<void> {
+    if (Math.abs(delta) < 1e-9) return;
+
+    const existing = await tx
+      .select()
+      .from(cashAccounts)
+      .where(and(eq(cashAccounts.owner, userId), eq(cashAccounts.currency, currency)));
+
+    if (existing.length === 0) {
+      if (delta < 0) {
+        throw new BadRequestException(`现金不足：${currency} 账户余额为 0`);
+      }
+      await tx.insert(cashAccounts).values({
+        currency,
+        balance: String(delta),
+        owner: userId,
+        createdBy: userId,
+        updatedBy: userId,
+      });
+      return;
+    }
+
+    const curBalance = Number(existing[0].balance);
+    const newBalance = curBalance + delta;
+    if (newBalance < -1e-9) {
+      throw new BadRequestException(
+        `现金不足：${currency} 余额 ${curBalance.toFixed(2)}，需要 ${Math.abs(delta).toFixed(2)}`,
+      );
+    }
+
+    await tx
+      .update(cashAccounts)
+      .set({
+        balance: sql`${cashAccounts.balance} + ${delta}::numeric`,
+        updatedAt: new Date(),
+        updatedBy: userId,
+      })
+      .where(eq(cashAccounts.id, existing[0].id));
+  }
+
+  private async rebuildTickersFromTransactions(
+    tx: PostgresJsDatabase,
+    userId: string,
+    tickers: string[],
+  ): Promise<void> {
+    const validTickers = tickers.filter((t) => t && t.length > 0);
+    if (validTickers.length === 0) return;
+
+    const relevantTx = await tx
+      .select()
+      .from(transactions)
+      .where(
+        and(
+          eq(transactions.owner, userId),
+          inArray(transactions.ticker, validTickers),
+        ),
+      )
+      .orderBy(asc(transactions.txDate), asc(transactions.id));
+
+    const existingHoldings = await tx
+      .select()
+      .from(holdings)
+      .where(
+        and(eq(holdings.owner, userId), inArray(holdings.ticker, validTickers)),
+      );
+
+    const holdingByTicker = new Map<string, typeof existingHoldings[number]>();
+    for (const h of existingHoldings) {
+      holdingByTicker.set(h.ticker, h);
+    }
+
+    const txByTicker = new Map<string, typeof relevantTx>();
+    for (const t of relevantTx) {
+      const arr = txByTicker.get(t.ticker) ?? [];
+      arr.push(t);
+      txByTicker.set(t.ticker, arr);
+    }
+
+    const updateHoldingMap = new Map<
+      string,
+      { shares: string; buyPrice: string; buyDate: string | null }
+    >();
+    const deleteHoldingTickers: string[] = [];
+    const closedRows: Array<typeof closed.$inferInsert> = [];
+
+    for (const ticker of validTickers) {
+      const txs = txByTicker.get(ticker) ?? [];
+      const existingH = holdingByTicker.get(ticker);
+      const hasBuyOrOpening = txs.some((t) => t.txType === 'Buy' || t.txType === 'Opening');
+
+      if (!hasBuyOrOpening) {
+        continue;
+      }
+
+      const cursor: TxCursor = {
+        ticker,
+        shares: 0,
+        costBasis: 0,
+        buyDate: null,
+        company: existingH?.company ?? ticker,
+      };
+
+      for (const t of txs) {
+        const sharesNum = Number(t.shares);
+        const priceNum = Number(t.price);
+        const feesNum = t.fees ? Number(t.fees) : 0;
+
+        if (t.txType === 'Buy' || t.txType === 'Opening') {
+          cursor.costBasis += sharesNum * priceNum + feesNum;
+          cursor.shares += sharesNum;
+          if (!cursor.buyDate) cursor.buyDate = String(t.txDate);
+        } else if (t.txType === 'Sell') {
+          if (cursor.shares <= 1e-9) continue;
+
+          const avgCost = cursor.shares > 0 ? cursor.costBasis / cursor.shares : 0;
+          const sellShares = Math.min(sharesNum, cursor.shares);
+          const sellCost = avgCost * sellShares;
+          const sellProceeds = sellShares * priceNum - feesNum;
+          const realizedPl = sellProceeds - sellCost;
+          const returnPct = sellCost > 0 ? (realizedPl / sellCost) * 100 : 0;
+
+          closedRows.push({
+            ticker,
+            company: cursor.company,
+            openDate: cursor.buyDate,
+            closeDate: String(t.txDate),
+            buyPrice: avgCost > 0 ? String(avgCost) : null,
+            sellPrice: String(priceNum),
+            shares: String(sellShares),
+            realizedPl: String(realizedPl),
+            returnPct: String(returnPct),
+            notes: t.notes,
+            owner: userId,
+            createdBy: userId,
+            updatedBy: userId,
+          });
+
+          cursor.shares -= sellShares;
+          cursor.costBasis -= sellCost;
+
+          if (cursor.shares <= 1e-9) {
+            cursor.shares = 0;
+            cursor.costBasis = 0;
+            cursor.buyDate = null;
+          }
+        }
+      }
+
+      if (cursor.shares > 0) {
+        const avgBuyPrice = cursor.costBasis / cursor.shares;
+        updateHoldingMap.set(ticker, {
+          shares: String(cursor.shares),
+          buyPrice: String(avgBuyPrice),
+          buyDate: cursor.buyDate,
+        });
+      } else {
+        deleteHoldingTickers.push(ticker);
+      }
+    }
+
+    for (const [ticker, data] of updateHoldingMap) {
+      const existing = holdingByTicker.get(ticker);
+      if (existing) {
+        await tx
+          .update(holdings)
+          .set({
+            shares: data.shares,
+            buyPrice: data.buyPrice,
+            buyDate: data.buyDate,
+            updatedAt: new Date(),
+            updatedBy: userId,
+          })
+          .where(eq(holdings.id, existing.id));
+      } else {
+        await tx.insert(holdings).values({
+          ticker,
+          shares: data.shares,
+          buyPrice: data.buyPrice,
+          buyDate: data.buyDate,
+          owner: userId,
+          createdBy: userId,
+          updatedBy: userId,
+        });
+      }
+    }
+
+    if (deleteHoldingTickers.length > 0) {
+      await tx
+        .delete(holdings)
+        .where(
+          and(eq(holdings.owner, userId), inArray(holdings.ticker, deleteHoldingTickers)),
+        );
+    }
+
+    await tx
+      .delete(closed)
+      .where(and(eq(closed.owner, userId), inArray(closed.ticker, validTickers)));
+
+    if (closedRows.length > 0) {
+      await tx.insert(closed).values(closedRows);
+    }
+  }
+
+  private mapRow(row: typeof transactions.$inferSelect): Transaction {
+    return {
+      id: row.id,
+      txDate: String(row.txDate),
+      ticker: row.ticker,
+      txType: row.txType as Transaction['txType'],
+      shares: String(row.shares),
+      price: String(row.price),
+      fees: String(row.fees ?? '0'),
+      notes: row.notes ?? null,
+      currency: (row.currency as Transaction['currency']) || 'USD',
+    };
+  }
+}

@@ -1,0 +1,1 @@
+{"cases":[{"id":1,"priority":"p0","description":"打开 /transactions 交易页，点击添加交易按钮，输入'mic'，断言下拉出现含 MSFT 的搜索结果"},{"id":2,"priority":"p1","description":"点击搜索结果中的 Microsoft/MSFT 项，断言输入框填入 MSFT 且币种选择器自动变为 USD"},{"id":3,"priority":"p1","description":"清空代码输入框直接点保存，断言出现友好错误提示（非接口400报错）"},{"id":4,"priority":"p1","description":"搜索'018'，断言下拉出现小米集团等港股，选中后币种为 HKD"}]}

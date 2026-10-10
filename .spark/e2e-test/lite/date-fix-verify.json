@@ -1,0 +1,1 @@
+{"cases":[{"id":1,"priority":"p0","description":"打开仪表盘页面 /，验证页面正常渲染无白屏"},{"id":2,"priority":"p0","description":"打开每日分析页面 /analysis，验证日期列表和分析卡片正常渲染，无日期崩溃"},{"id":3,"priority":"p0","description":"打开投资日志页面 /journal，验证日期导航和图表正常渲染，无日期崩溃"}]}

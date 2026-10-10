@@ -1,0 +1,719 @@
+/* eslint-disable */
+/** auto generated, do not edit */
+import { sql } from 'drizzle-orm';
+import { boolean, date, foreignKey, index, integer, jsonb, numeric, pgTable, text, uniqueIndex, uuid, varchar, customType } from "drizzle-orm/pg-core"
+
+export const customTimestamptz = customType<{
+  data: Date;
+  driverData: string;
+  config: { precision?: number };
+}>({
+  dataType(config) {
+    const precision = typeof config?.precision !== 'undefined'
+      ? ` (${config.precision})`
+      : '';
+    return `timestamptz${precision}`;
+  },
+  toDriver(value: Date | string | number) {
+    if (value == null) return value as any;
+    if (typeof value === 'number') return new Date(value).toISOString();
+    if (typeof value === 'string') return value;
+    if (value instanceof Date) return value.toISOString();
+    throw new Error('Invalid timestamp value');
+  },
+  fromDriver(value: string | Date): Date {
+    if (value instanceof Date) return value;
+    return new Date(value);
+  },
+});
+
+export const userProfile = customType<{
+  data: string;
+  driverData: string;
+}>({
+  dataType() {
+    return 'user_profile';
+  },
+  toDriver(value: string) {
+    return sql`ROW(${value})::user_profile`;
+  },
+  fromDriver(value: string) {
+    const [userId] = value.slice(1, -1).split(',');
+    return userId.trim();
+  },
+});
+
+export type FileAttachment = {
+  bucket_id: string;
+  file_path: string;
+};
+
+export const fileAttachment = customType<{
+  data: FileAttachment;
+  driverData: string;
+}>({
+  dataType() {
+    return 'file_attachment';
+  },
+  toDriver(value: FileAttachment) {
+    return sql`ROW(${value.bucket_id},${value.file_path})::file_attachment`;
+  },
+  fromDriver(value: string): FileAttachment {
+    const [bucketId, filePath] = value.slice(1, -1).split(',');
+    return { bucket_id: bucketId.trim(), file_path: filePath.trim() };
+  },
+});
+
+export function escapeLiteral(str: string): string {
+  return "'" + str.replace(/'/g, "''") + "'";
+}
+
+export const userProfileArray = customType<{
+  data: string[];
+  driverData: string;
+}>({
+  dataType() {
+    return 'user_profile[]';
+  },
+  toDriver(value: string[]) {
+    if (!value || value.length === 0) {
+      return sql`'{}'::user_profile[]`;
+    }
+    const elements = value.map(id => `ROW(${escapeLiteral(id)})::user_profile`).join(',');
+    return sql.raw(`ARRAY[${elements}]::user_profile[]`);
+  },
+  fromDriver(value: string): string[] {
+    if (!value || value === '{}') return [];
+    const inner = value.slice(1, -1);
+    const matches = inner.match(/\([^)]*\)/g) || [];
+    return matches.map(m => m.slice(1, -1).split(',')[0].trim());
+  },
+});
+
+export const fileAttachmentArray = customType<{
+  data: FileAttachment[];
+  driverData: string;
+}>({
+  dataType() {
+    return 'file_attachment[]';
+  },
+  toDriver(value: FileAttachment[]) {
+    if (!value || value.length === 0) {
+      return sql`'{}'::file_attachment[]`;
+    }
+    const elements = value.map(f =>
+      `ROW(${escapeLiteral(f.bucket_id)},${escapeLiteral(f.file_path)})::file_attachment`
+    ).join(',');
+    return sql.raw(`ARRAY[${elements}]::file_attachment[]`);
+  },
+  fromDriver(value: string): FileAttachment[] {
+    if (!value || value === '{}') return [];
+    const inner = value.slice(1, -1);
+    const matches = inner.match(/\([^)]*\)/g) || [];
+    return matches.map(m => {
+      const [bucketId, filePath] = m.slice(1, -1).split(',');
+      return { bucket_id: bucketId.trim(), file_path: filePath.trim() };
+    });
+  },
+});
+
+export const deepReport = pgTable("deep_report", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  runId: uuid("run_id").notNull().unique(),
+  ticker: varchar("ticker", { length: 20 }).notNull(),
+  rating: varchar("rating", { length: 20 }),
+  confidence: varchar("confidence", { length: 10 }),
+  targetBear: numeric("target_bear"),
+  targetBase: numeric("target_base"),
+  targetBull: numeric("target_bull"),
+  probBear: numeric("prob_bear"),
+  probBase: numeric("prob_base"),
+  probBull: numeric("prob_bull"),
+  coreThesis: text("core_thesis"),
+  viewChange: text("view_change"),
+  prevRating: varchar("prev_rating", { length: 20 }),
+  companyOverview: text("company_overview"),
+  businessModel: text("business_model"),
+  moat: text("moat"),
+  revenueStructure: jsonb("revenue_structure"),
+  financialAnnual: jsonb("financial_annual"),
+  financialQuarterly: jsonb("financial_quarterly"),
+  profitability: jsonb("profitability"),
+  balanceSheet: jsonb("balance_sheet"),
+  cashFlow: jsonb("cash_flow"),
+  financialQuality: text("financial_quality"),
+  segmentAnalysis: jsonb("segment_analysis"),
+  valuationRelative: jsonb("valuation_relative"),
+  valuationSotp: jsonb("valuation_sotp"),
+  valuationMethodology: text("valuation_methodology"),
+  industryOverview: text("industry_overview"),
+  marketSize: text("market_size"),
+  competitivePosition: text("competitive_position"),
+  industryTrends: text("industry_trends"),
+  bullPoints: jsonb("bull_points"),
+  bearPoints: jsonb("bear_points"),
+  criticPoints: jsonb("critic_points"),
+  revisedAssumptions: text("revised_assumptions"),
+  catalystsTimeline: jsonb("catalysts_timeline"),
+  riskItems: jsonb("risk_items"),
+  riskGateSnapshot: jsonb("risk_gate_snapshot"),
+  pmAction: text("pm_action"),
+  pmPriceRange: text("pm_price_range"),
+  pmPositionSize: text("pm_position_size"),
+  pmStopLoss: text("pm_stop_loss"),
+  pmExecutionPlan: text("pm_execution_plan"),
+  trackingMetrics: jsonb("tracking_metrics"),
+  viewChangeTriggers: text("view_change_triggers"),
+  owner: userProfile("owner").notNull().default(sql`CASE
+    WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
+  // System field: Creation time (auto-filled, do not modify)
+  createdAt: customTimestamptz("_created_at", { precision: 3 }).notNull().default(sql`CURRENT_TIMESTAMP`),
+  // System field: Creator (auto-filled, do not modify)
+  createdBy: userProfile("_created_by").default(sql`CASE
+    WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
+  // System field: Update time (auto-filled, do not modify)
+  updatedAt: customTimestamptz("_updated_at", { precision: 3 }).notNull().default(sql`CURRENT_TIMESTAMP`),
+  // System field: Updater (auto-filled, do not modify)
+  updatedBy: userProfile("_updated_by").default(sql`CASE
+    WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
+}, (table) => [
+  uniqueIndex("idx_deep_report_run").on(table.runId),
+  // Complex index: CREATE INDEX idx_deep_report_owner ON deep_report USING btree (((owner).user_id)),
+  foreignKey({
+    columns: [table.runId],
+    foreignColumns: [agentRuns.id],
+    name: "deep_report_run_id_fkey",
+  }).onDelete("cascade"),
+]);
+
+export const agentAuditLog = pgTable("agent_audit_log", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  runId: uuid("run_id"),
+  action: varchar("action", { length: 50 }).notNull(),
+  /**
+   * @type {Record<string, any>}
+   */
+  detail: jsonb("detail"),
+  owner: userProfile("owner").notNull().default(sql`CASE
+    WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
+  // System field: Creation time (auto-filled, do not modify)
+  createdAt: customTimestamptz("_created_at", { precision: 3 }).notNull().default(sql`CURRENT_TIMESTAMP`),
+  // System field: Creator (auto-filled, do not modify)
+  createdBy: userProfile("_created_by").default(sql`CASE
+    WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
+}, (table) => [
+  // Complex index: CREATE INDEX idx_audit_owner_date ON agent_audit_log USING btree (((owner).user_id), _created_at),
+  foreignKey({
+    columns: [table.runId],
+    foreignColumns: [agentRuns.id],
+    name: "agent_audit_log_run_id_fkey",
+  }).onDelete("set null"),
+]);
+
+export const strategyRules = pgTable("strategy_rules", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  ruleKey: varchar("rule_key", { length: 50 }).notNull(),
+  ruleName: varchar("rule_name", { length: 100 }).notNull(),
+  ruleType: varchar("rule_type", { length: 20 }).notNull(),
+  threshold: numeric("threshold"),
+  unit: varchar("unit", { length: 20 }),
+  enabled: boolean("enabled").notNull().default(true),
+  description: text("description"),
+  owner: userProfile("owner").notNull().default(sql`CASE
+    WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
+  category: varchar("category", { length: 50 }),
+  severity: varchar("severity", { length: 20 }).default('warning'),
+  sort: integer("sort").default(0),
+  // System field: Creation time (auto-filled, do not modify)
+  createdAt: customTimestamptz("_created_at", { precision: 3 }).notNull().default(sql`CURRENT_TIMESTAMP`),
+  // System field: Creator (auto-filled, do not modify)
+  createdBy: userProfile("_created_by").default(sql`CASE
+    WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
+  // System field: Update time (auto-filled, do not modify)
+  updatedAt: customTimestamptz("_updated_at", { precision: 3 }).notNull().default(sql`CURRENT_TIMESTAMP`),
+  // System field: Updater (auto-filled, do not modify)
+  updatedBy: userProfile("_updated_by").default(sql`CASE
+    WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
+}, (table) => [
+  // Complex index: CREATE UNIQUE INDEX idx_strategy_rules_owner_key ON strategy_rules USING btree (((owner).user_id), rule_key),
+]);
+
+export const riskGateResults = pgTable("risk_gate_results", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  runId: uuid("run_id").notNull(),
+  ruleName: varchar("rule_name", { length: 50 }).notNull(),
+  ruleType: varchar("rule_type", { length: 20 }).notNull(),
+  passed: boolean("passed").notNull(),
+  currentValue: numeric("current_value"),
+  thresholdValue: numeric("threshold_value"),
+  detail: text("detail"),
+  suggestedAction: text("suggested_action"),
+  owner: userProfile("owner").notNull().default(sql`CASE
+    WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
+  // System field: Creation time (auto-filled, do not modify)
+  createdAt: customTimestamptz("_created_at", { precision: 3 }).notNull().default(sql`CURRENT_TIMESTAMP`),
+  // System field: Creator (auto-filled, do not modify)
+  createdBy: userProfile("_created_by").default(sql`CASE
+    WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
+}, (table) => [
+  index("idx_risk_gate_run").on(table.runId),
+  foreignKey({
+    columns: [table.runId],
+    foreignColumns: [agentRuns.id],
+    name: "risk_gate_results_run_id_fkey",
+  }).onDelete("cascade"),
+]);
+
+export const agentRatings = pgTable("agent_ratings", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  runId: uuid("run_id").notNull(),
+  ticker: varchar("ticker", { length: 20 }).notNull(),
+  rating: varchar("rating", { length: 10 }).notNull(),
+  confidence: varchar("confidence", { length: 10 }).notNull(),
+  targetPrice: numeric("target_price"),
+  action: text("action").notNull(),
+  aggregationLogic: text("aggregation_logic"),
+  keyUncertainty: text("key_uncertainty"),
+  bullSummary: text("bull_summary"),
+  bearSummary: text("bear_summary"),
+  catalysts: text("catalysts"),
+  risks: text("risks"),
+  owner: userProfile("owner").notNull().default(sql`CASE
+    WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
+  // System field: Creation time (auto-filled, do not modify)
+  createdAt: customTimestamptz("_created_at", { precision: 3 }).notNull().default(sql`CURRENT_TIMESTAMP`),
+  // System field: Creator (auto-filled, do not modify)
+  createdBy: userProfile("_created_by").default(sql`CASE
+    WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
+  // System field: Update time (auto-filled, do not modify)
+  updatedAt: customTimestamptz("_updated_at", { precision: 3 }).notNull().default(sql`CURRENT_TIMESTAMP`),
+  // System field: Updater (auto-filled, do not modify)
+  updatedBy: userProfile("_updated_by").default(sql`CASE
+    WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
+}, (table) => [
+  // Complex index: CREATE UNIQUE INDEX idx_agent_ratings_owner_run ON agent_ratings USING btree (((owner).user_id), run_id),
+  // Complex index: CREATE INDEX idx_agent_ratings_owner_ticker ON agent_ratings USING btree (((owner).user_id), ticker),
+  foreignKey({
+    columns: [table.runId],
+    foreignColumns: [agentRuns.id],
+    name: "agent_ratings_run_id_fkey",
+  }).onDelete("cascade"),
+]);
+
+export const debateRecords = pgTable("debate_records", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  runId: uuid("run_id").notNull(),
+  round: integer("round").notNull(),
+  speaker: varchar("speaker", { length: 30 }).notNull(),
+  content: text("content").notNull(),
+  tokensUsed: integer("tokens_used").default(0),
+  owner: userProfile("owner").notNull().default(sql`CASE
+    WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
+  // System field: Creation time (auto-filled, do not modify)
+  createdAt: customTimestamptz("_created_at", { precision: 3 }).notNull().default(sql`CURRENT_TIMESTAMP`),
+  // System field: Creator (auto-filled, do not modify)
+  createdBy: userProfile("_created_by").default(sql`CASE
+    WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
+}, (table) => [
+  index("idx_debate_run").on(table.runId),
+  foreignKey({
+    columns: [table.runId],
+    foreignColumns: [agentRuns.id],
+    name: "debate_records_run_id_fkey",
+  }).onDelete("cascade"),
+]);
+
+export const bullBearArguments = pgTable("bull_bear_arguments", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  runId: uuid("run_id").notNull(),
+  side: varchar("side", { length: 10 }).notNull(),
+  round: integer("round").notNull().default(1),
+  argument: text("argument").notNull(),
+  /**
+   * @type {string[]}
+   */
+  evidenceIds: jsonb("evidence_ids"),
+  counteredBy: uuid("countered_by"),
+  owner: userProfile("owner").notNull().default(sql`CASE
+    WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
+  // System field: Creation time (auto-filled, do not modify)
+  createdAt: customTimestamptz("_created_at", { precision: 3 }).notNull().default(sql`CURRENT_TIMESTAMP`),
+  // System field: Creator (auto-filled, do not modify)
+  createdBy: userProfile("_created_by").default(sql`CASE
+    WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
+}, (table) => [
+  index("idx_bull_bear_run").on(table.runId),
+  index("idx_bull_bear_run_side").on(table.runId, table.side),
+  foreignKey({
+    columns: [table.runId],
+    foreignColumns: [agentRuns.id],
+    name: "bull_bear_arguments_run_id_fkey",
+  }).onDelete("cascade"),
+]);
+
+export const agentEvidence = pgTable("agent_evidence", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  runId: uuid("run_id").notNull(),
+  role: varchar("role", { length: 30 }).notNull(),
+  evidenceType: varchar("evidence_type", { length: 30 }).notNull(),
+  title: varchar("title", { length: 200 }).notNull(),
+  content: text("content").notNull(),
+  sourceUrl: text("source_url"),
+  sourceName: varchar("source_name", { length: 100 }),
+  fetchedAt: customTimestamptz("fetched_at", { precision: 3 }).notNull(),
+  relevanceScore: numeric("relevance_score"),
+  owner: userProfile("owner").notNull().default(sql`CASE
+    WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
+  // System field: Creation time (auto-filled, do not modify)
+  createdAt: customTimestamptz("_created_at", { precision: 3 }).notNull().default(sql`CURRENT_TIMESTAMP`),
+  // System field: Creator (auto-filled, do not modify)
+  createdBy: userProfile("_created_by").default(sql`CASE
+    WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
+}, (table) => [
+  index("idx_agent_evidence_run").on(table.runId),
+  foreignKey({
+    columns: [table.runId],
+    foreignColumns: [agentRuns.id],
+    name: "agent_evidence_run_id_fkey",
+  }).onDelete("cascade"),
+]);
+
+export const agentRuns = pgTable("agent_runs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  ticker: varchar("ticker", { length: 20 }).notNull(),
+  tickerName: varchar("ticker_name", { length: 100 }),
+  market: varchar("market", { length: 10 }),
+  triggerType: varchar("trigger_type", { length: 20 }).notNull(),
+  runMode: varchar("run_mode", { length: 20 }).notNull().default('full'),
+  status: varchar("status", { length: 20 }).notNull().default('pending'),
+  modelFast: varchar("model_fast", { length: 50 }),
+  modelSlow: varchar("model_slow", { length: 50 }),
+  tokensUsed: integer("tokens_used").default(0),
+  costEstimate: numeric("cost_estimate").default('0'),
+  startedAt: customTimestamptz("started_at", { precision: 3 }),
+  completedAt: customTimestamptz("completed_at", { precision: 3 }),
+  errorMessage: text("error_message"),
+  humanDecision: varchar("human_decision", { length: 20 }),
+  humanNote: text("human_note"),
+  owner: userProfile("owner").notNull().default(sql`CASE
+    WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
+  // System field: Creation time (auto-filled, do not modify)
+  createdAt: customTimestamptz("_created_at", { precision: 3 }).notNull().default(sql`CURRENT_TIMESTAMP`),
+  // System field: Creator (auto-filled, do not modify)
+  createdBy: userProfile("_created_by").default(sql`CASE
+    WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
+  // System field: Update time (auto-filled, do not modify)
+  updatedAt: customTimestamptz("_updated_at", { precision: 3 }).notNull().default(sql`CURRENT_TIMESTAMP`),
+  // System field: Updater (auto-filled, do not modify)
+  updatedBy: userProfile("_updated_by").default(sql`CASE
+    WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
+}, (table) => [
+  // Complex index: CREATE INDEX idx_agent_runs_owner_ticker ON agent_runs USING btree (((owner).user_id), ticker),
+  // Complex index: CREATE INDEX idx_agent_runs_owner_status ON agent_runs USING btree (((owner).user_id), status),
+  // Complex index: CREATE INDEX idx_agent_runs_owner_date ON agent_runs USING btree (((owner).user_id), _created_at),
+]);
+
+export const fxRates = pgTable("fx_rates", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  rateDate: date("rate_date").notNull(),
+  base: varchar("base", { length: 10 }).notNull(),
+  quote: varchar("quote", { length: 10 }).notNull(),
+  rate: numeric("rate").notNull(),
+  // System field: Creation time (auto-filled, do not modify)
+  createdAt: customTimestamptz("_created_at", { precision: 3 }).notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (table) => [
+  uniqueIndex("idx_fx_rates_date_base_quote").on(table.rateDate, table.base, table.quote),
+]);
+
+export const cashAccounts = pgTable("cash_accounts", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  currency: varchar("currency", { length: 10 }).notNull(),
+  balance: numeric("balance").notNull().default('0'),
+  owner: userProfile("owner").notNull().default(sql`CASE
+    WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
+  // System field: Creation time (auto-filled, do not modify)
+  createdAt: customTimestamptz("_created_at", { precision: 3 }).notNull().default(sql`CURRENT_TIMESTAMP`),
+  // System field: Creator (auto-filled, do not modify)
+  createdBy: userProfile("_created_by").default(sql`CASE
+    WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
+  // System field: Update time (auto-filled, do not modify)
+  updatedAt: customTimestamptz("_updated_at", { precision: 3 }).notNull().default(sql`CURRENT_TIMESTAMP`),
+  // System field: Updater (auto-filled, do not modify)
+  updatedBy: userProfile("_updated_by").default(sql`CASE
+    WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
+}, (table) => [
+  // Complex index: CREATE UNIQUE INDEX idx_cash_owner_currency ON cash_accounts USING btree (((owner).user_id), currency),
+]);
+
+export const alphaPicks = pgTable("alpha_picks", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  ticker: varchar("ticker", { length: 20 }).notNull(),
+  company: varchar("company", { length: 255 }),
+  sector: varchar("sector", { length: 100 }),
+  datePicked: date("date_picked"),
+  returnPct: numeric("return_pct"),
+  rating: varchar("rating", { length: 30 }),
+  weightPct: numeric("weight_pct"),
+  owner: userProfile("owner").notNull().default(sql`CASE
+    WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
+  // System field: Creation time (auto-filled, do not modify)
+  createdAt: customTimestamptz("_created_at", { precision: 3 }).notNull().default(sql`CURRENT_TIMESTAMP`),
+  // System field: Creator (auto-filled, do not modify)
+  createdBy: userProfile("_created_by").default(sql`CASE
+    WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
+  // System field: Update time (auto-filled, do not modify)
+  updatedAt: customTimestamptz("_updated_at", { precision: 3 }).notNull().default(sql`CURRENT_TIMESTAMP`),
+  // System field: Updater (auto-filled, do not modify)
+  updatedBy: userProfile("_updated_by").default(sql`CASE
+    WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
+}, (table) => [
+  index("idx_alpha_picks_date").on(table.datePicked),
+]);
+
+export const snapshots = pgTable("snapshots", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  snapshotDate: date("snapshot_date").notNull(),
+  accountValue: numeric("account_value"),
+  totalMv: numeric("total_mv"),
+  cost: numeric("cost"),
+  cash: numeric("cash"),
+  totalPl: numeric("total_pl"),
+  dailyPl: numeric("daily_pl"),
+  dailyPct: numeric("daily_pct"),
+  owner: userProfile("owner").notNull().default(sql`CASE
+    WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
+  netDeposit: numeric("net_deposit").default('0'),
+  cumulativeNetDeposit: numeric("cumulative_net_deposit").default('0'),
+  // System field: Creation time (auto-filled, do not modify)
+  createdAt: customTimestamptz("_created_at", { precision: 3 }).notNull().default(sql`CURRENT_TIMESTAMP`),
+  // System field: Creator (auto-filled, do not modify)
+  createdBy: userProfile("_created_by").default(sql`CASE
+    WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
+  // System field: Update time (auto-filled, do not modify)
+  updatedAt: customTimestamptz("_updated_at", { precision: 3 }).notNull().default(sql`CURRENT_TIMESTAMP`),
+  // System field: Updater (auto-filled, do not modify)
+  updatedBy: userProfile("_updated_by").default(sql`CASE
+    WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
+}, (table) => [
+  uniqueIndex("idx_snapshots_owner_date").on(table.owner, table.snapshotDate),
+]);
+
+export const journal = pgTable("journal", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  journalDate: date("journal_date").notNull(),
+  marketSummary: text("market_summary"),
+  portfolioSummary: text("portfolio_summary"),
+  actions: text("actions"),
+  plan: text("plan"),
+  lessons: text("lessons"),
+  owner: userProfile("owner").notNull().default(sql`CASE
+    WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
+  // System field: Creation time (auto-filled, do not modify)
+  createdAt: customTimestamptz("_created_at", { precision: 3 }).notNull().default(sql`CURRENT_TIMESTAMP`),
+  // System field: Creator (auto-filled, do not modify)
+  createdBy: userProfile("_created_by").default(sql`CASE
+    WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
+  // System field: Update time (auto-filled, do not modify)
+  updatedAt: customTimestamptz("_updated_at", { precision: 3 }).notNull().default(sql`CURRENT_TIMESTAMP`),
+  // System field: Updater (auto-filled, do not modify)
+  updatedBy: userProfile("_updated_by").default(sql`CASE
+    WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
+}, (table) => [
+  uniqueIndex("idx_journal_owner_date").on(table.owner, table.journalDate),
+]);
+
+export const closed = pgTable("closed", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  ticker: varchar("ticker", { length: 20 }).notNull(),
+  company: varchar("company", { length: 255 }),
+  openDate: date("open_date"),
+  closeDate: date("close_date"),
+  buyPrice: numeric("buy_price"),
+  sellPrice: numeric("sell_price"),
+  shares: numeric("shares"),
+  realizedPl: numeric("realized_pl"),
+  returnPct: numeric("return_pct"),
+  notes: text("notes"),
+  owner: userProfile("owner").notNull().default(sql`CASE
+    WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
+  // System field: Creation time (auto-filled, do not modify)
+  createdAt: customTimestamptz("_created_at", { precision: 3 }).notNull().default(sql`CURRENT_TIMESTAMP`),
+  // System field: Creator (auto-filled, do not modify)
+  createdBy: userProfile("_created_by").default(sql`CASE
+    WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
+  // System field: Update time (auto-filled, do not modify)
+  updatedAt: customTimestamptz("_updated_at", { precision: 3 }).notNull().default(sql`CURRENT_TIMESTAMP`),
+  // System field: Updater (auto-filled, do not modify)
+  updatedBy: userProfile("_updated_by").default(sql`CASE
+    WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
+}, (table) => [
+  index("idx_closed_close_date").on(table.closeDate),
+  index("idx_closed_ticker").on(table.ticker),
+]);
+
+export const transactions = pgTable("transactions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  txDate: date("tx_date").notNull(),
+  ticker: varchar("ticker", { length: 20 }).notNull(),
+  txType: varchar("tx_type", { length: 10 }).notNull(),
+  shares: numeric("shares").notNull(),
+  price: numeric("price").notNull(),
+  fees: numeric("fees").default('0'),
+  notes: text("notes"),
+  owner: userProfile("owner").notNull().default(sql`CASE
+    WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
+  currency: varchar("currency", { length: 10 }).default('USD'),
+  // System field: Creation time (auto-filled, do not modify)
+  createdAt: customTimestamptz("_created_at", { precision: 3 }).notNull().default(sql`CURRENT_TIMESTAMP`),
+  // System field: Creator (auto-filled, do not modify)
+  createdBy: userProfile("_created_by").default(sql`CASE
+    WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
+  // System field: Update time (auto-filled, do not modify)
+  updatedAt: customTimestamptz("_updated_at", { precision: 3 }).notNull().default(sql`CURRENT_TIMESTAMP`),
+  // System field: Updater (auto-filled, do not modify)
+  updatedBy: userProfile("_updated_by").default(sql`CASE
+    WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
+}, (table) => [
+  index("idx_transactions_date").on(table.txDate),
+  index("idx_transactions_ticker").on(table.ticker),
+]);
+
+export const analysis = pgTable("analysis", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  analysisDate: date("analysis_date").notNull(),
+  ticker: varchar("ticker", { length: 20 }).notNull(),
+  rating: varchar("rating", { length: 500 }),
+  action: varchar("action", { length: 500 }),
+  analysis: text("analysis"),
+  targetPrice: numeric("target_price"),
+  catalysts: text("catalysts"),
+  risks: text("risks"),
+  owner: userProfile("owner").notNull().default(sql`CASE
+    WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
+  // System field: Creation time (auto-filled, do not modify)
+  createdAt: customTimestamptz("_created_at", { precision: 3 }).notNull().default(sql`CURRENT_TIMESTAMP`),
+  // System field: Creator (auto-filled, do not modify)
+  createdBy: userProfile("_created_by").default(sql`CASE
+    WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
+  // System field: Update time (auto-filled, do not modify)
+  updatedAt: customTimestamptz("_updated_at", { precision: 3 }).notNull().default(sql`CURRENT_TIMESTAMP`),
+  // System field: Updater (auto-filled, do not modify)
+  updatedBy: userProfile("_updated_by").default(sql`CASE
+    WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
+}, (table) => [
+  index("idx_analysis_date").on(table.analysisDate),
+  uniqueIndex("idx_analysis_owner_date_ticker").on(table.owner, table.analysisDate, table.ticker),
+]);
+
+export const watchlist = pgTable("watchlist", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  ticker: varchar("ticker", { length: 20 }).notNull(),
+  company: varchar("company", { length: 255 }),
+  sector: varchar("sector", { length: 100 }),
+  dateAdded: date("date_added"),
+  entryPrice: numeric("entry_price"),
+  currentPrice: numeric("current_price"),
+  rating: varchar("rating", { length: 30 }),
+  signal: varchar("signal", { length: 20 }),
+  targetBuy: numeric("target_buy"),
+  analysis: text("analysis"),
+  owner: userProfile("owner").notNull().default(sql`CASE
+    WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
+  market: varchar("market", { length: 10 }).default('US'),
+  currency: varchar("currency", { length: 10 }).default('USD'),
+  // System field: Creation time (auto-filled, do not modify)
+  createdAt: customTimestamptz("_created_at", { precision: 3 }).notNull().default(sql`CURRENT_TIMESTAMP`),
+  // System field: Creator (auto-filled, do not modify)
+  createdBy: userProfile("_created_by").default(sql`CASE
+    WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
+  // System field: Update time (auto-filled, do not modify)
+  updatedAt: customTimestamptz("_updated_at", { precision: 3 }).notNull().default(sql`CURRENT_TIMESTAMP`),
+  // System field: Updater (auto-filled, do not modify)
+  updatedBy: userProfile("_updated_by").default(sql`CASE
+    WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
+}, (table) => [
+  // Complex index: CREATE UNIQUE INDEX idx_watchlist_owner_ticker ON watchlist USING btree (((owner).user_id), ticker),
+]);
+
+export const holdings = pgTable("holdings", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  ticker: varchar("ticker", { length: 20 }).notNull(),
+  company: varchar("company", { length: 255 }),
+  sector: varchar("sector", { length: 255 }),
+  buyDate: date("buy_date"),
+  buyPrice: numeric("buy_price"),
+  shares: numeric("shares").notNull().default('0'),
+  currentPrice: numeric("current_price"),
+  rating: varchar("rating", { length: 500 }),
+  action: varchar("action", { length: 500 }),
+  analysis: text("analysis"),
+  targetPrice: numeric("target_price"),
+  groupId: uuid("group_id"),
+  owner: userProfile("owner").notNull().default(sql`CASE
+    WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
+  market: varchar("market", { length: 10 }).default('US'),
+  currency: varchar("currency", { length: 10 }).default('USD'),
+  symbolNative: varchar("symbol_native", { length: 40 }),
+  displaySymbol: varchar("display_symbol", { length: 40 }),
+  // System field: Creation time (auto-filled, do not modify)
+  createdAt: customTimestamptz("_created_at", { precision: 3 }).notNull().default(sql`CURRENT_TIMESTAMP`),
+  // System field: Creator (auto-filled, do not modify)
+  createdBy: userProfile("_created_by").default(sql`CASE
+    WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
+  // System field: Update time (auto-filled, do not modify)
+  updatedAt: customTimestamptz("_updated_at", { precision: 3 }).notNull().default(sql`CURRENT_TIMESTAMP`),
+  // System field: Updater (auto-filled, do not modify)
+  updatedBy: userProfile("_updated_by").default(sql`CASE
+    WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
+}, (table) => [
+  // Complex index: CREATE UNIQUE INDEX idx_holdings_owner_ticker ON holdings USING btree (((owner).user_id), ticker),
+  index("idx_holdings_group").on(table.groupId),
+  foreignKey({
+    columns: [table.groupId],
+    foreignColumns: [groups.id],
+    name: "holdings_group_id_fkey",
+  }).onDelete("set null"),
+]);
+
+export const groups = pgTable("groups", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: varchar("name", { length: 100 }).notNull(),
+  color: varchar("color", { length: 20 }),
+  sort: integer("sort").default(0),
+  owner: userProfile("owner").notNull().default(sql`CASE
+    WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
+  // System field: Creation time (auto-filled, do not modify)
+  createdAt: customTimestamptz("_created_at", { precision: 3 }).notNull().default(sql`CURRENT_TIMESTAMP`),
+  // System field: Creator (auto-filled, do not modify)
+  createdBy: userProfile("_created_by").default(sql`CASE
+    WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
+  // System field: Update time (auto-filled, do not modify)
+  updatedAt: customTimestamptz("_updated_at", { precision: 3 }).notNull().default(sql`CURRENT_TIMESTAMP`),
+  // System field: Updater (auto-filled, do not modify)
+  updatedBy: userProfile("_updated_by").default(sql`CASE
+    WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
+}, (table) => [
+  // Complex index: CREATE UNIQUE INDEX idx_groups_owner_name ON groups USING btree (((owner).user_id), name),
+]);
+
+// table aliases
+export const agentAuditLogTable = agentAuditLog;
+export const agentEvidenceTable = agentEvidence;
+export const agentRatingsTable = agentRatings;
+export const agentRunsTable = agentRuns;
+export const alphaPicksTable = alphaPicks;
+export const analysisTable = analysis;
+export const bullBearArgumentsTable = bullBearArguments;
+export const cashAccountsTable = cashAccounts;
+export const closedTable = closed;
+export const debateRecordsTable = debateRecords;
+export const deepReportTable = deepReport;
+export const fxRatesTable = fxRates;
+export const groupsTable = groups;
+export const holdingsTable = holdings;
+export const journalTable = journal;
+export const riskGateResultsTable = riskGateResults;
+export const snapshotsTable = snapshots;
+export const strategyRulesTable = strategyRules;
+export const transactionsTable = transactions;
+export const watchlistTable = watchlist;

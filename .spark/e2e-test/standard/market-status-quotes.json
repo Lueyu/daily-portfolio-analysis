@@ -1,0 +1,1 @@
+{"cases":[{"id":1,"priority":"p0","description":"Dashboard页三市场徽章渲染且含交易中/休市文案"},{"id":2,"priority":"p0","description":"window.__pt.getMarketStatus() 返回三市场 phase 与 UTC"},{"id":3,"priority":"p1","description":"持仓页三市场徽章存在且文案正确"},{"id":4,"priority":"p1","description":"页面 visible 时盘中市场约 60s 触发一次 quote/batch 请求"}]}

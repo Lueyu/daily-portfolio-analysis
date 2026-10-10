@@ -1,0 +1,811 @@
+import { Injectable, Inject, Logger } from '@nestjs/common';
+import { HttpService } from '@nestjs/axios';
+import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '@lark-apaas/fullstack-nestjs-core';
+import { eq, sql } from 'drizzle-orm';
+import { firstValueFrom } from 'rxjs';
+import { holdings, watchlist } from '@server/database/schema';
+import type { QuoteResponse, Market, Currency } from '@shared/api.interface';
+
+interface MarketInfo {
+  market: Market;
+  currency: Currency;
+  displaySymbol: string;
+  symbolNative: string;
+}
+
+interface CacheEntry {
+  value: QuoteResponse;
+  expiresAt: number;
+}
+
+const MAX_BATCH_SIZE = 30;
+const CACHE_TTL_MS = 60_000;
+
+@Injectable()
+export class QuoteService {
+  private readonly logger = new Logger(QuoteService.name);
+  private readonly quoteCache = new Map<string, CacheEntry>();
+
+  constructor(
+    @Inject(DRIZZLE_DATABASE) private readonly db: PostgresJsDatabase,
+    private readonly httpService: HttpService,
+  ) {}
+
+  detectMarket(symbol: string): MarketInfo {
+    const upper = symbol.toUpperCase().trim();
+
+    // Explicit suffix detection
+    if (upper.endsWith('.HK')) {
+      const codePart = upper.slice(0, -3);
+      const numeric = codePart.replace(/\D/g, '');
+      const symbolNative = numeric.padStart(5, '0');
+      return {
+        market: 'HK',
+        currency: 'HKD',
+        displaySymbol: upper,
+        symbolNative,
+      };
+    }
+
+    if (upper.endsWith('.SH')) {
+      const codePart = upper.slice(0, -3);
+      return {
+        market: 'CN',
+        currency: 'CNY',
+        displaySymbol: upper,
+        symbolNative: codePart,
+      };
+    }
+
+    if (upper.endsWith('.SZ')) {
+      const codePart = upper.slice(0, -3);
+      return {
+        market: 'CN',
+        currency: 'CNY',
+        displaySymbol: upper,
+        symbolNative: codePart,
+      };
+    }
+
+    if (upper.endsWith('.BJ')) {
+      const codePart = upper.slice(0, -3);
+      return {
+        market: 'CN',
+        currency: 'CNY',
+        displaySymbol: upper,
+        symbolNative: codePart,
+      };
+    }
+
+    // Pure numeric detection
+    if (/^\d+$/.test(upper)) {
+      // 5-digit → HK (e.g. 00700)
+      if (upper.length === 5) {
+        const displayCode = upper.startsWith('0') ? upper.slice(1) : upper;
+        return {
+          market: 'HK',
+          currency: 'HKD',
+          displaySymbol: `${displayCode}.HK`,
+          symbolNative: upper,
+        };
+      }
+      // 6-digit → CN A-share
+      if (upper.length === 6) {
+        if (upper.startsWith('6')) {
+          return {
+            market: 'CN',
+            currency: 'CNY',
+            displaySymbol: `${upper}.SH`,
+            symbolNative: upper,
+          };
+        }
+        if (upper.startsWith('0') || upper.startsWith('3')) {
+          return {
+            market: 'CN',
+            currency: 'CNY',
+            displaySymbol: `${upper}.SZ`,
+            symbolNative: upper,
+          };
+        }
+        if (upper.startsWith('8') || upper.startsWith('4')) {
+          return {
+            market: 'CN',
+            currency: 'CNY',
+            displaySymbol: `${upper}.BJ`,
+            symbolNative: upper,
+          };
+        }
+      }
+    }
+
+    // Default: US market
+    return {
+      market: 'US',
+      currency: 'USD',
+      displaySymbol: upper,
+      symbolNative: upper,
+    };
+  }
+
+  async getQuote(symbol: string): Promise<QuoteResponse | null> {
+    const info = this.detectMarket(symbol);
+    const cacheKey = info.displaySymbol;
+
+    // Check cache
+    const cached = this.quoteCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.value;
+    }
+
+    try {
+      let result: QuoteResponse | null = null;
+      if (info.market === 'US') {
+        result = await this.fetchUsQuote(info.symbolNative);
+      } else if (info.market === 'HK') {
+        result = await this.fetchHkQuote(info.symbolNative);
+      } else if (info.market === 'CN') {
+        const prefix = info.displaySymbol.endsWith('.SH')
+          ? 'sh'
+          : info.displaySymbol.endsWith('.SZ')
+            ? 'sz'
+            : 'bj';
+        result = await this.fetchCnQuote(info.symbolNative, prefix);
+      }
+
+      if (result) {
+        this.quoteCache.set(cacheKey, {
+          value: result,
+          expiresAt: Date.now() + CACHE_TTL_MS,
+        });
+      }
+      return result;
+    } catch (error) {
+      this.logger.warn(`getQuote failed for ${symbol}: ${error instanceof Error ? error.message : String(error)}`);
+      return null;
+    }
+  }
+
+  async getBatchQuotes(symbols: string[]): Promise<QuoteResponse[]> {
+    const unique = Array.from(new Set(symbols.map((s: string) => s.trim()).filter(Boolean))).slice(0, MAX_BATCH_SIZE);
+    const results: QuoteResponse[] = [];
+    const promises = unique.map(async (sym: string) => {
+      const q = await this.getQuote(sym);
+      if (q) results.push(q);
+    });
+    await Promise.all(promises);
+    return results;
+  }
+
+  async fetchUsQuote(symbol: string): Promise<QuoteResponse | null> {
+    let primary: QuoteResponse | null = null;
+    try {
+      const url = `http://qt.gtimg.cn/q=us${symbol.toUpperCase()}`;
+      const response = await firstValueFrom(
+        this.httpService.get(url, { responseType: 'arraybuffer', timeout: 8000 }),
+      );
+
+      const text = this.decodeGbk(response.data as ArrayBuffer);
+      if (!text) return null;
+
+      const match = text.match(/v_us[a-zA-Z0-9.]+="([^"]*)"/);
+      if (!match) return null;
+
+      const fields = match[1].split('~');
+      if (fields.length < 35) return null;
+
+      const currentPrice = parseFloat(fields[3]);
+      const prevClose = parseFloat(fields[4]);
+      const changeStr = fields[31];
+      const changePercentStr = fields[32];
+
+      if (isNaN(currentPrice) || currentPrice <= 0) return null;
+
+      const changeVal = parseFloat(changeStr);
+      const changePercentVal = parseFloat(changePercentStr);
+      const change = isNaN(changeVal) ? (isNaN(prevClose) || prevClose <= 0 ? 0 : currentPrice - prevClose) : changeVal;
+      const changePercent = isNaN(changePercentVal) ? (isNaN(prevClose) || prevClose <= 0 ? 0 : (change / prevClose) * 100) : changePercentVal;
+
+      const openStr = fields[5];
+      const highStr = fields[33];
+      const lowStr = fields[34];
+      const volumeStr = fields[6] ?? '';
+      const name = fields[46] ?? fields[1] ?? '';
+
+      primary = {
+        symbol: symbol.toUpperCase(),
+        companyName: name || undefined,
+        price: currentPrice.toFixed(2),
+        change: change.toFixed(2),
+        changePercent: changePercent.toFixed(2),
+        open: openStr && !isNaN(parseFloat(openStr)) ? parseFloat(openStr).toFixed(2) : undefined,
+        high: highStr && !isNaN(parseFloat(highStr)) ? parseFloat(highStr).toFixed(2) : undefined,
+        low: lowStr && !isNaN(parseFloat(lowStr)) ? parseFloat(lowStr).toFixed(2) : undefined,
+        volume: volumeStr && !isNaN(parseFloat(volumeStr)) ? volumeStr : undefined,
+        currency: 'USD',
+        market: 'US',
+        timestamp: Date.now(),
+        delayed: true,
+      };
+    } catch (error) {
+      this.logger.warn(`fetchUsQuote tencent failed for ${symbol}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+
+    if (!primary) {
+      try {
+        const yahooResult = await this.fetchUsQuoteYahoo(symbol);
+        if (yahooResult) return yahooResult;
+      } catch (error) {
+        this.logger.warn(`fetchUsQuote yahoo fallback failed for ${symbol}: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+
+    return primary;
+  }
+
+  async fetchUsQuoteYahoo(symbol: string): Promise<QuoteResponse | null> {
+    try {
+      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=1d`;
+      const response = await firstValueFrom(
+        this.httpService.get(url, {
+          responseType: 'json',
+          timeout: 8000,
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (compatible; QuoteService/1.0)',
+          },
+        }),
+      );
+
+      const data = response.data as {
+        chart?: {
+          result?: Array<{
+            meta?: {
+              regularMarketPrice?: number;
+              chartPreviousClose?: number;
+              regularMarketOpen?: number;
+              regularMarketDayHigh?: number;
+              regularMarketDayLow?: number;
+              regularMarketVolume?: number;
+              symbol?: string;
+            };
+          }>;
+        };
+      };
+
+      const meta = data?.chart?.result?.[0]?.meta;
+      if (!meta) return null;
+
+      const price = meta.regularMarketPrice;
+      const prevClose = meta.chartPreviousClose;
+
+      if (typeof price !== 'number' || isNaN(price) || price <= 0) return null;
+
+      const change = (typeof prevClose === 'number' && prevClose > 0) ? price - prevClose : 0;
+      const changePercent = (typeof prevClose === 'number' && prevClose > 0) ? (change / prevClose) * 100 : 0;
+
+      return {
+        symbol: (meta.symbol ?? symbol).toUpperCase(),
+        price: price.toFixed(2),
+        change: change.toFixed(2),
+        changePercent: changePercent.toFixed(2),
+        open: typeof meta.regularMarketOpen === 'number' ? meta.regularMarketOpen.toFixed(2) : undefined,
+        high: typeof meta.regularMarketDayHigh === 'number' ? meta.regularMarketDayHigh.toFixed(2) : undefined,
+        low: typeof meta.regularMarketDayLow === 'number' ? meta.regularMarketDayLow.toFixed(2) : undefined,
+        volume: typeof meta.regularMarketVolume === 'number' ? String(meta.regularMarketVolume) : undefined,
+        currency: 'USD',
+        market: 'US',
+        timestamp: Date.now(),
+        delayed: true,
+      };
+    } catch (error) {
+      this.logger.warn(`fetchUsQuoteYahoo failed for ${symbol}: ${error instanceof Error ? error.message : String(error)}`);
+      return null;
+    }
+  }
+
+  async fetchHkQuote(symbol: string): Promise<QuoteResponse | null> {
+    let primary: QuoteResponse | null = null;
+    try {
+      const url = `http://qt.gtimg.cn/q=hk${symbol}`;
+      const response = await firstValueFrom(
+        this.httpService.get(url, { responseType: 'arraybuffer', timeout: 8000 }),
+      );
+
+      const text = this.decodeGbk(response.data as ArrayBuffer);
+      if (!text) return null;
+
+      // Parse v_hkXXXX="..." pattern
+      const match = text.match(/v_hk\d+="([^"]*)"/);
+      if (!match) return null;
+
+      const fields = match[1].split('~');
+      if (fields.length < 7) return null;
+
+      const currentPrice = parseFloat(fields[3]);
+      const prevClose = parseFloat(fields[4]);
+      const changeStr = fields[31];
+      const changePercentStr = fields[32];
+
+      if (isNaN(currentPrice) || currentPrice <= 0) return null;
+
+      const changeVal = parseFloat(changeStr);
+      const changePercentVal = parseFloat(changePercentStr);
+      const change = isNaN(changeVal) ? (isNaN(prevClose) || prevClose <= 0 ? 0 : currentPrice - prevClose) : changeVal;
+      const changePercent = isNaN(changePercentVal) ? (isNaN(prevClose) || prevClose <= 0 ? 0 : (change / prevClose) * 100) : changePercentVal;
+
+      const openStr = fields[5];
+      const highStr = fields[33];
+      const lowStr = fields[34];
+      const volumeStr = fields[6] ?? '';
+      const name = fields[1] ?? '';
+
+      const displayCode = symbol.startsWith('0') && symbol.length === 5
+        ? symbol.slice(1)
+        : symbol;
+
+      primary = {
+        symbol: `${displayCode}.HK`,
+        companyName: name || undefined,
+        price: currentPrice.toFixed(2),
+        change: change.toFixed(2),
+        changePercent: changePercent.toFixed(2),
+        open: openStr && !isNaN(parseFloat(openStr)) ? parseFloat(openStr).toFixed(2) : undefined,
+        high: highStr && !isNaN(parseFloat(highStr)) ? parseFloat(highStr).toFixed(2) : undefined,
+        low: lowStr && !isNaN(parseFloat(lowStr)) ? parseFloat(lowStr).toFixed(2) : undefined,
+        volume: volumeStr && !isNaN(parseFloat(volumeStr)) ? volumeStr : undefined,
+        currency: 'HKD',
+        market: 'HK',
+        timestamp: Date.now(),
+        delayed: true,
+      };
+    } catch (error) {
+      this.logger.warn(`fetchHkQuote tencent failed for ${symbol}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+
+    // Fallback to Sina if primary failed
+    if (!primary) {
+      try {
+        primary = await this.fetchHkQuoteSina(symbol);
+      } catch (error) {
+        this.logger.warn(`fetchHkQuote sina fallback failed for ${symbol}: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+
+    return primary;
+  }
+
+  async fetchHkQuoteSina(symbol: string): Promise<QuoteResponse | null> {
+    try {
+      const url = `https://hq.sinajs.cn/list=hk${symbol}`;
+      const response = await firstValueFrom(
+        this.httpService.get(url, {
+          responseType: 'arraybuffer',
+          timeout: 8000,
+          headers: {
+            Referer: 'https://finance.sina.com.cn',
+          },
+        }),
+      );
+
+      const text = this.decodeGbk(response.data as ArrayBuffer);
+      if (!text) return null;
+
+      const match = text.match(/var hq_str_hk\d+="([^"]*)"/);
+      if (!match) return null;
+
+      const fields = match[1].split(',');
+      // Sina HK format: 0=名称,1=开盘,2=昨收,3=最高,4=最低,5=最新价,6=涨跌额,7=涨跌幅,...
+      if (fields.length < 8) return null;
+
+      const name = fields[0] ?? '';
+      const openStr = fields[1];
+      const prevCloseStr = fields[2];
+      const highStr = fields[3];
+      const lowStr = fields[4];
+      const currentPrice = parseFloat(fields[5]);
+      const prevClose = parseFloat(prevCloseStr);
+
+      if (isNaN(currentPrice) || currentPrice <= 0) return null;
+
+      const change = isNaN(prevClose) || prevClose <= 0 ? 0 : currentPrice - prevClose;
+      const changePercent = isNaN(prevClose) || prevClose <= 0 ? 0 : (change / prevClose) * 100;
+
+      const displayCode = symbol.startsWith('0') && symbol.length === 5
+        ? symbol.slice(1)
+        : symbol;
+
+      return {
+        symbol: `${displayCode}.HK`,
+        companyName: name || undefined,
+        price: currentPrice.toFixed(2),
+        change: change.toFixed(2),
+        changePercent: changePercent.toFixed(2),
+        open: openStr && !isNaN(parseFloat(openStr)) ? parseFloat(openStr).toFixed(2) : undefined,
+        high: highStr && !isNaN(parseFloat(highStr)) ? parseFloat(highStr).toFixed(2) : undefined,
+        low: lowStr && !isNaN(parseFloat(lowStr)) ? parseFloat(lowStr).toFixed(2) : undefined,
+        currency: 'HKD',
+        market: 'HK',
+        timestamp: Date.now(),
+        delayed: true,
+      };
+    } catch (error) {
+      this.logger.warn(`fetchHkQuoteSina failed for ${symbol}: ${error instanceof Error ? error.message : String(error)}`);
+      return null;
+    }
+  }
+
+  async fetchCnQuote(symbol: string, prefix: string): Promise<QuoteResponse | null> {
+    let primary: QuoteResponse | null = null;
+    try {
+      const url = `http://qt.gtimg.cn/q=${prefix}${symbol}`;
+      const response = await firstValueFrom(
+        this.httpService.get(url, { responseType: 'arraybuffer', timeout: 8000 }),
+      );
+
+      const text = this.decodeGbk(response.data as ArrayBuffer);
+      if (!text) return null;
+
+      // Parse v_shXXXX="..." or v_szXXXX="..." pattern
+      const match = text.match(/v_[a-z]+\d+="([^"]*)"/);
+      if (!match) return null;
+
+      const fields = match[1].split('~');
+      if (fields.length < 6) return null;
+
+      const name = fields[1] ?? '';
+      const currentPrice = parseFloat(fields[3]);
+      const prevClose = parseFloat(fields[4]);
+      const openStr = fields[5];
+
+      if (isNaN(currentPrice) || currentPrice <= 0) return null;
+
+      const change = isNaN(prevClose) || prevClose <= 0 ? 0 : currentPrice - prevClose;
+      const changePercent = isNaN(prevClose) || prevClose <= 0 ? 0 : (change / prevClose) * 100;
+
+      // Index 33 = high, 34 = low, 6 = volume(手)
+      const highStr = fields[33] ?? '';
+      const lowStr = fields[34] ?? '';
+      const volumeStr = fields[6] ?? '';
+
+      const suffix = prefix === 'sh' ? '.SH' : prefix === 'sz' ? '.SZ' : '.BJ';
+
+      primary = {
+        symbol: `${symbol}${suffix}`,
+        companyName: name || undefined,
+        price: currentPrice.toFixed(2),
+        change: change.toFixed(2),
+        changePercent: changePercent.toFixed(2),
+        open: openStr && !isNaN(parseFloat(openStr)) ? parseFloat(openStr).toFixed(2) : undefined,
+        high: highStr && !isNaN(parseFloat(highStr)) ? parseFloat(highStr).toFixed(2) : undefined,
+        low: lowStr && !isNaN(parseFloat(lowStr)) ? parseFloat(lowStr).toFixed(2) : undefined,
+        volume: volumeStr && !isNaN(parseFloat(volumeStr)) ? volumeStr : undefined,
+        currency: 'CNY',
+        market: 'CN',
+        timestamp: Date.now(),
+        delayed: true,
+      };
+    } catch (error) {
+      this.logger.warn(`fetchCnQuote tencent failed for ${symbol}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+
+    // Fallback to Sina if primary failed
+    if (!primary) {
+      try {
+        primary = await this.fetchCnQuoteSina(symbol, prefix);
+      } catch (error) {
+        this.logger.warn(`fetchCnQuote sina fallback failed for ${symbol}: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+
+    return primary;
+  }
+
+  async fetchCnQuoteSina(symbol: string, prefix: string): Promise<QuoteResponse | null> {
+    try {
+      const url = `https://hq.sinajs.cn/list=${prefix}${symbol}`;
+      const response = await firstValueFrom(
+        this.httpService.get(url, {
+          responseType: 'arraybuffer',
+          timeout: 8000,
+          headers: {
+            Referer: 'https://finance.sina.com.cn',
+          },
+        }),
+      );
+
+      const text = this.decodeGbk(response.data as ArrayBuffer);
+      if (!text) return null;
+
+      const match = text.match(/var hq_str_[a-z]+\d+="([^"]*)"/);
+      if (!match) return null;
+
+      const fields = match[1].split(',');
+      // Sina CN format: 0=名称,1=开盘,2=昨收,3=当前价,4=最高,5=最低,6=买入,7=卖出,8=成交量,...
+      if (fields.length < 6) return null;
+
+      const name = fields[0] ?? '';
+      const openStr = fields[1];
+      const prevCloseStr = fields[2];
+      const currentPrice = parseFloat(fields[3]);
+      const highStr = fields[4];
+      const lowStr = fields[5];
+      const volumeStr = fields[8] ?? '';
+
+      const prevClose = parseFloat(prevCloseStr);
+
+      if (isNaN(currentPrice) || currentPrice <= 0) return null;
+
+      const change = isNaN(prevClose) || prevClose <= 0 ? 0 : currentPrice - prevClose;
+      const changePercent = isNaN(prevClose) || prevClose <= 0 ? 0 : (change / prevClose) * 100;
+
+      const suffix = prefix === 'sh' ? '.SH' : prefix === 'sz' ? '.SZ' : '.BJ';
+
+      return {
+        symbol: `${symbol}${suffix}`,
+        companyName: name || undefined,
+        price: currentPrice.toFixed(2),
+        change: change.toFixed(2),
+        changePercent: changePercent.toFixed(2),
+        open: openStr && !isNaN(parseFloat(openStr)) ? parseFloat(openStr).toFixed(2) : undefined,
+        high: highStr && !isNaN(parseFloat(highStr)) ? parseFloat(highStr).toFixed(2) : undefined,
+        low: lowStr && !isNaN(parseFloat(lowStr)) ? parseFloat(lowStr).toFixed(2) : undefined,
+        volume: volumeStr && !isNaN(parseFloat(volumeStr)) ? volumeStr : undefined,
+        currency: 'CNY',
+        market: 'CN',
+        timestamp: Date.now(),
+        delayed: true,
+      };
+    } catch (error) {
+      this.logger.warn(`fetchCnQuoteSina failed for ${symbol}: ${error instanceof Error ? error.message : String(error)}`);
+      return null;
+    }
+  }
+
+  async searchStocks(
+    query: string,
+    userId: string,
+  ): Promise<import('@shared/api.interface').StockSearchResult[]> {
+    const q = query.trim().toLowerCase();
+    if (!q) return [];
+
+    const results: Map<string, import('@shared/api.interface').StockSearchResult> =
+      new Map();
+
+    try {
+      const [holdingRows, watchRows] = await Promise.all([
+        this.db
+          .select({
+            ticker: holdings.ticker,
+            company: holdings.company,
+            market: holdings.market,
+            currency: holdings.currency,
+          })
+          .from(holdings)
+          .where(eq(holdings.owner, userId)),
+        this.db
+          .select({
+            ticker: watchlist.ticker,
+            company: watchlist.company,
+            market: watchlist.market,
+            currency: watchlist.currency,
+          })
+          .from(watchlist)
+          .where(eq(watchlist.owner, userId)),
+      ]);
+
+      const matchLocal = (
+        ticker: string,
+        company: string | null,
+        market: string,
+        currency: string,
+        source: 'holding' | 'watchlist',
+      ): boolean => {
+        const t = ticker.toLowerCase();
+        const c = (company || '').toLowerCase();
+        return t.includes(q) || c.includes(q);
+      };
+
+      for (const row of holdingRows) {
+        if (matchLocal(row.ticker, row.company, row.market, row.currency, 'holding')) {
+          results.set(row.ticker.toUpperCase(), {
+            symbol: row.ticker.toUpperCase(),
+            companyName: row.company || row.ticker,
+            market: row.market as import('@shared/api.interface').Market,
+            currency: row.currency as import('@shared/api.interface').Currency,
+            source: 'holding',
+          });
+        }
+      }
+
+      for (const row of watchRows) {
+        const key = row.ticker.toUpperCase();
+        if (results.has(key)) continue;
+        if (matchLocal(row.ticker, row.company, row.market, row.currency, 'watchlist')) {
+          results.set(key, {
+            symbol: key,
+            companyName: row.company || row.ticker,
+            market: row.market as import('@shared/api.interface').Market,
+            currency: row.currency as import('@shared/api.interface').Currency,
+            source: 'watchlist',
+          });
+        }
+      }
+    } catch (error) {
+      this.logger.warn(
+        `searchStocks local match failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+
+    if (results.size >= 10) {
+      return Array.from(results.values()).slice(0, 10);
+    }
+
+    try {
+      const url = `http://smartbox.gtimg.cn/s3/?q=${encodeURIComponent(q)}&t=all`;
+      const response = await firstValueFrom(
+        this.httpService.get(url, { responseType: 'text', timeout: 5000 }),
+      );
+
+      const text = typeof response.data === 'string' ? response.data : '';
+      const match = text.match(/v_hint="([^"]*)"/);
+      if (!match) return Array.from(results.values()).slice(0, 10);
+
+      const items = match[1].split('^');
+      for (const item of items) {
+        if (results.size >= 15) break;
+        const parts = item.split('~');
+        if (parts.length < 3) continue;
+
+        const marketCode = parts[0];
+        const rawSymbol = parts[1];
+        const companyNameRaw = parts[2];
+
+        if (!rawSymbol || !companyNameRaw) continue;
+
+        const companyName = this.cleanCompanyName(companyNameRaw);
+
+        let market: import('@shared/api.interface').Market | null = null;
+        let currency: import('@shared/api.interface').Currency | null = null;
+        let displaySymbol = '';
+
+        if (marketCode === 'us') {
+          market = 'US';
+          currency = 'USD';
+          displaySymbol = rawSymbol
+            .replace(/\.oq$/i, '')
+            .replace(/\.n$/i, '')
+            .replace(/\.ps$/i, '')
+            .replace(/\.am$/i, '')
+            .toUpperCase();
+        } else if (marketCode === 'hk') {
+          market = 'HK';
+          currency = 'HKD';
+          const numMatch = rawSymbol.match(/(\d+)/);
+          const code = numMatch ? numMatch[1] : rawSymbol;
+          displaySymbol = `${parseInt(code, 10)}.HK`;
+        } else if (marketCode === 'sh' || marketCode === 'sz' || marketCode === 'bj') {
+          market = 'CN';
+          currency = 'CNY';
+          const numMatch = rawSymbol.match(/(\d+)/);
+          const code = numMatch ? numMatch[1] : rawSymbol;
+          const suffix = marketCode === 'sh' ? '.SH' : marketCode === 'sz' ? '.SZ' : '.BJ';
+          displaySymbol = `${code}${suffix}`;
+        } else {
+          continue;
+        }
+
+        const key = displaySymbol.toUpperCase();
+        if (results.has(key)) continue;
+
+        results.set(key, {
+          symbol: displaySymbol.toUpperCase(),
+          companyName: companyName,
+          market,
+          currency,
+          source: 'external',
+        });
+      }
+    } catch (error) {
+      this.logger.warn(
+        `searchStocks external search failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+
+    return Array.from(results.values()).slice(0, 15);
+  }
+
+  private decodeUnicodeEscape(s: string): string {
+    return s.replace(/\\u([0-9a-fA-F]{4})/g, (_, hex: string) =>
+      String.fromCharCode(parseInt(hex, 16)),
+    );
+  }
+
+  private cleanCompanyName(raw: string): string {
+    let name = raw;
+    if (name.includes('\\u')) {
+      name = this.decodeUnicodeEscape(name);
+    }
+    name = name.replace(/([\u4e00-\u9fff])[a-z]$/, '$1');
+    return name.trim();
+  }
+
+  private decodeGbk(buffer: ArrayBuffer): string | null {
+    try {
+      const decoder = new TextDecoder('gbk');
+      return decoder.decode(buffer);
+    } catch {
+      try {
+        return Buffer.from(buffer).toString('utf-8');
+      } catch {
+        return null;
+      }
+    }
+  }
+
+  async batchRefreshPrices(userId: string): Promise<number> {
+    try {
+      // Collect all tickers from holdings and watchlist
+      const [holdingRows, watchRows] = await Promise.all([
+        this.db
+          .select({ ticker: holdings.ticker })
+          .from(holdings)
+          .where(eq(holdings.owner, userId)),
+        this.db
+          .select({ ticker: watchlist.ticker })
+          .from(watchlist)
+          .where(eq(watchlist.owner, userId)),
+      ]);
+
+      const tickerSet = new Set<string>();
+      for (const row of holdingRows) tickerSet.add(row.ticker);
+      for (const row of watchRows) tickerSet.add(row.ticker);
+
+      const tickers = Array.from(tickerSet).slice(0, MAX_BATCH_SIZE);
+
+      let refreshed = 0;
+      const priceMap = new Map<string, string>();
+
+      for (const ticker of tickers) {
+        const quote = await this.getQuote(ticker);
+        if (quote && quote.price) {
+          priceMap.set(ticker, quote.price);
+          refreshed += 1;
+        }
+      }
+
+      // Update holdings and watchlist in parallel per ticker
+      const updatePromises: Promise<unknown>[] = [];
+      for (const [ticker, price] of priceMap) {
+        updatePromises.push(
+          this.db
+            .update(holdings)
+            .set({
+              currentPrice: price,
+              updatedAt: sql`CURRENT_TIMESTAMP`,
+              updatedBy: sql`ROW(${userId})::user_profile`,
+            })
+            .where(
+              sql`(${holdings.owner}).user_id = ${userId} AND ${holdings.ticker} = ${ticker}`,
+            ),
+        );
+        updatePromises.push(
+          this.db
+            .update(watchlist)
+            .set({
+              currentPrice: price,
+              updatedAt: sql`CURRENT_TIMESTAMP`,
+              updatedBy: sql`ROW(${userId})::user_profile`,
+            })
+            .where(
+              sql`(${watchlist.owner}).user_id = ${userId} AND ${watchlist.ticker} = ${ticker}`,
+            ),
+        );
+      }
+
+      await Promise.all(updatePromises);
+      return refreshed;
+    } catch (error) {
+      this.logger.error(`batchRefreshPrices failed: ${error instanceof Error ? error.message : String(error)}`);
+      return 0;
+    }
+  }
+}
