@@ -203,6 +203,10 @@ export interface UpdateHoldingDto {
   analysis?: string;
   targetPrice?: number;
   groupId?: string;
+  market?: Market;
+  currency?: Currency;
+  symbolNative?: string | null;
+  displaySymbol?: string | null;
 }
 
 export interface CreateWatchItemDto {

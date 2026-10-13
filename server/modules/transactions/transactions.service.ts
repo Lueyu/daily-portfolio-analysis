@@ -20,6 +20,7 @@ import {
 import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '@lark-apaas/fullstack-nestjs-core';
 import { eq, and, desc, asc, inArray, sql } from 'drizzle-orm';
 import { transactions, holdings, closed, cashAccounts } from '@server/database/schema';
+import { QuoteService } from './../quote/quote.service';
 import type {
   Transaction,
   CreateTransactionDto,
@@ -55,7 +56,10 @@ interface TxCursor {
 export class TransactionsService {
   private readonly logger = new Logger(TransactionsService.name);
 
-  constructor(@Inject(DRIZZLE_DATABASE) private readonly db: PostgresJsDatabase) {}
+  constructor(
+    @Inject(DRIZZLE_DATABASE) private readonly db: PostgresJsDatabase,
+    private readonly quoteService: QuoteService,
+  ) {}
 
   /**
    * Lists the user's transactions, newest first, optionally filtered by ticker.
@@ -549,6 +553,7 @@ export class TransactionsService {
       .where(and(eq(holdings.owner, userId), eq(holdings.ticker, ticker)));
 
     if (existing.length === 0) {
+      const marketInfo = this.quoteService.detectMarket(ticker);
       await tx.insert(holdings).values({
         ticker,
         company: ticker,
@@ -556,8 +561,10 @@ export class TransactionsService {
         // Average buy price including fees spread over shares.
         buyPrice: String((sharesNum * priceNum + feesNum) / sharesNum),
         buyDate: new Date().toISOString().slice(0, 10),
-        market: 'US',
-        currency: 'USD',
+        market: marketInfo.market,
+        currency: marketInfo.currency,
+        symbolNative: marketInfo.symbolNative,
+        displaySymbol: marketInfo.displaySymbol,
         owner: userId,
         createdBy: userId,
         updatedBy: userId,

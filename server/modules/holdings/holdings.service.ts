@@ -125,6 +125,10 @@ export class HoldingsService {
     if (dto.analysis !== undefined) patch.analysis = dto.analysis;
     if (dto.targetPrice !== undefined) patch.targetPrice = String(dto.targetPrice);
     if (dto.groupId !== undefined) patch.groupId = dto.groupId;
+    if (dto.market !== undefined) patch.market = dto.market;
+    if (dto.currency !== undefined) patch.currency = dto.currency;
+    if (dto.symbolNative !== undefined) patch.symbolNative = dto.symbolNative;
+    if (dto.displaySymbol !== undefined) patch.displaySymbol = dto.displaySymbol;
 
     patch.updatedAt = new Date();
     patch.updatedBy = userId;

@@ -4,12 +4,12 @@
  *
  * Controlled form; only ticker and shares are required. Numeric fields are
  * parsed on submit; optional string fields are omitted from the payload when
- * empty so the backend can default them.
+ * empty so the backend can default them. Market is auto-detected from ticker.
  */
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import type { Group } from '@shared/api.interface';
-import { createHolding } from '@/api';
+import type { Group, Market, Currency } from '@shared/api.interface';
+import { createHolding, createGroup } from '@/api';
 import {
   Dialog,
   DialogContent,
@@ -22,6 +22,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
+import { Plus } from 'lucide-react';
 import {
   Select,
   SelectContent,
@@ -36,18 +38,70 @@ interface AddHoldingDialogProps {
   onOpenChange: (open: boolean) => void;
   groups: Group[];
   onCreated: () => void;
+  /** 新建分组后通知父组件重新拉取 groups */
+  onGroupsChanged?: () => void;
 }
 
-/**
- * Render the add-holding dialog with controlled form state.
- */
+/** 与后端 quoteService.detectMarket 保持一致的前端预演 */
+function detectMarket(symbol: string): {
+  market: Market;
+  currency: Currency;
+  displaySymbol: string;
+} {
+  const upper = symbol.toUpperCase().trim();
+  if (upper.endsWith('.HK')) {
+    return { market: 'HK', currency: 'HKD', displaySymbol: upper };
+  }
+  if (upper.endsWith('.SH')) {
+    return { market: 'CN', currency: 'CNY', displaySymbol: upper };
+  }
+  if (upper.endsWith('.SZ')) {
+    return { market: 'CN', currency: 'CNY', displaySymbol: upper };
+  }
+  if (upper.endsWith('.BJ')) {
+    return { market: 'CN', currency: 'CNY', displaySymbol: upper };
+  }
+  if (/^\d+$/.test(upper)) {
+    if (upper.length === 5) {
+      const displayCode = upper.startsWith('0') ? upper.slice(1) : upper;
+      return {
+        market: 'HK',
+        currency: 'HKD',
+        displaySymbol: `${displayCode}.HK`,
+      };
+    }
+    if (upper.length === 6) {
+      if (upper.startsWith('6')) {
+        return { market: 'CN', currency: 'CNY', displaySymbol: `${upper}.SH` };
+      }
+      if (upper.startsWith('0') || upper.startsWith('3')) {
+        return { market: 'CN', currency: 'CNY', displaySymbol: `${upper}.SZ` };
+      }
+      if (upper.startsWith('8') || upper.startsWith('4')) {
+        return { market: 'CN', currency: 'CNY', displaySymbol: `${upper}.BJ` };
+      }
+    }
+  }
+  return { market: 'US', currency: 'USD', displaySymbol: upper };
+}
+
+const MARKET_LABEL: Record<Market, string> = {
+  US: '美股 USD',
+  HK: '港股 HKD',
+  CN: 'A股 CNY',
+};
+
 export default function AddHoldingDialog({
   open,
   onOpenChange,
   groups,
   onCreated,
+  onGroupsChanged,
 }: AddHoldingDialogProps) {
   const [saving, setSaving] = useState(false);
+  const [creatingGroup, setCreatingGroup] = useState(false);
+  const [newGroupName, setNewGroupName] = useState('');
+  const [extraGroups, setExtraGroups] = useState<Group[]>([]);
   const [form, setForm] = useState({
     ticker: '',
     company: '',
@@ -62,6 +116,16 @@ export default function AddHoldingDialog({
     analysis: '',
     groupId: '',
   });
+
+  const allGroups = useMemo(
+    () => [...groups, ...extraGroups],
+    [groups, extraGroups],
+  );
+
+  const marketPreview = useMemo(() => {
+    if (!form.ticker.trim()) return null;
+    return detectMarket(form.ticker);
+  }, [form.ticker]);
 
   /** Reset the form to blank values (called after a successful create). */
   const reset = () => {
@@ -79,6 +143,31 @@ export default function AddHoldingDialog({
       analysis: '',
       groupId: '',
     });
+    setNewGroupName('');
+    setCreatingGroup(false);
+    setExtraGroups([]);
+  };
+
+  const handleCreateGroup = async () => {
+    const name = newGroupName.trim();
+    if (!name) {
+      toast.error('请输入分组名称');
+      return;
+    }
+    setCreatingGroup(true);
+    try {
+      const g = (await createGroup({ name })) as Group;
+      setExtraGroups((prev) => [...prev, g]);
+      setForm((f) => ({ ...f, groupId: g.id }));
+      setNewGroupName('');
+      setCreatingGroup(false);
+      toast.success(`已创建分组「${name}」`);
+      onGroupsChanged?.();
+    } catch (err) {
+      toast.error('创建分组失败');
+    } finally {
+      setCreatingGroup(false);
+    }
   };
 
   /**
@@ -131,7 +220,7 @@ export default function AddHoldingDialog({
         <DialogHeader>
           <DialogTitle className="font-serif text-xl">添加持仓</DialogTitle>
           <DialogDescription>
-            填写新的持仓信息，带 * 为必填项
+            填写新的持仓信息，带 * 为必填项；市场会按代码自动识别
           </DialogDescription>
         </DialogHeader>
 
@@ -140,13 +229,23 @@ export default function AddHoldingDialog({
             <Label>
               代码 <span className="text-destructive">*</span>
             </Label>
-            <Input
-              placeholder="如 AAPL"
-              value={form.ticker}
-              onChange={(e) =>
-                setForm({ ...form, ticker: e.target.value.toUpperCase() })
-              }
-            />
+            <div className="flex items-center gap-2">
+              <Input
+                placeholder="如 AAPL / 600089 / 00700"
+                value={form.ticker}
+                onChange={(e) =>
+                  setForm({ ...form, ticker: e.target.value.toUpperCase() })
+                }
+              />
+              {marketPreview && (
+                <Badge
+                  variant="outline"
+                  className="shrink-0 text-[10px] font-normal whitespace-nowrap"
+                >
+                  {MARKET_LABEL[marketPreview.market]} · {marketPreview.displaySymbol}
+                </Badge>
+              )}
+            </div>
           </div>
           <div className="space-y-1.5">
             <Label>公司名称</Label>
@@ -168,21 +267,59 @@ export default function AddHoldingDialog({
           </div>
           <div className="space-y-1.5">
             <Label>所属分组</Label>
-            <Select
-              value={form.groupId}
-              onValueChange={(v) => setForm({ ...form, groupId: v })}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="未分组" />
-              </SelectTrigger>
-              <SelectContent>
-                {groups.map((g) => (
-                  <SelectItem key={g.id} value={g.id}>
-                    {g.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="flex items-center gap-2">
+              <Select
+                value={form.groupId}
+                onValueChange={(v) => setForm({ ...form, groupId: v })}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="未分组" />
+                </SelectTrigger>
+                <SelectContent>
+                  {allGroups.map((g) => (
+                    <SelectItem key={g.id} value={g.id}>
+                      {g.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="shrink-0 h-9 gap-1"
+                onClick={() => setCreatingGroup((v) => !v)}
+              >
+                <Plus className="size-3.5" />
+                新建
+              </Button>
+            </div>
+            {creatingGroup && (
+              <div className="flex items-center gap-2 pt-1">
+                <Input
+                  autoFocus
+                  placeholder="新分组名称，如「港股科技」"
+                  value={newGroupName}
+                  onChange={(e) => setNewGroupName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      void handleCreateGroup();
+                    }
+                  }}
+                  className="h-8"
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={handleCreateGroup}
+                  disabled={!newGroupName.trim()}
+                  className="h-8"
+                >
+                  确定
+                </Button>
+              </div>
+            )}
           </div>
           <div className="space-y-1.5">
             <Label>买入日期</Label>

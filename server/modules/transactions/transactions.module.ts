@@ -10,10 +10,11 @@ import { TransactionsController } from './transactions.controller';
 import { TransactionsService } from './transactions.service';
 import { HoldingsModule } from '../holdings/holdings.module';
 import { ClosedModule } from '../closed/closed.module';
+import { QuoteModule } from '../quote/quote.module';
 
 /** NestJS module definition for the transactions/bookkeeping feature. */
 @Module({
-  imports: [HoldingsModule, ClosedModule],
+  imports: [HoldingsModule, ClosedModule, QuoteModule],
   controllers: [TransactionsController],
   providers: [TransactionsService],
   exports: [TransactionsService],

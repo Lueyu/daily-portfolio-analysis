@@ -485,6 +485,7 @@ export default function HoldingsPage() {
         onOpenChange={setAddOpen}
         groups={groups}
         onCreated={loadData}
+        onGroupsChanged={loadData}
       />
     </div>
   );
