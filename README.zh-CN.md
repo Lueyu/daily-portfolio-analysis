@@ -6,6 +6,8 @@ Daily Portfolio Analysis 是一个全栈股票持仓管理终端。每个交易�
 
 系统采用前后端分离架构，所有业务数据存储于后端 PostgreSQL，并按账号行级隔离；在电脑或手机上登录同一账号即可访问同一份数据，历史评级、交易记录与深度报告均长期保留。
 
+系统由两部分组成。一个是全栈交易终端（NestJS + React + PostgreSQL），负责账户、交易、评级与报告的权威落库；另一个是位于 `agent/` 的独立 Python 智能体服务，承担行情查询、研究与分析等推理任务。后端是唯一的业务编排者和数据出口，通过受保护的 HTTP 接口把推理任务委托给智能体；智能体与模型厂商解耦，可切换火山方舟、DeepSeek 或任意 OpenAI 兼容接口，并且不直接访问业务数据库。
+
 ## 功能特性
 
 - **仪表盘**：账户总值、市值、成本、累计与当日盈亏，支持按自定义分组汇总（如「Alpha Picks 定投」与「自主持仓」分开统计）。
@@ -13,6 +15,7 @@ Daily Portfolio Analysis 是一个全栈股票持仓管理终端。每个交易�
 - **关注列表**：记录目标买入价与交易信号，每日扫描买卖机会。
 - **每日分析**：每只持仓与关注股对应一张分析卡片，包含评级、操作、目标价、催化剂与风险。
 - **多智能体深度报告**：包含 14 个板块的研究报告（核心论点、财务、SOTP 分部估值、多空辩论、Critic 批判、风控闸、PM 决策等）；每次运行均保留一个新版本并附带生成时间。
+- **独立 Python Agent 服务**：位于 `agent/`，模型层与厂商解耦（火山方舟 / DeepSeek / 任意 OpenAI 兼容接口），内置工具调用、规划、检查点与多智能体编排，运行过程可回放；它只通过后端 HTTP API 取数，不直连业务数据库。
 - **已实现盈亏**：交易记录页以 Robinhood 风格汇总 Realized P&L，按股票与币种统计，替代原已平仓列表。
 - **策略规则**：风控规则（单一公司敞口上限、杠杆 ETF 上限、现金缓冲、止损线）可在页面上配置，并在分析时作为硬性闸门。
 - **投资日志与快照**：自动生成五段式投资日志，净值曲线基于每日快照。
@@ -35,17 +38,27 @@ flowchart TB
         P --> H
     end
 
-    subgraph Server["NestJS 后端"]
+    subgraph Server["NestJS 后端（编排中枢）"]
         C["Controller 层<br/>@NeedLogin 登录校验<br/>从 req.userContext 获取 userId"]:::ctrl
         S["Service 层<br/>业务逻辑 · Drizzle 查询构造"]:::svc
-        MA["multi-agent 模块<br/>pipeline · evidence<br/>llm · portfolio-context"]:::svc
+        MA["内置 multi-agent 模块<br/>pipeline · evidence · llm"]:::svc
+        GW["Agent Gateway 网关<br/>x-agent-token · userContext · 开关"]:::gw
         C --> S
         C --> MA
+        C --> GW
+    end
+
+    subgraph PyAgent["Python Agent 服务（agent/ · 模型可插拔）"]
+        RT["智能体运行时<br/>ReAct 循环 · 规划 · 检查点"]:::py
+        TOOLS["工具层<br/>行情 · 网页 · 财务 · 工作流"]:::py
+        MODELS["模型抽象层<br/>方舟 · DeepSeek · OpenAI 兼容"]:::py
+        RT --> TOOLS
+        RT --> MODELS
     end
 
     PG[("PostgreSQL<br/>19 张业务表<br/>按 owner 行级隔离")]:::db
     FH["Finnhub<br/>实时行情"]:::ext
-    ARK["火山方舟 Ark<br/>豆包大模型"]:::ext
+    ARK["方舟 / DeepSeek<br/>大模型服务"]:::ext
     FXEXT["汇率数据源"]:::ext
 
     H -. 浏览器直连 .-> FH
@@ -54,13 +67,28 @@ flowchart TB
     MA --> PG
     MA --> ARK
     S --> FXEXT
+    GW -. "HTTP + x-agent-token<br/>（委托智能步骤）" .-> RT
+    RT -. "仅走 HTTP API<br/>（不直连数据库）" .-> C
+    TOOLS -.-> FH
+    MODELS -.-> ARK
 
     classDef fe fill:#1f6feb,stroke:#0b3d91,color:#ffffff,stroke-width:2px
     classDef ctrl fill:#2da44e,stroke:#116329,color:#ffffff,stroke-width:2px
     classDef svc fill:#f0883e,stroke:#9e4b0f,color:#ffffff,stroke-width:2px
+    classDef gw fill:#bc4c00,stroke:#7a2f00,color:#ffffff,stroke-width:2px
+    classDef py fill:#8250df,stroke:#5a2f9e,color:#ffffff,stroke-width:2px
     classDef db fill:#0891b2,stroke:#155e75,color:#ffffff,stroke-width:2px
     classDef ext fill:#a371f7,stroke:#6e40c9,color:#ffffff,stroke-width:2px
 ```
+
+### 智能体推理：内置流水线与独立 Agent 服务
+
+智能分析落在两个位置，分别对应已经在生产运行的业务流水线，和被独立出来的推理服务，职责并不重叠：
+
+- **后端内置分析流水线（NestJS）**：当前每天运行的实现，是一条固定的五阶段流水线（取数 → 多空辩论 → Critic 批判 → 风控闸 → 评级汇总），由后端直接调用大模型，产出 14 个板块的深度报告。
+- **独立 Python Agent 服务（`agent/`）**：把推理能力从业务后端中拆出的独立服务。它不依赖重量级 Agent 框架，工具调用、规划、检查点与多智能体编排都在本仓库内实现，便于调试与扩展；模型层与厂商解耦，可切换火山方舟、DeepSeek 或任意 OpenAI 兼容接口。
+
+两者之间是清晰的服务边界。NestJS 负责登录、数据库、交易、权限和页面，是唯一写库的地方；Python Agent 不连接业务库，只通过 Agent Gateway（`x-agent-token` 鉴权、服务端注入用户身份）向后端取数，后端把需要推理的步骤委托给它。这样更换模型、调整推理逻辑或重写 Agent 都不会影响账户与数据，Agent 也可以独立开发和测试。
 
 ### 请求链路
 
@@ -132,6 +160,11 @@ flowchart TB
 
 ```
 .
+├── agent/                  # Python Agent 服务（模型可插拔，Typer/FastAPI）
+│   ├── src/agent_core/     # 运行时、模型抽象、工具、webapp 客户端
+│   ├── tests/              # pytest + pytest-httpx（不打真实网络）
+│   ├── data/checkpoints/   # JSONL 检查点（运行时数据，git 中保留空目录）
+│   └── pyproject.toml
 ├── client/                 # React 前端
 │   └── src/
 │       ├── pages/          # 各业务页面（按功能分目录）
@@ -141,13 +174,13 @@ flowchart TB
 │       │   └── business-ui/# 业务选择器（人员 / 部门 / 会话）
 │       ├── hooks/          # 行情轮询、主题、移动端判断
 │       └── api/index.ts    # 后端接口的前端封装
-├── server/                 # NestJS 后端
+├── server/                 # NestJS 后端（编排中枢）
 │   ├── database/schema.ts  # Drizzle 表结构（自动生成，勿手动修改）
 │   ├── common/             # 异常过滤器、通用常量
 │   └── modules/            # 业务模块（controller + service + module）
 ├── shared/
 │   └── api.interface.ts    # 前后端共享类型
-└── scripts/                # dev / build / lint 脚本
+└── scripts/                # dev / build / lint 脚本 + 妙搭->GitHub 同步
 ```
 
 ## 数据模型
@@ -191,6 +224,32 @@ npm run dev:client   # http://localhost:8080
 npm run build
 npm start
 ```
+
+### Python 智能体（`agent/`）
+
+智能体使用 Python 3.12 与 [uv](https://docs.astral.sh/uv/)。
+
+```bash
+cd agent
+uv sync                       # 创建 .venv 并安装依赖
+cp .env.example .env          # 填入 ARK_API_KEY / DEEPSEEK_API_KEY
+uv run agent health           # 检查 webapp 客户端
+uv run agent quote AAPL       # 经 webapp 拉取真实行情
+uv run pytest -q              # 运行离线测试
+```
+
+智能体通过 HTTP 与 Webapp 通信（`agent/.env` 中的 `WEBAPP_BASE_URL`），不需要独立的数据库连接。
+
+## 妙搭云端 <-> GitHub 同步
+
+Webapp 主要在妙搭（aPaaS）云端用 AI 开发，云端是 NestJS/React 代码的权威源头，而妙搭不是 git 仓库。可用一键同步脚本保持 GitHub 同步——它通过 `lark-cli` 导出云端最后一次提交的快照，只覆盖属于云端的路径，然后提交并推送：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\sync-from-miaoda.ps1 -DryRun   # 仅预演
+powershell -ExecutionPolicy Bypass -File scripts\sync-from-miaoda.ps1           # 同步 + 提交 + 推送
+```
+
+脚本会镜像 `client/`、`server/`、`shared/`、`.githooks/`、`.spark/` 及根配置文件，但绝不触碰 `agent/`、`docs/`、`README*`、`.gitignore`、`.env`、`*.sql`；覆盖前会先自动提交一个本地安全快照，因此本地改动不会丢失。云端沙箱里未提交的改动不会被导出，请先在妙搭里提交/发布。
 
 ## 配置说明
 

@@ -6,6 +6,8 @@ Daily Portfolio Analysis is a full-stack stock portfolio management terminal. Af
 
 The system uses a decoupled front-end/back-end architecture. All business data is stored in a backend PostgreSQL database with row-level isolation per account. Logging in with the same account on desktop or mobile accesses the same data; historical ratings, transactions and deep reports are retained long term.
 
+The system has two parts: a full-stack trading terminal (NestJS + React + PostgreSQL) that is the system of record for accounts, transactions, ratings and reports, and a standalone Python agent service under `agent/` that handles reasoning tasks such as market queries, research and analysis. The backend is the sole orchestrator and data gateway, delegating reasoning to the agent over a protected HTTP API. The agent is model-agnostic — it can switch between Volcengine Ark, DeepSeek or any OpenAI-compatible endpoint — and never touches the business database directly.
+
 ## Features
 
 - **Dashboard**: account value, market value, cost, cumulative and daily P&L, with summaries by custom groups (e.g. *Alpha Picks* and *Self-managed* tracked separately).
@@ -13,6 +15,7 @@ The system uses a decoupled front-end/back-end architecture. All business data i
 - **Watchlist**: target entry prices and trading signals, with daily scans for buy/sell opportunities.
 - **Daily Analysis**: one analysis card per holding and watchlist item, containing rating, action, target price, catalysts and risks.
 - **Multi-Agent Deep Reports**: research reports with 14 sections (core thesis, financials, SOTP valuation, bull/bear debate, critic review, risk gates, PM decision, etc.); every run is retained as a new version with its generation time.
+- **Standalone Python Agent service** (`agent/`): a model-agnostic service (Volcengine Ark / DeepSeek / any OpenAI-compatible API) with tool calling, planning, checkpoints, replayable runs and multi-agent orchestration; it reaches business data only through the backend HTTP API, never the database directly.
 - **Realized P&L**: a Robinhood-style realized P&L summary on the transactions page, aggregated by stock and currency, replacing the former closed-positions list.
 - **Strategy Rules**: risk-control rules (single-company exposure cap, leverage-ETF cap, cash buffer, stop-loss lines) configurable in the UI and enforced as hard gates during analysis.
 - **Journal & Snapshots**: auto-generated five-part investment journals, with the net-value curve based on daily snapshots.
@@ -35,17 +38,27 @@ flowchart TB
         P --> H
     end
 
-    subgraph Server["NestJS Backend"]
+    subgraph Server["NestJS Backend (orchestrator of record)"]
         C["Controller Layer<br/>@NeedLogin auth check<br/>userId from req.userContext"]:::ctrl
         S["Service Layer<br/>business logic · Drizzle builder"]:::svc
-        MA["multi-agent module<br/>pipeline · evidence<br/>llm · portfolio-context"]:::svc
+        MA["built-in multi-agent module<br/>pipeline · evidence · llm"]:::svc
+        GW["Agent Gateway<br/>x-agent-token · userContext · feature flag"]:::gw
         C --> S
         C --> MA
+        C --> GW
+    end
+
+    subgraph PyAgent["Python Agent service (agent/ · model-agnostic)"]
+        RT["Agent runtime<br/>ReAct loop · planning · checkpoints"]:::py
+        TOOLS["Tool layer<br/>market · web · finance · workflow"]:::py
+        MODELS["Model abstraction<br/>Ark · DeepSeek · OpenAI-compatible"]:::py
+        RT --> TOOLS
+        RT --> MODELS
     end
 
     PG[("PostgreSQL<br/>19 business tables<br/>row-level isolation by owner")]:::db
     FH["Finnhub<br/>real-time quotes"]:::ext
-    ARK["Volcengine Ark<br/>Doubao LLM"]:::ext
+    ARK["Ark / DeepSeek<br/>LLM providers"]:::ext
     FXEXT["FX rate data source"]:::ext
 
     H -. direct from browser .-> FH
@@ -54,13 +67,28 @@ flowchart TB
     MA --> PG
     MA --> ARK
     S --> FXEXT
+    GW -. "HTTP + x-agent-token<br/>(delegate intelligence step)" .-> RT
+    RT -. "HTTP API only<br/>(never direct DB)" .-> C
+    TOOLS -.-> FH
+    MODELS -.-> ARK
 
     classDef fe fill:#1f6feb,stroke:#0b3d91,color:#ffffff,stroke-width:2px
     classDef ctrl fill:#2da44e,stroke:#116329,color:#ffffff,stroke-width:2px
     classDef svc fill:#f0883e,stroke:#9e4b0f,color:#ffffff,stroke-width:2px
+    classDef gw fill:#bc4c00,stroke:#7a2f00,color:#ffffff,stroke-width:2px
+    classDef py fill:#8250df,stroke:#5a2f9e,color:#ffffff,stroke-width:2px
     classDef db fill:#0891b2,stroke:#155e75,color:#ffffff,stroke-width:2px
     classDef ext fill:#a371f7,stroke:#6e40c9,color:#ffffff,stroke-width:2px
 ```
+
+### Agent Reasoning: the Built-in Pipeline and the Standalone Service
+
+Reasoning lives in two places: a production pipeline embedded in the backend, and a standalone service that factors that intelligence out. They have distinct responsibilities:
+
+- **Built-in analysis pipeline (NestJS)** — the implementation running daily today: a fixed five-stage pipeline (fetch → bull/bear debate → critic → risk gate → rating) that calls the LLM directly from the backend and produces the 14-section deep reports.
+- **Standalone Python Agent service (`agent/`)** — a separate service that takes reasoning out of the business backend. It relies on no heavyweight agent framework; tool calling, planning, checkpoints and multi-agent orchestration are implemented in this repository so they are easy to debug and extend. The model layer is provider-agnostic and can switch between Volcengine Ark, DeepSeek or any OpenAI-compatible endpoint.
+
+The boundary between them is deliberate. NestJS owns auth, the database, transactions, permissions and the UI, and is the only component that writes to the database. The Python agent never connects to the business database; it reads data from the backend through an Agent Gateway secured by `x-agent-token` (with the user identity injected server-side), and the backend delegates only the reasoning steps. Swapping models, changing reasoning logic or rewriting the agent therefore never affects accounts or data, and the agent can be developed and tested independently.
 
 ### Request Flow
 
@@ -132,6 +160,11 @@ The deep report contains 14 sections rendered by `client/src/components/MultiAge
 
 ```
 .
+├── agent/                  # Python Agent service (model-agnostic, Typer/FastAPI)
+│   ├── src/agent_core/     # runtime, model abstraction, tools, webapp client
+│   ├── tests/              # pytest + pytest-httpx (no live network)
+│   ├── data/checkpoints/   # JSONL checkpoints (runtime; kept empty in git)
+│   └── pyproject.toml
 ├── client/                 # React front-end
 │   └── src/
 │       ├── pages/          # business pages (grouped by feature)
@@ -141,13 +174,13 @@ The deep report contains 14 sections rendered by `client/src/components/MultiAge
 │       │   └── business-ui/# business selectors (users / departments / chats)
 │       ├── hooks/          # quote polling, theme, mobile detection
 │       └── api/index.ts    # front-end wrappers for backend endpoints
-├── server/                 # NestJS backend
+├── server/                 # NestJS backend (orchestrator of record)
 │   ├── database/schema.ts  # Drizzle schema (auto-generated, do not edit)
 │   ├── common/             # exception filters, shared constants
 │   └── modules/            # business modules (controller + service + module)
 ├── shared/
 │   └── api.interface.ts    # types shared by front-end and backend
-└── scripts/                # dev / build / lint scripts
+└── scripts/                # dev / build / lint + Miaoda->GitHub sync
 ```
 
 ## Data Model
@@ -191,6 +224,32 @@ Production build and start:
 npm run build
 npm start
 ```
+
+### Python Agent (`agent/`)
+
+The agent uses Python 3.12 and [uv](https://docs.astral.sh/uv/).
+
+```bash
+cd agent
+uv sync                       # create .venv and install deps
+cp .env.example .env          # fill in ARK_API_KEY / DEEPSEEK_API_KEY
+uv run agent health           # check the webapp client
+uv run agent quote AAPL       # fetch a real quote through the webapp
+uv run pytest -q              # run the offline test suite
+```
+
+The agent talks to the webapp over HTTP (`WEBAPP_BASE_URL` in `agent/.env`); it does not need its own database connection.
+
+## Cloud (Miaoda) <-> GitHub Sync
+
+The webapp is mainly developed with AI on the Miaoda (aPaaS) cloud, which is the source of truth for the NestJS/React app and is not a git repository. To keep GitHub in sync, run the one-way sync script — it exports the latest committed cloud snapshot via `lark-cli`, overwrites only the cloud-owned paths, then commits and pushes:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\sync-from-miaoda.ps1 -DryRun   # preview only
+powershell -ExecutionPolicy Bypass -File scripts\sync-from-miaoda.ps1           # sync + commit + push
+```
+
+It mirrors `client/`, `server/`, `shared/`, `.githooks/`, `.spark/` and the root config files, but never touches `agent/`, `docs/`, `README*`, `.gitignore`, `.env` or `*.sql`. It takes a local safety-net commit before overwriting, so no local work is lost. Uncommitted cloud sandbox edits are not exported — publish/commit in Miaoda first.
 
 ## Configuration
 

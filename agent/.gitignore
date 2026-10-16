@@ -1,0 +1,20 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+*.pyc
+build/
+dist/
+wheels/
+*.egg-info
+.venv/
+
+# Test / lint caches
+.pytest_cache/
+.ruff_cache/
+
+# Secrets / local env
+.env
+
+# Runtime data (keep the directory, ignore contents)
+data/checkpoints/*
+!data/checkpoints/.gitkeep

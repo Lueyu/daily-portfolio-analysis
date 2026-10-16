@@ -77,3 +77,31 @@ pnpm-lock.yaml
 # Agent files
 .agent/
 .npm_cache
+
+# ============================================================
+# 项目补充：Python Agent 与本地调试文件
+# ============================================================
+
+# Miaoda skills sync 产物（本地）
+.agents/
+
+# Python Agent —— 虚拟环境 / 缓存（可重建）
+agent/.venv/
+agent/.pytest_cache/
+agent/.ruff_cache/
+__pycache__/
+*.py[cod]
+*.egg-info/
+wheels/
+
+# Python Agent —— 密钥与本地环境（.env.example 保留入库）
+agent/.env
+agent/.env.local
+!agent/.env.example
+
+# Agent 运行时数据（保留目录与 .gitkeep，忽略内容）
+agent/data/checkpoints/*
+!agent/data/checkpoints/.gitkeep
+
+# 本地最小模式调试脚本（仅本地可跑，不公开）
+scripts/dev-local-*.ps1
