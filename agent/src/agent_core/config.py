@@ -17,6 +17,10 @@ class Settings(BaseSettings):
     webapp_agent_token: str | None = None
     webapp_default_user_id: str = "local-dev"
 
+    # Which OpenAI-compatible provider the model layer uses by default
+    # ("deepseek" or "ark"). Switching providers is a one-line config change.
+    model_provider: str = "deepseek"
+
     # Volcengine Ark (Doubao), OpenAI-compatible
     ark_api_key: str | None = None
     ark_base_url: str = "https://ark.cn-beijing.volces.com/api/v3"

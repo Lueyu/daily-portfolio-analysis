@@ -26,6 +26,7 @@ import { SnapshotsModule } from './modules/snapshots/snapshots.module';
 import { AlphaPicksModule } from './modules/alpha-picks/alpha-picks.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { AgentModule } from './modules/agent/agent.module';
+import { AgentGatewayModule } from './modules/agent-gateway/agent-gateway.module';
 import { CashAccountsModule } from './modules/cash-accounts/cash-accounts.module';
 import { QuoteModule } from './modules/quote/quote.module';
 import { FxModule } from './modules/fx/fx.module';
@@ -37,11 +38,12 @@ import { MultiAgentModule } from './modules/multi-agent/multi-agent.module';
  */
 @Module({
   imports: [
-    // Local dev opt-out for the service-to-service Python agent: set
-    // DISABLE_CSRF=true to skip the browser double-token CSRF guard, because the
-    // agent is not a browser and will authenticate with x-agent-token through
-    // the agent gateway (added on Day 3). When unset (production) CSRF stays
-    // enabled, so default behavior is unchanged.
+    // Local dev opt-out for the browser CSRF double-token guard: set
+    // DISABLE_CSRF=true for the local Vite frontend (which has no gateway cookie
+    // session). The Python agent does not rely on this: it authenticates with
+    // x-agent-token through AgentGatewayModule under /openapi/agent-gateway, a
+    // prefix the platform exempts from CSRF. When unset (production) browser CSRF
+    // stays enabled; the openapi gateway keeps using its own token guard.
     PlatformModule.forRoot({
       enableCsrf: process.env.DISABLE_CSRF !== 'true',
     }),
@@ -57,6 +59,7 @@ import { MultiAgentModule } from './modules/multi-agent/multi-agent.module';
     AlphaPicksModule,
     DashboardModule,
     AgentModule,
+    AgentGatewayModule,
     CashAccountsModule,
     QuoteModule,
     FxModule,

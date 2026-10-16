@@ -58,7 +58,10 @@ class WebappClient:
         headers: dict[str, str] = {"Accept": "application/json"}
         if token:
             headers["x-agent-token"] = token
-            headers["x-agent-user-id"] = user_id or "local-dev"
+            # Only send an explicit identity when one is provided; otherwise the
+            # gateway resolves its configured default owner server-side.
+            if user_id:
+                headers["x-agent-user-id"] = user_id
         self._client = httpx.Client(
             base_url=self.base_url,
             timeout=timeout,
@@ -82,8 +85,13 @@ class WebappClient:
 
     @_retry_decorator
     def get_holdings(self) -> list[dict]:
-        """Login-scoped holdings; only succeeds after the Day 3 gateway is live."""
-        resp = self._client.get("/api/portfolio/holdings")
+        """Login-scoped holdings via the service-to-service agent gateway.
+
+        Requires the gateway headers (``x-agent-token`` / ``x-agent-user-id``)
+        wired through the constructor; the NestJS gateway validates the token and
+        resolves the acting owner server-side.
+        """
+        resp = self._client.get("/openapi/agent-gateway/holdings")
         resp.raise_for_status()
         body = resp.json()
         if isinstance(body, list):

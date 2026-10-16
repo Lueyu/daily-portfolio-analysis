@@ -64,5 +64,13 @@ if (-not $env:LOCAL_DEV_USER_ID) {
 }
 
 Write-Host "[dev-local-db] local identity (owner): $($env:LOCAL_DEV_USER_ID)" -ForegroundColor DarkGray
+
+# Service-to-service Python agent gateway (/openapi/agent-gateway).
+# The token must match WEBAPP_AGENT_TOKEN in agent/.env; the default acting user
+# is the same locally detected owner. These stay local-only (no real secret).
+$env:AGENT_GATEWAY_ENABLED = "true"
+$env:AGENT_GATEWAY_TOKEN = "dev-agent-token-change-me"
+$env:AGENT_GATEWAY_DEFAULT_USER_ID = "$($env:LOCAL_DEV_USER_ID)"
+
 Write-Host "[dev-local-db] starting NestJS on http://127.0.0.1:3000 with LOCAL PostgreSQL" -ForegroundColor Cyan
 npx nest start

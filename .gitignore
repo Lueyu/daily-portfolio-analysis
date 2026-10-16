@@ -107,5 +107,8 @@ agent/data/checkpoints/*
 # 保留目录里的 README.md，而 scripts/db/ 的建表 SQL 与启动脚本正常入库。
 db/snapshot/*.sql
 
+# 本地后端调试日志（后台 dev server 重定向产物）
+/backend-*.log
+
 # 本地设计文档（仅本地，不入库）
 docs/

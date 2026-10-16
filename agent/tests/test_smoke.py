@@ -70,17 +70,27 @@ def test_get_quote_empty_when_symbol_unresolved() -> None:
     client.close()
 
 
-def test_get_holdings_accepts_items_wrapper() -> None:
+def test_get_holdings_uses_gateway_path_and_sends_token() -> None:
     payload = {"items": [{"ticker": "AAPL", "quantity": 10}]}
+    seen: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["path"] = request.url.path
+        seen["token"] = request.headers.get("x-agent-token")
+        seen["user"] = request.headers.get("x-agent-user-id")
+        return httpx.Response(200, json=payload)
 
     client = WebappClient(
         "http://test",
-        transport=httpx.MockTransport(
-            lambda _request: httpx.Response(200, json=payload)
-        ),
+        token="secret",
+        user_id="owner-1",
+        transport=httpx.MockTransport(handler),
     )
     holdings = client.get_holdings()
     client.close()
 
+    assert seen["path"] == "/openapi/agent-gateway/holdings"
+    assert seen["token"] == "secret"
+    assert seen["user"] == "owner-1"
     assert len(holdings) == 1
     assert holdings[0]["ticker"] == "AAPL"
