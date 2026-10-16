@@ -37,7 +37,14 @@ import { MultiAgentModule } from './modules/multi-agent/multi-agent.module';
  */
 @Module({
   imports: [
-    PlatformModule.forRoot(),
+    // Local dev opt-out for the service-to-service Python agent: set
+    // DISABLE_CSRF=true to skip the browser double-token CSRF guard, because the
+    // agent is not a browser and will authenticate with x-agent-token through
+    // the agent gateway (added on Day 3). When unset (production) CSRF stays
+    // enabled, so default behavior is unchanged.
+    PlatformModule.forRoot({
+      enableCsrf: process.env.DISABLE_CSRF !== 'true',
+    }),
     // ====== @route-section: business-modules START ======
     HoldingsModule,
     WatchlistModule,
