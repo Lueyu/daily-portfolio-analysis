@@ -16,6 +16,7 @@ import { __express as hbsExpressEngine } from 'hbs';
 
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
+import { localDevAuth } from './common/middleware/local-dev-auth.middleware';
 
 /**
  * Builds and starts the NestJS server.
@@ -29,6 +30,12 @@ async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     abortOnError: process.env.NODE_ENV !== 'development',
   });
+
+  // Local offline development: fabricate the gateway user header BEFORE the
+  // platform middlewares run, so @NeedLogin() and owner-scoped data work against
+  // the local DB. Inert unless LOCAL_DEV_USER_ID is set (see the middleware).
+  app.use(localDevAuth);
+
   await configureApp(app, {
     disableSwagger: true,
   });

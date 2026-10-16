@@ -56,7 +56,7 @@ flowchart TB
         RT --> MODELS
     end
 
-    PG[("PostgreSQL<br/>19 business tables<br/>row-level isolation by owner")]:::db
+    PG[("PostgreSQL<br/>20 business tables<br/>row-level isolation by owner")]:::db
     FH["Finnhub<br/>real-time quotes"]:::ext
     ARK["Ark / DeepSeek<br/>LLM providers"]:::ext
     FXEXT["FX rate data source"]:::ext
@@ -176,16 +176,24 @@ The deep report contains 14 sections rendered by `client/src/components/MultiAge
 │       └── api/index.ts    # front-end wrappers for backend endpoints
 ├── server/                 # NestJS backend (orchestrator of record)
 │   ├── database/schema.ts  # Drizzle schema (auto-generated, do not edit)
-│   ├── common/             # exception filters, shared constants
+│   ├── common/
+│   │   ├── middleware/     # local dev identity injection (LOCAL_DEV_USER_ID gate)
+│   │   └── filters/        # global exception filter
 │   └── modules/            # business modules (controller + service + module)
 ├── shared/
 │   └── api.interface.ts    # types shared by front-end and backend
-└── scripts/                # dev / build / lint + Miaoda->GitHub sync
+├── db/
+│   └── snapshot/           # local real-data snapshot (*.sql gitignored, local only)
+├── drizzle/                # drizzle-kit generated table migrations
+└── scripts/
+    ├── db/                 # local PostgreSQL: schema/roles + start/stop/rebuild
+    ├── dev-local-*.ps1     # Windows one-click local launch (minimal / db / full / client)
+    └── sync-from-miaoda.ps1# Miaoda -> GitHub sync
 ```
 
 ## Data Model
 
-The database contains 19 tables in three groups:
+The database contains 20 tables in three groups:
 
 | Group | Tables | Description |
 |---|---|---|
@@ -197,7 +205,46 @@ The table structure is defined in `server/database/schema.ts`. This file is auto
 
 ## Local Development
 
-Requirements: Node.js >= 22 and npm >= 10. On Windows the dev/build scripts are shell scripts and must be run through Git Bash.
+Requirements: Node.js >= 22 and npm >= 10. Three modes are available:
+
+| Mode | How to start | Database | Auth | Best for |
+| --- | --- | --- | --- | --- |
+| Official cloud mode | `npm run dev` | Miaoda-managed PostgreSQL | `lark-cli` + account login | An environment identical to production |
+| Minimal offline mode | `scripts/dev-local-minimal.ps1` | skipped (no DB) | none | Public market-data endpoints only (early agent work) |
+| **Full offline mode (recommended)** | `scripts/dev-local-full.ps1` | **local PostgreSQL + real data snapshot** | injected local user | Full UI with real data, agent development & demos |
+
+### Full offline mode: local PostgreSQL with real data (recommended)
+
+This mode reproduces the platform runtime entirely on your machine, so you can see your **real holdings without logging in or reaching the Miaoda cloud** — ideal for offline agent development and demos. It does four things:
+
+1. **Tables**: generates DDL from `server/database/schema.ts` with drizzle-kit and creates the tables under a dedicated `workspace_*` schema (`scripts/db/02_tables.sql`).
+2. **Roles**: recreates the three datapaas roles the platform switches to per request (`service_role_/authenticated_/anon_<schema>` in `scripts/db/03_roles.sql`).
+3. **Data**: imports the real data snapshot exported from Miaoda (`db/snapshot/*.sql`, **personal data, gitignored and never committed**).
+4. **Identity**: the backend connects through `SUDA_DATABASE_URL`; a local middleware (`server/common/middleware/local-dev-auth.middleware.ts`) that is only active when `LOCAL_DEV_USER_ID` is set injects the gateway user header, so the `@NeedLogin()` guard passes and `owner` row-level isolation behaves exactly as in the cloud.
+
+One-time setup:
+
+```powershell
+# 1) Install PostgreSQL (user-scoped scoop install, no admin needed)
+scoop install postgresql
+
+# 2) Put the seven exported *.sql files into db/snapshot/ (see db/snapshot/README.md)
+
+# 3) One-click: create database -> tables/roles -> import snapshot (idempotent)
+powershell -ExecutionPolicy Bypass -File scripts\db\rebuild-local.ps1
+```
+
+Every time you start:
+
+```powershell
+# Starts local PostgreSQL (if needed) + backend (local DB) + frontend
+powershell -ExecutionPolicy Bypass -File scripts\dev-local-full.ps1
+# then open http://127.0.0.1:8080
+```
+
+`LOCAL_DEV_USER_ID` defaults to the owner id in the snapshot, so only that account's data is shown (a holding owned by another account in the same snapshot is correctly filtered out by the `owner` condition). Set the variable before launch to switch accounts. The middleware is completely inert when `LOCAL_DEV_USER_ID` is unset and never overrides a real gateway header, so it has zero effect on production.
+
+### Official cloud mode
 
 ```bash
 # Install dependencies
@@ -206,9 +253,8 @@ npm install
 # Copy the environment template and fill in as needed
 cp .env.example .env
 #   The app runs without DOUBAO_API_KEY; only the multi-agent LLM reasoning is disabled
-#   Set DATABASE_URL when using your own PostgreSQL
 
-# Start backend (NestJS) and front-end (Vite) together
+# Start backend (NestJS) and front-end (Vite) together; needs lark-cli for env pull
 npm run dev
 
 # Or start them separately

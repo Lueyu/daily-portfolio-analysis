@@ -48,7 +48,7 @@ flowchart TB
         C --> GW
     end
 
-    subgraph PyAgent["Python Agent 服务（agent/ · 模型可插拔）"]
+    subgraph PyAgent["Python Agent 服务（agent/ · 模型无关）"]
         RT["智能体运行时<br/>ReAct 循环 · 规划 · 检查点"]:::py
         TOOLS["工具层<br/>行情 · 网页 · 财务 · 工作流"]:::py
         MODELS["模型抽象层<br/>方舟 · DeepSeek · OpenAI 兼容"]:::py
@@ -56,7 +56,7 @@ flowchart TB
         RT --> MODELS
     end
 
-    PG[("PostgreSQL<br/>19 张业务表<br/>按 owner 行级隔离")]:::db
+    PG[("PostgreSQL<br/>20 张业务表<br/>按 owner 行级隔离")]:::db
     FH["Finnhub<br/>实时行情"]:::ext
     ARK["方舟 / DeepSeek<br/>大模型服务"]:::ext
     FXEXT["汇率数据源"]:::ext
@@ -160,7 +160,7 @@ flowchart TB
 
 ```
 .
-├── agent/                  # Python Agent 服务（模型可插拔，Typer/FastAPI）
+├── agent/                  # Python Agent 服务（模型无关，Typer/FastAPI）
 │   ├── src/agent_core/     # 运行时、模型抽象、工具、webapp 客户端
 │   ├── tests/              # pytest + pytest-httpx（不打真实网络）
 │   ├── data/checkpoints/   # JSONL 检查点（运行时数据，git 中保留空目录）
@@ -176,16 +176,24 @@ flowchart TB
 │       └── api/index.ts    # 后端接口的前端封装
 ├── server/                 # NestJS 后端（编排中枢）
 │   ├── database/schema.ts  # Drizzle 表结构（自动生成，勿手动修改）
-│   ├── common/             # 异常过滤器、通用常量
+│   ├── common/
+│   │   ├── middleware/     # 本地 dev 身份注入（LOCAL_DEV_USER_ID 门控）
+│   │   └── filters/        # 全局异常过滤器
 │   └── modules/            # 业务模块（controller + service + module）
 ├── shared/
 │   └── api.interface.ts    # 前后端共享类型
-└── scripts/                # dev / build / lint 脚本 + 妙搭->GitHub 同步
+├── db/
+│   └── snapshot/           # 本地真实数据快照（*.sql 已 gitignore，仅本地）
+├── drizzle/                # drizzle-kit 生成的建表 migration
+└── scripts/
+    ├── db/                 # 本地 PostgreSQL：建库/建表/角色 + start/stop/rebuild
+    ├── dev-local-*.ps1     # Windows 本地一键启动（minimal / db / full / client）
+    └── sync-from-miaoda.ps1# 妙搭 -> GitHub 同步
 ```
 
 ## 数据模型
 
-数据库共 19 张表，分为三组：
+数据库共 20 张表，分为三组：
 
 | 分组 | 表 | 说明 |
 |---|---|---|
@@ -197,7 +205,46 @@ flowchart TB
 
 ## 本地开发
 
-环境要求：Node.js >= 22、npm >= 10。Windows 环境下 dev/build 脚本为 shell 脚本，需通过 Git Bash 执行。
+环境要求：Node.js >= 22、npm >= 10。提供三种运行模式，按需选择：
+
+| 模式 | 启动方式 | 数据库 | 登录态 | 适用场景 |
+| --- | --- | --- | --- | --- |
+| 官方云端模式 | `npm run dev` | 妙搭托管 PostgreSQL | 需要 `lark-cli` + 账号登录 | 与线上完全一致的完整环境 |
+| 最小离线模式 | `scripts/dev-local-minimal.ps1` | 不连库（跳过） | 无 | 只调公开行情端点（Agent 开发早期） |
+| **全栈离线模式（推荐）** | `scripts/dev-local-full.ps1` | **本地 PostgreSQL + 真实数据快照** | 本地注入固定用户 | 完整页面、完整数据，做 Agent 开发与演示 |
+
+### 全栈离线模式：本地 PostgreSQL + 真实数据（推荐）
+
+该模式在本机完整复刻平台运行时，**无需登录、无需联网到妙搭**，就能看到自己的真实持仓，适合离线开发 Agent 与功能演示。它做了四件事：
+
+1. **建表**：用 drizzle-kit 从 `server/database/schema.ts` 生成 DDL，建在独立的 `workspace_*` schema 下（`scripts/db/02_tables.sql`）。
+2. **角色**：模拟平台 datapaas 每个请求 `SET LOCAL ROLE` 的三个数据库角色 `service_role_/authenticated_/anon_<schema>`（`scripts/db/03_roles.sql`）。
+3. **数据**：把从妙搭导出的真实数据快照（`db/snapshot/*.sql`，**含个人数据，已 gitignore，不入库**）导入本地库。
+4. **身份**：后端通过 `SUDA_DATABASE_URL` 连本地库；一个仅在 `LOCAL_DEV_USER_ID` 设置时生效的本地中间件（`server/common/middleware/local-dev-auth.middleware.ts`）注入网关用户头，于是 `@NeedLogin()` 守卫放行、SQL 上下文设置 `app.user_id`、`owner` 行级隔离与云端完全一致。
+
+一次性准备：
+
+```powershell
+# 1) 安装 PostgreSQL（scoop 用户级安装，无需管理员）
+scoop install postgresql
+
+# 2) 把从妙搭导出的 7 个 *.sql 放入 db/snapshot/（详见 db/snapshot/README.md）
+
+# 3) 一键建库 → 建表/角色 → 导入快照（幂等，可重复执行）
+powershell -ExecutionPolicy Bypass -File scripts\db\rebuild-local.ps1
+```
+
+每次启动：
+
+```powershell
+# 启动本地 PostgreSQL（若未运行）+ 后端（连本地库）+ 前端
+powershell -ExecutionPolicy Bypass -File scripts\dev-local-full.ps1
+# 然后打开 http://127.0.0.1:8080
+```
+
+`LOCAL_DEV_USER_ID` 默认取快照里的属主用户 ID，只展示该账号的数据（例如同一快照里属于另一账号的持仓会被 `owner` 条件正确过滤掉）；要切换成其他账号，在启动前设置该环境变量即可。该中间件在不设置 `LOCAL_DEV_USER_ID` 时完全不生效，也不会覆盖真实网关头，因此对线上零影响。
+
+### 官方云端模式
 
 ```bash
 # 安装依赖
@@ -206,9 +253,8 @@ npm install
 # 复制环境变量模板并按需填写
 cp .env.example .env
 #   未填写 DOUBAO_API_KEY 时应用可正常运行，仅多智能体的 LLM 推理不可用
-#   使用自建 PostgreSQL 时需设置 DATABASE_URL
 
-# 同时启动后端（NestJS）与前端（Vite）
+# 同时启动后端（NestJS）与前端（Vite）；需要 lark-cli 拉取云端环境变量
 npm run dev
 
 # 也可分别启动
