@@ -1,13 +1,9 @@
 """OpenAI-compatible chat model provider.
 
-Day 3 scope is a minimal connectivity check (``ping``): prove that an API key and
-model id work against one OpenAI-compatible endpoint. Volcengine Ark (Doubao),
-DeepSeek and OpenAI all speak the same ``chat.completions`` protocol, so the same
-client class serves them; only ``base_url`` / ``api_key`` / ``model`` differ.
-
-The full provider abstraction (capability declaration, streaming, usage
-accounting, retry/backoff, fast/slow routing) is built out in M1; this file keeps
-the seam in place so that later work does not change call sites.
+Both tiers (flash / pro) speak the same OpenAI-compatible chat protocol on
+Volcengine Ark; only the API key and model id differ. This class keeps that seam
+minimal so M1 can add streaming, usage accounting, retries and routing without
+changing call sites.
 """
 
 from __future__ import annotations
@@ -24,7 +20,7 @@ from ..config import Settings
 class PingResult:
     """Outcome of a single minimal chat round-trip."""
 
-    provider: str
+    tier: str
     model: str
     reply: str
     reasoning: str
@@ -34,19 +30,11 @@ class PingResult:
 
 
 class OpenAICompatibleProvider:
-    """Thin wrapper over the OpenAI SDK for any compatible vendor.
-
-    Args:
-        name: Logical provider name, e.g. ``"deepseek"`` / ``"ark"``.
-        base_url: Vendor OpenAI-compatible API root.
-        api_key: Bearer API key.
-        model: Model / endpoint id used in ``chat.completions``.
-        timeout: Per-request timeout in seconds.
-    """
+    """Thin wrapper over the OpenAI SDK for an OpenAI-compatible vendor."""
 
     def __init__(
         self,
-        name: str,
+        tier: str,
         base_url: str,
         api_key: str | None,
         model: str,
@@ -54,10 +42,9 @@ class OpenAICompatibleProvider:
     ) -> None:
         if not api_key:
             raise ValueError(
-                f"missing API key for provider '{name}' "
-                f"(set the corresponding *_API_KEY env var)"
+                f"missing API key for '{tier}' tier (set {tier.upper()}_API_KEY)"
             )
-        self.name = name
+        self.tier = tier
         self.model = model
         self._client = OpenAI(
             base_url=base_url,
@@ -85,7 +72,7 @@ class OpenAICompatibleProvider:
         reasoning = getattr(message, "reasoning_content", None) or ""
         usage = resp.usage
         return PingResult(
-            provider=self.name,
+            tier=self.tier,
             model=resp.model or self.model,
             reply=(message.content or "").strip(),
             reasoning=reasoning.strip(),
@@ -95,28 +82,26 @@ class OpenAICompatibleProvider:
         )
 
 
-def build_provider(settings: Settings, name: str | None = None) -> OpenAICompatibleProvider:
-    """Construct a provider from settings by logical name.
+def build_provider(settings: Settings, tier: str | None = None) -> OpenAICompatibleProvider:
+    """Construct a provider for a model tier ("flash" or "pro").
 
     Args:
         settings: Resolved application settings.
-        name: ``"deepseek"`` / ``"ark"``; defaults to ``settings.model_provider``.
+        tier: ``"flash"`` / ``"pro"``; defaults to ``settings.default_tier``.
     """
-    provider = (name or settings.model_provider).strip().lower()
-    if provider == "ark":
+    chosen = (tier or settings.default_tier).strip().lower()
+    if chosen == "flash":
         return OpenAICompatibleProvider(
-            "ark",
-            settings.ark_base_url,
-            settings.ark_api_key,
-            settings.ark_model,
+            "flash",
+            settings.model_base_url,
+            settings.flash_api_key,
+            settings.flash_model,
         )
-    if provider == "deepseek":
+    if chosen == "pro":
         return OpenAICompatibleProvider(
-            "deepseek",
-            settings.deepseek_base_url,
-            settings.deepseek_api_key,
-            settings.deepseek_model,
+            "pro",
+            settings.model_base_url,
+            settings.pro_api_key,
+            settings.pro_model,
         )
-    raise ValueError(
-        f"unknown model provider '{provider}' (expected 'deepseek' or 'ark')"
-    )
+    raise ValueError(f"unknown model tier '{chosen}' (expected 'flash' or 'pro')")

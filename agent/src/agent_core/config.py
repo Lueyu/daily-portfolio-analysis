@@ -1,4 +1,14 @@
-"""Configuration loaded from environment variables / .env (12-factor)."""
+"""Configuration loaded from environment variables / .env (12-factor).
+
+Model layout: both tiers go through the Volcengine Ark OpenAI-compatible
+endpoint. The distinction is *role*, not vendor:
+
+  - ``flash``: cheap and fast, the default for routine pipeline steps.
+  - ``pro``:   stronger, reserved for high-stakes decisions (ratings, sizing).
+
+Routing which tier a task uses is a one-line choice on the caller side; the
+provider construction is identical for both.
+"""
 
 from pathlib import Path
 
@@ -17,19 +27,18 @@ class Settings(BaseSettings):
     webapp_agent_token: str | None = None
     webapp_default_user_id: str = "local-dev"
 
-    # Which OpenAI-compatible provider the model layer uses by default
-    # ("deepseek" or "ark"). Switching providers is a one-line config change.
-    model_provider: str = "deepseek"
+    # Volcengine Ark, OpenAI-compatible root, shared by both tiers.
+    model_base_url: str = "https://ark.cn-beijing.volces.com/api/v3"
+    # Default tier for model calls: "flash" (cheap/fast) or "pro" (stronger).
+    default_tier: str = "flash"
 
-    # Volcengine Ark (Doubao), OpenAI-compatible
-    ark_api_key: str | None = None
-    ark_base_url: str = "https://ark.cn-beijing.volces.com/api/v3"
-    ark_model: str = "doubao-lite-4k"
+    # Flash tier: routine, cheap, fast.
+    flash_api_key: str | None = None
+    flash_model: str = "deepseek-v4-1-flash-260910"
 
-    # DeepSeek, OpenAI-compatible
-    deepseek_api_key: str | None = None
-    deepseek_base_url: str = "https://api.deepseek.com"
-    deepseek_model: str = "deepseek-chat"
+    # Pro tier: high-stakes decisions.
+    pro_api_key: str | None = None
+    pro_model: str = "deepseek-v4-pro-260425"
 
     # Runtime
     checkpoint_dir: str = "data/checkpoints"

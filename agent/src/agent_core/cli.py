@@ -31,8 +31,9 @@ def init() -> None:
     ensure_dirs(s)
     console.print("[green]stock-agent initialized[/green]")
     console.print(f"webapp = {s.webapp_base_url}")
-    console.print(f"ark key configured = {bool(s.ark_api_key)}")
-    console.print(f"deepseek key configured = {bool(s.deepseek_api_key)}")
+    console.print(f"default tier = {s.default_tier}")
+    console.print(f"flash key configured = {bool(s.flash_api_key)} ({s.flash_model})")
+    console.print(f"pro key configured   = {bool(s.pro_api_key)} ({s.pro_model})")
     console.print(f"checkpoint dir = {s.checkpoint_dir}")
 
 
@@ -123,22 +124,21 @@ def holdings() -> None:
 
 @app.command()
 def modelping(
-    provider: str = typer.Argument(
-        None, help="Provider name: deepseek | ark (defaults to MODEL_PROVIDER)"
+    tier: str = typer.Argument(
+        None, help="Model tier: flash | pro (defaults to DEFAULT_TIER)"
     ),
 ) -> None:
-    """Send one minimal chat request to verify an OpenAI-compatible model."""
+    """Send one minimal chat request to verify a model tier on Ark."""
     s = get_settings()
     setup_logging(s.log_level)
-    name = provider or s.model_provider
+    chosen = tier or s.default_tier
     try:
-        model = build_provider(s, name)
-        result = model.ping()
+        result = build_provider(s, chosen).ping()
     except Exception as exc:
-        console.print(f"[red]model ping failed ({name}):[/red] {type(exc).__name__}: {exc}")
+        console.print(f"[red]model ping failed ({chosen}):[/red] {type(exc).__name__}: {exc}")
         raise typer.Exit(code=1)
     console.print(
-        f"[green]model OK[/green]  provider={result.provider}  model={result.model}  "
+        f"[green]model OK[/green]  tier={result.tier}  model={result.model}  "
         f"{result.latency_ms}ms  tokens={result.prompt_tokens}+{result.completion_tokens}"
     )
     if result.reply:
