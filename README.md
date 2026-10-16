@@ -28,6 +28,27 @@ The system has two parts: a full-stack trading terminal (NestJS + React + Postgr
 
 The front-end is a React SPA, the backend is NestJS, and the database is PostgreSQL. Market data is requested directly from Finnhub in the browser, and the API token is stored only on the local device. Reasoning in the multi-agent analysis is performed by the backend through the Volcengine Ark (Doubao) LLM; FX rates are fetched centrally by the backend FX module.
 
+The system boundary at a glance:
+
+```mermaid
+flowchart LR
+    User["User (browser / mobile)"] --> Web["Webapp<br/>React · NestJS · PostgreSQL<br/>accounts · trades · risk · auth · data"]
+    Web <-->|"HTTP / SSE · x-agent-token"| Agent["Python Agent service<br/>research · tool calling · reasoning · multi-role"]
+    Agent --> LLM["LLM (swappable)<br/>Volcengine Ark · DeepSeek · OpenAI-compatible"]
+    Agent --> Ext["External data sources"]
+
+    classDef actor fill:#57606a,stroke:#24292f,color:#ffffff,stroke-width:2px
+    classDef web fill:#2da44e,stroke:#116329,color:#ffffff,stroke-width:2px
+    classDef py fill:#8250df,stroke:#5a2f9e,color:#ffffff,stroke-width:2px
+    classDef ext fill:#a371f7,stroke:#6e40c9,color:#ffffff,stroke-width:2px
+    class User actor
+    class Web web
+    class Agent py
+    class LLM,Ext ext
+```
+
+The backend is the only system of record; the agent fetches data and produces analysis through controlled interfaces and never reads or writes the database directly. The detailed components and data flows are below.
+
 ```mermaid
 flowchart TB
     subgraph Browser["Browser / Mobile PWA"]
@@ -215,7 +236,7 @@ Requirements: Node.js >= 22 and npm >= 10. Three modes are available:
 
 ### Full offline mode: local PostgreSQL with real data (recommended)
 
-This mode reproduces the platform runtime entirely on your machine, so you can see your **real holdings without logging in or reaching the Miaoda cloud** — ideal for offline agent development and demos. It does four things:
+This mode reproduces the platform runtime entirely on your machine, so you can see your **real holdings without logging in or reaching the Miaoda cloud** — ideal for offline agent development and interviews. It does four things:
 
 1. **Tables**: generates DDL from `server/database/schema.ts` with drizzle-kit and creates the tables under a dedicated `workspace_*` schema (`scripts/db/02_tables.sql`).
 2. **Roles**: recreates the three datapaas roles the platform switches to per request (`service_role_/authenticated_/anon_<schema>` in `scripts/db/03_roles.sql`).

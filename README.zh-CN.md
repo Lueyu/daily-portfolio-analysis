@@ -28,6 +28,27 @@ Daily Portfolio Analysis 是一个全栈股票持仓管理终端。每个交易�
 
 前端为 React SPA，后端为 NestJS，数据库为 PostgreSQL。行情数据由浏览器直接向 Finnhub 请求，API Token 仅存储于本地设备；多智能体分析中的推理由后端调用火山方舟（豆包）大模型完成；汇率数据由后端 FX 模块统一获取。
 
+先看系统边界（总览）：
+
+```mermaid
+flowchart LR
+    User["用户（浏览器 / 手机）"] --> Web["Webapp<br/>React · NestJS · PostgreSQL<br/>账户 · 交易 · 风控 · 鉴权 · 数据"]
+    Web <-->|"HTTP / SSE · x-agent-token 鉴权"| Agent["Python Agent 服务<br/>研究 · 工具调用 · 推理 · 多角色分析"]
+    Agent --> LLM["大模型（可切换）<br/>火山方舟 · DeepSeek · OpenAI 兼容"]
+    Agent --> Ext["外部数据源"]
+
+    classDef actor fill:#57606a,stroke:#24292f,color:#ffffff,stroke-width:2px
+    classDef web fill:#2da44e,stroke:#116329,color:#ffffff,stroke-width:2px
+    classDef py fill:#8250df,stroke:#5a2f9e,color:#ffffff,stroke-width:2px
+    classDef ext fill:#a371f7,stroke:#6e40c9,color:#ffffff,stroke-width:2px
+    class User actor
+    class Web web
+    class Agent py
+    class LLM,Ext ext
+```
+
+后端是唯一的系统记录层，Agent 只通过受控接口取数、产出分析，不直接读写数据库；下面展开各组件与数据流。
+
 ```mermaid
 flowchart TB
     subgraph Browser["浏览器 / 手机 PWA"]
@@ -215,7 +236,7 @@ flowchart TB
 
 ### 全栈离线模式：本地 PostgreSQL + 真实数据（推荐）
 
-该模式在本机完整复刻平台运行时，**无需登录、无需联网到妙搭**，就能看到自己的真实持仓，适合离线开发 Agent 与功能演示。它做了四件事：
+该模式在本机完整复刻平台运行时，**无需登录、无需联网到妙搭**，就能看到自己的真实持仓，适合离线开发 Agent 与面试演示。它做了四件事：
 
 1. **建表**：用 drizzle-kit 从 `server/database/schema.ts` 生成 DDL，建在独立的 `workspace_*` schema 下（`scripts/db/02_tables.sql`）。
 2. **角色**：模拟平台 datapaas 每个请求 `SET LOCAL ROLE` 的三个数据库角色 `service_role_/authenticated_/anon_<schema>`（`scripts/db/03_roles.sql`）。
