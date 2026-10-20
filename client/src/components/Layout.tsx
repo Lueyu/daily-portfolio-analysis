@@ -19,6 +19,7 @@ import {
   BookOpen,
   Receipt,
   Settings,
+  Wrench,
   Sun,
   Moon,
   RefreshCw,
@@ -59,6 +60,7 @@ const navItems = [
   { path: '/journal', label: '日志', icon: BookOpen },
   { path: '/transactions', label: '交易记录', icon: Receipt },
   { path: '/settings/rules', label: '策略规则', icon: Settings },
+  { path: '/dev', label: '开发', icon: Wrench },
 ];
 
 /**

@@ -22,6 +22,14 @@
  */
 import { axiosForBackend } from '@lark-apaas/client-toolkit/utils/getAxiosForBackend';
 import { logger } from '@lark-apaas/client-toolkit/logger';
+import type {
+  CreateDevTaskPayload,
+  DevHealth,
+  DevIteration,
+  DevPatchDetail,
+  DevTaskDetail,
+  DevTaskSummary,
+} from '@/pages/Dev/types';
 
 /**
  * Fetch the dashboard aggregate overview (totals, allocation, etc.).
@@ -752,6 +760,70 @@ export async function getPortfolioContext() {
   const response = await axiosForBackend({
     url: '/api/multi-agent/portfolio-context',
     method: 'GET',
+  });
+  return response.data;
+}
+
+// ===========================================================================
+// Local Coding-Agent console (/api/dev). Dev-only: the backend returns 503
+// when AGENT_DEV_ENABLED is not set (production cloud never enables it).
+// ===========================================================================
+
+export async function getDevHealth() {
+  const response = await axiosForBackend({ url: '/api/dev/health', method: 'GET' });
+  return response.data as DevHealth;
+}
+
+export async function listDevTasks() {
+  const response = await axiosForBackend({ url: '/api/dev/tasks', method: 'GET' });
+  return response.data as DevTaskSummary[];
+}
+
+export async function createDevTask(payload: CreateDevTaskPayload) {
+  const response = await axiosForBackend({
+    url: '/api/dev/tasks',
+    method: 'POST',
+    data: payload,
+  });
+  return response.data as DevTaskDetail;
+}
+
+export async function getDevTask(id: string) {
+  const response = await axiosForBackend({ url: `/api/dev/tasks/${id}`, method: 'GET' });
+  return response.data as DevTaskDetail;
+}
+
+export async function getDevIterations(id: string) {
+  const response = await axiosForBackend({
+    url: `/api/dev/tasks/${id}/iterations`,
+    method: 'GET',
+  });
+  return response.data as DevIteration[];
+}
+
+export async function getDevPatch(id: string, patchId: string) {
+  const response = await axiosForBackend({
+    url: `/api/dev/tasks/${id}/patches/${patchId}`,
+    method: 'GET',
+  });
+  return response.data as DevPatchDetail;
+}
+
+export async function runDevTask(id: string) {
+  const response = await axiosForBackend({ url: `/api/dev/tasks/${id}/run`, method: 'POST' });
+  return response.data;
+}
+
+export async function approveDevTask(id: string) {
+  const response = await axiosForBackend({ url: `/api/dev/tasks/${id}/approve`, method: 'POST' });
+  return response.data;
+}
+
+export async function rejectDevTask(id: string, reason: string) {
+  const response = await axiosForBackend({
+    url: `/api/dev/tasks/${id}/reject`,
+    method: 'POST',
+    data: { reason },
   });
   return response.data;
 }
