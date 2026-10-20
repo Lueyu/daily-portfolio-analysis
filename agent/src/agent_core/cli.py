@@ -3,6 +3,7 @@
 Day 1: init
 Day 2: health, quote (public webapp endpoint)
 Day 3: holdings (authenticated agent gateway), modelping (OpenAI-compatible LLM)
+M1:     chat (routed call with retries, fallback, usage and cost)
 """
 
 import typer
@@ -10,11 +11,14 @@ from rich.console import Console
 from rich.table import Table
 
 from .config import ensure_dirs, get_settings
+from .evolution.cli import app as evolution_app
 from .logging_conf import setup_logging
+from .models import ChatRequest, ChatService, ModelTask
 from .models.openai_compatible import build_provider
 from .runtime.webapp_client import WebappClient
 
 app = typer.Typer(help="Stock Agent CLI")
+app.add_typer(evolution_app, name="evolution")
 console = Console()
 
 
@@ -148,6 +152,93 @@ def modelping(
             f"[yellow]no visible content (reasoning model); reasoning tail:[/yellow] "
             f"{result.reasoning[-120:]}"
         )
+
+
+@app.command()
+def chat(
+    prompt: str = typer.Argument(..., help="The prompt to send to the model"),
+    task: str = typer.Option(
+        None,
+        "--task",
+        help="Routing task: rating|plan|critic|debate|summarize|extract|translate",
+    ),
+    tier: str = typer.Option(
+        None, "--tier", help="Force a tier: flash|pro (overrides --task)"
+    ),
+    json_mode: bool = typer.Option(False, "--json", help="Request JSON output"),
+    show_reasoning: bool = typer.Option(
+        False, "--reasoning", help="Also print the hidden reasoning chain if present"
+    ),
+) -> None:
+    """Send a real chat prompt through the routed model layer (M1)."""
+    s = get_settings()
+    setup_logging(s.log_level)
+
+    model_task = None
+    if task:
+        try:
+            model_task = ModelTask(task.strip().lower())
+        except ValueError:
+            valid = ", ".join(t.value for t in ModelTask)
+            console.print(f"[red]unknown task '{task}'[/red] (one of: {valid})")
+            raise typer.Exit(code=2)
+
+    request = ChatRequest(
+        messages=[{"role": "user", "content": prompt}],
+        task=model_task,
+        json_mode=json_mode,
+    )
+
+    service = ChatService(s)
+    if tier:
+        # Forced tier: bypass routing/fallback and hit exactly that tier.
+        chosen = tier.strip().lower()
+        if chosen not in ("flash", "pro"):
+            console.print("[red]--tier must be flash or pro[/red]")
+            raise typer.Exit(code=2)
+        try:
+            resp = service.provider_for(chosen).chat(request)
+        except Exception as exc:
+            console.print(f"[red]chat failed ({chosen}):[/red] {type(exc).__name__}: {exc}")
+            raise typer.Exit(code=1)
+    else:
+        try:
+            resp = service.chat(request)
+        except Exception as exc:
+            console.print(f"[red]chat failed:[/red] {type(exc).__name__}: {exc}")
+            raise typer.Exit(code=1)
+
+    if resp.degraded:
+        console.print(
+            f"[yellow]⚠ degraded {resp.requested_tier} → {resp.tier}:[/yellow] "
+            f"{resp.degrade_reason}"
+        )
+    console.print(resp.content)
+    if show_reasoning and resp.reasoning:
+        console.print(f"[dim]reasoning: {resp.reasoning[-500:]}[/dim]")
+
+    cost = (
+        f"${resp.usage.cost_usd:.6f}"
+        if resp.usage.cost_usd > 0
+        else "price unset"
+    )
+    table = Table(show_header=True, header_style="bold cyan")
+    table.add_column("tier")
+    table.add_column("model")
+    table.add_column("tokens")
+    table.add_column("cost")
+    table.add_column("attempts")
+    table.add_column("latency")
+    table.add_row(
+        resp.tier,
+        resp.model,
+        f"{resp.usage.prompt_tokens}+{resp.usage.completion_tokens}"
+        f"={resp.usage.total_tokens}",
+        cost,
+        str(resp.attempts),
+        f"{resp.latency_ms}ms",
+    )
+    console.print(table)
 
 
 if __name__ == "__main__":

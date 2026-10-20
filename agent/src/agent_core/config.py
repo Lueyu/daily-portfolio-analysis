@@ -40,6 +40,18 @@ class Settings(BaseSettings):
     pro_api_key: str | None = None
     pro_model: str = "deepseek-v4-pro-260425"
 
+    # Pricing per 1,000,000 tokens. Left at 0.0 on purpose: fill in the real
+    # Ark prices via .env so the cost report reflects your account. A cost of
+    # 0.0 is displayed as "price unset" rather than a fabricated number.
+    flash_cost_per_mtok_input: float = 0.0
+    flash_cost_per_mtok_output: float = 0.0
+    pro_cost_per_mtok_input: float = 0.0
+    pro_cost_per_mtok_output: float = 0.0
+
+    # Retry / fallback policy.
+    max_retries: int = 3            # total attempts for a retryable error
+    fallback_to_flash: bool = True  # degrade pro -> flash when pro is unavailable
+
     # Runtime
     checkpoint_dir: str = "data/checkpoints"
     log_level: str = "INFO"

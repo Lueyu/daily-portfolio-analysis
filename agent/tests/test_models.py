@@ -67,6 +67,8 @@ def _settings(**overrides) -> SimpleNamespace:
         flash_model="flash-model",
         pro_api_key="pro-key",
         pro_model="pro-model",
+        max_retries=3,
+        fallback_to_flash=True,
     )
     base.update(overrides)
     return SimpleNamespace(**base)
