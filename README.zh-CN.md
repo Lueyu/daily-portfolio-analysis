@@ -16,6 +16,7 @@ Daily Portfolio Analysis 是一个全栈股票持仓管理终端。每个交易�
 - **每日分析**：每只持仓与关注股对应一张分析卡片，包含评级、操作、目标价、催化剂与风险。
 - **多智能体深度报告**：包含 14 个板块的研究报告（核心论点、财务、SOTP 分部估值、多空辩论、Critic 批判、风控闸、PM 决策等）；每次运行均保留一个新版本并附带生成时间。
 - **独立 Python Agent 服务**：位于 `agent/`，模型层与厂商解耦（火山方舟 / DeepSeek / 任意 OpenAI 兼容接口），内置工具调用、规划、检查点与多智能体编排，运行过程可回放；它只通过后端 HTTP API 取数，不直连业务数据库。
+- **本地 Coding Agent 控制台**（`/dev`）：第二个 Agent 角色，在受控内环（复现 → 诊断 → 打补丁 → 门控验证，失败自动回滚）中修复 Webapp。Nest 开发模块以命令白名单、不走 shell 的方式拉起本机 Python Agent，只以磁盘上的任务工件为唯一权威；浏览器驱动整个流程，每一次改动都必须显式批准或拒绝。全栈 E2E 用确定性假 agent 跑在隔离端口上，既不触碰正在运行的开发栈，也不调用大模型。
 - **已实现盈亏**：交易记录页以 Robinhood 风格汇总 Realized P&L，按股票与币种统计，替代原已平仓列表。
 - **策略规则**：风控规则（单一公司敞口上限、杠杆 ETF 上限、现金缓冲、止损线）可在页面上配置，并在分析时作为硬性闸门。
 - **投资日志与快照**：自动生成五段式投资日志，净值曲线基于每日快照。
@@ -177,38 +178,77 @@ flowchart TB
 
 深度报告共 14 个板块，由 `client/src/components/MultiAgent/DeepReportView.tsx` 渲染，数据通过 `GET /api/multi-agent/deep-report/:runId` 获取。
 
+### 本地 Coding Agent 控制台
+
+除投资研究角色外，Python Agent 还内置一个 `coder` 角色，用于开发和修复 Webapp 本身。它以一个自主编码任务的状态机内环运行——复现失败检查、诊断根因、提出补丁、验证；一旦验证失败，带着失败证据自动回滚并回到诊断——同时受迭代次数、模型调用次数和时间预算约束，并有一道硬闸：绝不允许靠放宽测试来强行通过。
+
+这个控制台刻意做成**本地开发工具，而不是云端功能**。云端运行时是只读 FaaS 容器，没有 git、Python 和开发依赖，还有执行时长上限，无法承载"改代码 + 跑测试"这类工作。因此该功能默认关闭，仅在本地开发通过 `AGENT_DEV_ENABLED=true` 启用。
+
+```mermaid
+flowchart TB
+    Page["浏览器 /dev 页<br/>列表 · 新建弹窗 · 详情<br/>状态步骤条 · 迭代时间线 · diff 查看器"]:::fe
+    Page -->|"REST /api/dev（轮询）"| Ctrl["DevAgentController<br/>@NeedLogin · /health 放开"]:::ctrl
+    Ctrl --> Svc["DevAgentService<br/>状态校验 · in-flight 锁<br/>run/approve 发后即忘"]:::svc
+    Svc --> Reader["TaskArtifactReader<br/>id 白名单 + 路径前缀防护<br/>读 task.json / iterations.jsonl / *.diff"]:::svc
+    Svc --> Runner["AgentProcessRunner<br/>spawn argv 数组 · shell:false<br/>子命令白名单 · 超时"]:::gw
+    Runner -->|"agent dev new/run/approve/reject --json"| Py["本机 Python coder"]:::py
+    Py --> Artifacts["任务工件（唯一权威）<br/>agent/data/coder/tasks/&lt;id&gt;/"]:::db
+    Reader --> Artifacts
+
+    classDef fe fill:#1f6feb,stroke:#0b3d91,color:#ffffff,stroke-width:2px
+    classDef ctrl fill:#2da44e,stroke:#116329,color:#ffffff,stroke-width:2px
+    classDef svc fill:#f0883e,stroke:#9e4b0f,color:#ffffff,stroke-width:2px
+    classDef gw fill:#bc4c00,stroke:#7a2f00,color:#ffffff,stroke-width:2px
+    classDef py fill:#8250df,stroke:#5a2f9e,color:#ffffff,stroke-width:2px
+    classDef db fill:#0891b2,stroke:#155e75,color:#ffffff,stroke-width:2px
+```
+
+三个设计选择把边界收窄并保证安全：
+
+- **磁盘工件是唯一权威，不建数据库表、不做常驻服务。** 后端按需 spawn 本机 `agent` 可执行文件，只读取 Python 侧已原子写入的工件，因此命令行与浏览器始终看到同一份状态，任务也可以回放和审计。
+- **子进程被严格锁定。** 命令以 argv 数组 + `shell:false` 启动（shell 注入无从发生），仅限 `new/run/approve/reject` 子命令，在固定工作目录执行并设超时；Python 侧另有 npm/git 命令白名单，并禁止 `commit/push/reset/clean`。
+- **人工在环是强制的。** 补丁只写到 `patches/*.diff`，在审批门前不会应用；批准后才应用并运行验证，拒绝必须填写原因；系统全程不会自动 commit 或 push。
+
+后端模块是一层防腐层：TypeScript 类型与 Python 模型逐字段对齐；输入用 id 白名单和路径前缀校验防止路径穿越；失败统一映射为标准 HTTP 状态（503 未启用 / 400 非法 / 404 缺失 / 409 状态冲突 / 500 子进程失败）。全栈 E2E 使用零依赖的确定性假 agent，工件写在临时目录，服务跑在隔离端口（Nest 3099 / Vite 8090，`strictPort`，绝不复用），在不调用大模型的前提下覆盖批准和拒绝两条端到端主流程。
+
 ## 目录结构
 
 ```
 .
 ├── agent/                  # Python Agent 服务（模型无关，Typer/FastAPI）
-│   ├── src/agent_core/     # 运行时、模型抽象、工具、webapp 客户端
+│   ├── src/agent_core/     # 模型层、工具、webapp 客户端、coder/ 内环
 │   ├── tests/              # pytest + pytest-httpx（不打真实网络）
 │   ├── data/checkpoints/   # JSONL 检查点（运行时数据，git 中保留空目录）
 │   └── pyproject.toml
 ├── client/                 # React 前端
 │   └── src/
-│       ├── pages/          # 各业务页面（按功能分目录）
+│       ├── pages/          # 各业务页面（按功能分目录），含 Dev/
 │       ├── components/
 │       │   ├── MultiAgent/ # 深度报告、运行卡片、评级徽章
 │       │   ├── ui/         # 基础组件（shadcn 风格）
 │       │   └── business-ui/# 业务选择器（人员 / 部门 / 会话）
 │       ├── hooks/          # 行情轮询、主题、移动端判断
 │       └── api/index.ts    # 后端接口的前端封装
+├── e2e/                    # Playwright：启动冒烟 + fullstack/（假 agent）
+│   └── fixtures/           # 供开发控制台使用的确定性 fake-agent.cjs
 ├── server/                 # NestJS 后端（编排中枢）
 │   ├── database/schema.ts  # Drizzle 表结构（自动生成，勿手动修改）
 │   ├── common/
 │   │   ├── middleware/     # 本地 dev 身份注入（LOCAL_DEV_USER_ID 门控）
 │   │   └── filters/        # 全局异常过滤器
-│   └── modules/            # 业务模块（controller + service + module）
+│   └── modules/            # 业务模块（controller + service + module），
+│                           # 含 dev-agent/（拉起本机 coder、读取工件）
 ├── shared/
 │   └── api.interface.ts    # 前后端共享类型
 ├── db/
 │   └── snapshot/           # 本地真实数据快照（*.sql 已 gitignore，仅本地）
 ├── drizzle/                # drizzle-kit 生成的建表 migration
+├── playwright.config.ts          # 仅 Vite 冒烟（忽略 fullstack/）
+├── playwright.fullstack.config.ts # 隔离全栈 E2E（Nest 3099 / Vite 8090）
 └── scripts/
     ├── db/                 # 本地 PostgreSQL：建库/建表/角色 + start/stop/rebuild
     ├── dev-local-*.ps1     # Windows 本地一键启动（minimal / db / full / client）
+    ├── dev-e2e-server.js   # 为全栈 E2E 编译并用假 agent 启动 Nest
     └── sync-from-miaoda.ps1# 妙搭 -> GitHub 同步
 ```
 
@@ -264,6 +304,23 @@ powershell -ExecutionPolicy Bypass -File scripts\dev-local-full.ps1
 ```
 
 `LOCAL_DEV_USER_ID` 默认取快照里的属主用户 ID，只展示该账号的数据（例如同一快照里属于另一账号的持仓会被 `owner` 条件正确过滤掉）；要切换成其他账号，在启动前设置该环境变量即可。该中间件在不设置 `LOCAL_DEV_USER_ID` 时完全不生效，也不会覆盖真实网关头，因此对线上零影响。
+
+### 测试
+
+```bash
+npm run test:unit          # Vitest：server/**/*.spec.ts 单测（不启动 Nest、不连库）
+npm run test:unit:watch    # 监听模式
+npm run test:unit:coverage # 覆盖率报告（V8）
+
+npm run test:e2e:install   # 一次性：下载 Playwright Chromium
+npm run test:e2e           # 仅 Vite 冒烟：前端 bundle 能挂载
+npm run test:e2e:fullstack # 全栈：开发控制台的批准/拒绝闭环
+npm run test:e2e:ui        # 交互式 Playwright 调试界面
+
+cd agent && pytest -q      # Python Agent 测试（离线，不打真实网络）
+```
+
+单元测试覆盖业务逻辑和 dev-agent 模块（用 mock 的进程执行器与工件读取器），不启动 NestJS、不连数据库。仅 Vite 的端到端测试断言前端能正常挂载、不出现错误边界。全栈 E2E 会在隔离端口（Nest 3099 / Vite 8090，绝不复用）上用确定性假 agent 和临时工件目录启动一对隔离服务，让真实浏览器走完开发控制台的批准/拒绝流程，全程不调用大模型、不连数据库，也不影响正在运行的开发栈。Python Agent 测试使用脚本化模型和录制的 HTTP，完全离线。
 
 ### 官方云端模式
 

@@ -16,6 +16,7 @@ The system has two parts: a full-stack trading terminal (NestJS + React + Postgr
 - **Daily Analysis**: one analysis card per holding and watchlist item, containing rating, action, target price, catalysts and risks.
 - **Multi-Agent Deep Reports**: research reports with 14 sections (core thesis, financials, SOTP valuation, bull/bear debate, critic review, risk gates, PM decision, etc.); every run is retained as a new version with its generation time.
 - **Standalone Python Agent service** (`agent/`): a model-agnostic service (Volcengine Ark / DeepSeek / any OpenAI-compatible API) with tool calling, planning, checkpoints, replayable runs and multi-agent orchestration; it reaches business data only through the backend HTTP API, never the database directly.
+- **Local coding-agent console** (`/dev`): a second agent persona that reproduces, diagnoses and patches the webapp under a controlled inner loop (reproduce → diagnose → patch → gated verification, with automatic rollback). The NestJS dev module spawns the local Python agent with an allow-listed command set and no shell, treating on-disk task artifacts as the single source of truth; the browser drives the loop and requires an explicit approve/reject for every change. The full-stack E2E runs against a deterministic fake agent on isolated ports, so it never touches a running dev stack or calls an LLM.
 - **Realized P&L**: a Robinhood-style realized P&L summary on the transactions page, aggregated by stock and currency, replacing the former closed-positions list.
 - **Strategy Rules**: risk-control rules (single-company exposure cap, leverage-ETF cap, cash buffer, stop-loss lines) configurable in the UI and enforced as hard gates during analysis.
 - **Journal & Snapshots**: auto-generated five-part investment journals, with the net-value curve based on daily snapshots.
@@ -177,38 +178,77 @@ flowchart TB
 
 The deep report contains 14 sections rendered by `client/src/components/MultiAgent/DeepReportView.tsx`; data is fetched via `GET /api/multi-agent/deep-report/:runId`.
 
+### Local Coding Agent Console
+
+Beyond the investment persona, the Python agent carries a `coder` persona that develops and fixes the webapp itself. It runs the same state-machine inner loop as an autonomous coding task — reproduce the failing check, diagnose the root cause, propose a patch, verify, and roll back with the failure evidence if verification fails — under iteration/call/time budgets and a hard gate that never weakens tests to force a pass.
+
+The console is deliberately a **local development tool, not a cloud feature**. The cloud runtime is a read-only FaaS container without git, Python or dev dependencies and with an execution time cap, so it cannot host a "change code and run tests" workload. The feature is therefore off by default and enabled only in local development with `AGENT_DEV_ENABLED=true`.
+
+```mermaid
+flowchart TB
+    Page["Browser /dev page<br/>list · new-task modal · detail<br/>state stepper · iteration timeline · diff viewer"]:::fe
+    Page -->|"REST /api/dev (poll)"| Ctrl["DevAgentController<br/>@NeedLogin · /health open"]:::ctrl
+    Ctrl --> Svc["DevAgentService<br/>state guards · in-flight lock<br/>run/approve fire-and-forget"]:::svc
+    Svc --> Reader["TaskArtifactReader<br/>id allow-list + path-prefix guard<br/>reads task.json / iterations.jsonl / *.diff"]:::svc
+    Svc --> Runner["AgentProcessRunner<br/>spawn argv array · shell:false<br/>subcommand allow-list · timeout"]:::gw
+    Runner -->|"agent dev new/run/approve/reject --json"| Py["Local Python coder"]:::py
+    Py --> Artifacts["Task artifacts (single source of truth)<br/>agent/data/coder/tasks/&lt;id&gt;/"]:::db
+    Reader --> Artifacts
+
+    classDef fe fill:#1f6feb,stroke:#0b3d91,color:#ffffff,stroke-width:2px
+    classDef ctrl fill:#2da44e,stroke:#116329,color:#ffffff,stroke-width:2px
+    classDef svc fill:#f0883e,stroke:#9e4b0f,color:#ffffff,stroke-width:2px
+    classDef gw fill:#bc4c00,stroke:#7a2f00,color:#ffffff,stroke-width:2px
+    classDef py fill:#8250df,stroke:#5a2f9e,color:#ffffff,stroke-width:2px
+    classDef db fill:#0891b2,stroke:#155e75,color:#ffffff,stroke-width:2px
+```
+
+Three design choices keep the boundary small and safe:
+
+- **On-disk artifacts are the single source of truth; no database table, no resident service.** The backend spawns the local `agent` binary on demand and reads the artifacts the Python side already writes atomically, so the CLI and the browser always show the same state and a task can be replayed or audited.
+- **Subprocesses are locked down.** Commands are an argv array with `shell:false` (shell injection is impossible), restricted to the `new/run/approve/reject` subcommands, run in a fixed working directory with a timeout; the Python side adds its own npm/git allow-list and forbids `commit/push/reset/clean`.
+- **Human-in-the-loop is mandatory.** A patch is written to `patches/*.diff` and stays unapplied at the approval gate; approving applies it and runs verification, rejecting requires a reason, and the system never commits or pushes automatically.
+
+The backend module is an anti-corruption layer: its TypeScript types mirror the Python models field by field, inputs are validated against id allow-lists and path prefixes to prevent traversal, and failures map to standard HTTP status (503 disabled / 400 invalid / 404 missing / 409 state conflict / 500 subprocess failure). The full-stack E2E uses a zero-dependency deterministic fake agent in a temp artifact directory and isolated ports (Nest 3099 / Vite 8090, `strictPort`, never reused), covering the approve and reject end-to-end flows without an LLM.
+
 ## Project Structure
 
 ```
 .
 ├── agent/                  # Python Agent service (model-agnostic, Typer/FastAPI)
-│   ├── src/agent_core/     # runtime, model abstraction, tools, webapp client
+│   ├── src/agent_core/     # model layer, tools, webapp client, coder/ inner loop
 │   ├── tests/              # pytest + pytest-httpx (no live network)
 │   ├── data/checkpoints/   # JSONL checkpoints (runtime; kept empty in git)
 │   └── pyproject.toml
 ├── client/                 # React front-end
 │   └── src/
-│       ├── pages/          # business pages (grouped by feature)
+│       ├── pages/          # business pages (grouped by feature), incl. Dev/
 │       ├── components/
 │       │   ├── MultiAgent/ # deep reports, run cards, rating badges
 │       │   ├── ui/         # base components (shadcn style)
 │       │   └── business-ui/# business selectors (users / departments / chats)
 │       ├── hooks/          # quote polling, theme, mobile detection
 │       └── api/index.ts    # front-end wrappers for backend endpoints
+├── e2e/                    # Playwright: app-boot smoke + fullstack/ (fake agent)
+│   └── fixtures/           # deterministic fake-agent.cjs for the dev console
 ├── server/                 # NestJS backend (orchestrator of record)
 │   ├── database/schema.ts  # Drizzle schema (auto-generated, do not edit)
 │   ├── common/
 │   │   ├── middleware/     # local dev identity injection (LOCAL_DEV_USER_ID gate)
 │   │   └── filters/        # global exception filter
-│   └── modules/            # business modules (controller + service + module)
+│   └── modules/            # business modules (controller + service + module),
+│                           # incl. dev-agent/ (spawn local coder, read artifacts)
 ├── shared/
 │   └── api.interface.ts    # types shared by front-end and backend
 ├── db/
 │   └── snapshot/           # local real-data snapshot (*.sql gitignored, local only)
 ├── drizzle/                # drizzle-kit generated table migrations
+├── playwright.config.ts         # Vite-only smoke e2e (ignores fullstack/)
+├── playwright.fullstack.config.ts # isolated fullstack e2e (Nest 3099 / Vite 8090)
 └── scripts/
     ├── db/                 # local PostgreSQL: schema/roles + start/stop/rebuild
     ├── dev-local-*.ps1     # Windows one-click local launch (minimal / db / full / client)
+    ├── dev-e2e-server.js   # build + boot Nest with the fake agent for fullstack e2e
     └── sync-from-miaoda.ps1# Miaoda -> GitHub sync
 ```
 
@@ -290,20 +330,27 @@ ones are:
 ### Testing
 
 ```bash
-npm run test:unit          # Vitest: pure-function unit tests under server/**/*.spec.ts
+npm run test:unit          # Vitest: unit tests under server/**/*.spec.ts (no Nest/DB)
 npm run test:unit:watch    # watch mode
 npm run test:unit:coverage # coverage report (V8)
 
 npm run test:e2e:install   # one-time: download the Playwright Chromium browser
-npm run test:e2e           # Playwright: boots the Vite dev server and checks the UI
+npm run test:e2e           # Vite-only smoke: the front-end bundle mounts
+npm run test:e2e:fullstack # full-stack: coding-console approve/reject flows
 npm run test:e2e:ui        # interactive Playwright UI for debugging
+
+cd agent && pytest -q      # Python agent tests (offline; no live network)
 ```
 
-Unit tests deliberately exercise pure business logic and do not boot NestJS or
-touch the database. The Playwright e2e project boots the Vite dev server on its
-own and currently asserts the front-end bundle mounts without an error boundary;
-full-stack scenarios that require NestJS + PostgreSQL (for example login- and
-rating-related flows) are added on top of the running local stack.
+Unit tests exercise business logic and the dev-agent module with mocked
+process runners and artifact readers; they do not boot NestJS or touch the
+database. The Vite-only e2e asserts the front-end bundle mounts without an
+error boundary. The full-stack e2e boots an isolated Nest + Vite pair
+(ports 3099/8090, never reused) against a deterministic fake agent and a temp
+artifact directory, so it drives the real browser through the coding console's
+approve/reject flows with no LLM calls, no database and no interference with a
+running dev stack. The Python agent tests are fully offline using scripted
+models and recorded HTTP.
 
 ### Official cloud mode
 
