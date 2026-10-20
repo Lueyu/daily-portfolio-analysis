@@ -36,9 +36,11 @@ class Settings(BaseSettings):
     flash_api_key: str | None = None
     flash_model: str = "deepseek-v4-1-flash-260910"
 
-    # Pro tier: high-stakes decisions.
+    # Pro tier: high-stakes decisions. Use the GA (general availability)
+    # snapshot; dated non-GA snapshots like *-260425 are not directly callable
+    # (they require an ep-* endpoint) and return InvalidEndpointOrModel.
     pro_api_key: str | None = None
-    pro_model: str = "deepseek-v4-pro-260425"
+    pro_model: str = "deepseek-v4-pro-ga-260813"
 
     # Pricing per 1,000,000 tokens. Left at 0.0 on purpose: fill in the real
     # Ark prices via .env so the cost report reflects your account. A cost of
