@@ -31,24 +31,34 @@ _CHECK_TIMEOUTS = {
 }
 
 
+def _decode(blob) -> str:
+    if blob is None:
+        return ""
+    if isinstance(blob, bytes):
+        return blob.decode("utf-8", errors="replace")
+    return blob
+
+
 def default_runner(argv: list[str], cwd: Path, timeout: float | None,
                    stdin: str | None = None) -> CommandResult:
     start = time.monotonic()
-    kwargs = dict(cwd=str(cwd), capture_output=True, text=True, shell=False,
-                  timeout=timeout, encoding="utf-8", errors="replace")
+    # Byte mode on purpose: with text=True on Windows, subprocess rewrites the
+    # stdin '\n' to '\r\n', which corrupts a patch piped into `git apply`.
+    # Encoding explicitly keeps the diff byte-for-byte and output decoding stable.
+    kwargs = dict(cwd=str(cwd), capture_output=True, shell=False, timeout=timeout)
     if stdin is not None:
-        kwargs["input"] = stdin
+        kwargs["input"] = stdin.encode("utf-8")
     try:
         proc = subprocess.run(argv, **kwargs)
         return CommandResult(
             argv=argv, returncode=proc.returncode,
-            stdout=proc.stdout or "", stderr=proc.stderr or "",
+            stdout=_decode(proc.stdout), stderr=_decode(proc.stderr),
             duration_ms=int((time.monotonic() - start) * 1000),
         )
     except subprocess.TimeoutExpired as exc:
         return CommandResult(
             argv=argv, returncode=124,
-            stdout=exc.stdout or "", stderr=f"timeout after {timeout}s",
+            stdout=_decode(exc.stdout), stderr=f"timeout after {timeout}s",
             duration_ms=int((timeout or 0) * 1000),
         )
 
