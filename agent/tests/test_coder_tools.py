@@ -1,94 +1,91 @@
+# tests/test_coder_tools.py
+from pathlib import Path
+
+import pytest
+
 from agent_core.coder.models import CheckKind, CommandResult
+from agent_core.coder.safety import SafetyViolation
 from agent_core.coder.tools import ControlledTools, parse_test_output
 
-VITEST_PASS = """
- ✓ server/x.spec.ts (2)
- Test Files  1 passed (1)
-      Tests  2 passed (2)
-"""
 
-VITEST_FAIL = """
-FAIL server/modules/multi-agent/rating-rules.ts > caps buy
-expected: 'Hold' to equal 'Buy'
-stderr-tail
-"""
-
-E2E_PASS = """
-Running 1 test using 1 worker
-  ✓ home loads (300 ms)
-  5 passed (5s)
-  1 failed
-"""
-
-
-def make_runner(output):
-    captured = {}
+def script_runner(table):
+    """Return a runner that responds by argv substring, recording calls."""
+    calls = []
 
     def run(argv, cwd, timeout=None, stdin=None):
-        captured["argv"] = argv
-        captured["stdin"] = stdin
-        return output
-
-    return run, captured
-
-
-def test_run_check_parses_passed():
-    runner, captured = make_runner(
-        CommandResult(argv=[], returncode=0, stdout=VITEST_PASS)
-    )
-    tools = ControlledTools(workdir="D:/stock/code", runner=runner)
-    outcome = tools.run_check(CheckKind.UNIT)
-    assert captured["argv"] == ["npm", "run", "test:unit"]
-    assert outcome.passed
-    assert "2 passed" in outcome.summary
+        calls.append((list(argv), str(cwd), stdin))
+        for needle, result in table:
+            if needle in " ".join(argv):
+                return result
+        return CommandResult(argv=list(argv), returncode=0, stdout="", stderr="")
+    run.calls = calls
+    return run
 
 
-def test_run_check_parses_failures_and_tail():
-    runner, _ = make_runner(
-        CommandResult(argv=[], returncode=2, stdout=VITEST_FAIL, stderr="stderr-tail")
-    )
-    tools = ControlledTools(workdir="D:/stock/code", runner=runner)
-    outcome = tools.run_check(CheckKind.TYPECHECK)
-    assert not outcome.passed
-    assert "rating-rules" in outcome.failed
-    assert "stderr-tail" in outcome.raw_tail
-
-
-def test_parse_e2e_summary():
-    outcome = parse_test_output(
-        CheckKind.E2E,
-        ["npm", "run", "test:e2e"],
-        CommandResult(argv=[], returncode=0, stdout=E2E_PASS),
-    )
-    assert outcome.passed
-    assert "5 passed" in outcome.summary
-
-
-def test_read_file_within_workdir(tmp_path):
-    (tmp_path / "x.ts").write_text("hello", encoding="utf-8")
+def test_read_file_inside_workdir(tmp_path):
+    (tmp_path / "server").mkdir()
+    (tmp_path / "server" / "x.ts").write_text("export const a = 1", encoding="utf-8")
     tools = ControlledTools(tmp_path)
-    assert tools.read_file("x.ts") == "hello"
+    assert "a = 1" in tools.read_file("server/x.ts")
 
 
 def test_read_file_rejects_escape(tmp_path):
     tools = ControlledTools(tmp_path)
-    import pytest
-    from agent_core.coder.safety import SafetyViolation
-
     with pytest.raises(SafetyViolation):
-        tools.read_file("../outside.ts")
+        tools.read_file("../outside.txt")
 
 
-def test_git_apply_uses_stdin(tmp_path):
-    DIFF = "--- a/x.ts\n+++ b/x.ts\n"
-    captured = {}
+def test_run_check_uses_whitelisted_argv_and_parses(tmp_path):
+    ok = CommandResult(
+        argv=["npm", "run", "test:unit"], returncode=0,
+        stdout="Test Files  1 passed\nTests  15 passed (15)\n", stderr="")
+    runner = script_runner([("test:unit", ok)])
+    tools = ControlledTools(tmp_path, runner=runner)
+    outcome = tools.run_check(CheckKind.UNIT)
+    assert outcome.passed is True
+    assert runner.calls[0][0] == ["npm", "run", "test:unit"]
+    assert Path(runner.calls[0][1]) == tmp_path.resolve()
 
-    def run(argv, cwd, timeout=None, stdin=None):
-        captured.update(argv=argv, stdin=stdin)
-        return CommandResult(argv=argv, returncode=0, stdout="", stderr="")
 
-    tools = ControlledTools(tmp_path, runner=run)
-    res = tools.git_apply(DIFF, cwd=tmp_path)
-    assert res.ok
-    assert res.argv == ["git", "apply", "--whitespace=nowarn", "-"]
-    assert captured["stdin"] == DIFF
+def test_parse_vitest_failure_collects_names_and_counts():
+    text = (
+        " ❯ server/rating-rules.spec.ts > caps Buy to Hold\n"
+        " × caps Buy to Hold\n\n"
+        " Test Files  1 failed\n Tests  1 failed | 14 passed (15)\n"
+    )
+    res = CommandResult(argv=["npm", "run", "test:unit"], returncode=1,
+                        stdout=text, stderr="")
+    out = parse_test_output(CheckKind.UNIT, res.argv, res)
+    assert out.passed is False
+    assert out.total == 15
+    assert any("caps Buy to Hold" in n for n in out.failed)
+
+
+def test_parse_vitest_success():
+    res = CommandResult(argv=["npm", "run", "test:unit"], returncode=0,
+                        stdout="Tests  15 passed (15)\n", stderr="")
+    out = parse_test_output(CheckKind.UNIT, res.argv, res)
+    assert out.passed and out.total == 15 and out.failed == []
+
+
+def test_parse_typecheck_failure():
+    res = CommandResult(argv=["npm", "run", "type:check"], returncode=2,
+                        stdout="", stderr="server/x.ts(10,5): error TS2322: Type X")
+    out = parse_test_output(CheckKind.TYPECHECK, res.argv, res)
+    assert out.passed is False
+    assert "TS2322" in out.raw_tail
+
+
+def test_git_apply_uses_stdin_not_shell(tmp_path):
+    runner = script_runner([("git apply", CommandResult(argv=["git", "apply"], returncode=0))])
+    tools = ControlledTools(tmp_path, runner=runner)
+    result = tools.git_apply("--- a/x\n+++ b/x\n")
+    assert result.ok
+    assert runner.calls[0][0] == ["git", "apply", "--whitespace=nowarn", "-"]
+
+
+def test_git_diff_is_readonly(tmp_path):
+    runner = script_runner([("git diff", CommandResult(argv=["git", "diff"], returncode=0, stdout="DIFF"))])
+    tools = ControlledTools(tmp_path, runner=runner)
+    assert "DIFF" in tools.git_diff()
+    assert runner.calls[0][0] == ["git", "diff"]

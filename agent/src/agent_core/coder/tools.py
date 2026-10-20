@@ -1,12 +1,10 @@
-"""Controlled, sandboxed tools for the coder.
+"""Controlled execution tools for the coder persona.
 
-The tools are a thin execution layer over pure safety guards:
-  * read_file: confined + size-limited;
-  * run_check: one of the four fixed npm scripts;
-  * git_apply / git_diff / git_status: harness-internal, read-only or apply.
-The subprocess runner is injected (a fake in tests, the real subprocess-based
-runner in production), so this module never needs the network or a real repo
-to be unit tested.
+Every subprocess is launched with shell=False and a fixed argv list. The
+process runner is injectable so the whole layer is unit-testable offline; the
+default runner wraps subprocess.run. The model can never reach this layer with
+an arbitrary command: it only names a check kind, and safety.py turns that
+into an argv list.
 """
 
 from __future__ import annotations
@@ -55,63 +53,60 @@ def default_runner(argv: list[str], cwd: Path, timeout: float | None,
         )
 
 
-def tail(text: str, limit: int = _TAIL_CHARS) -> str:
-    return text[-limit:] if len(text) > limit else text
-
-
-def _failed_files(stdout: str) -> list[str]:
-    # Vitest prints `FAIL <path-to-file> > test name`; keep the file stem.
-    return [Path(x).stem for x in re.findall(r"FAIL\s+(\S+)", stdout)]
+def _tail(text: str, chars: int = _TAIL_CHARS) -> str:
+    return text[-chars:] if text else ""
 
 
 def parse_test_output(kind: CheckKind, argv: list[str],
                       result: CommandResult) -> TestOutcome:
-    """Turn a raw test command result into a structured pass/fail outcome."""
-    out = result.stdout or ""
-    err = result.stderr or ""
+    """Convert a raw command result into a structured TestOutcome.
 
-    if kind == CheckKind.E2E:
-        # Playwright marks failed cases with a cross; the exit code is the
-        # authoritative signal. A stray "N failed" word is not enough.
-        failed = [m.group(1).strip() for m in re.finditer(r"[✘×]\s*([^\n]+)", out)]
-        passed = result.returncode == 0 and not failed
-        passed_n = re.findall(r"(\d+)\s+passed", out)
-        summary = f"{passed_n[-1]} passed" if passed_n else f"exit {result.returncode}"
-    elif kind == CheckKind.UNIT:
-        failed = _failed_files(out)
-        passed = result.returncode == 0 and not failed
-        m = re.search(r"Tests\s+.*", out)
-        summary = m.group(0) if m else f"exit {result.returncode}"
-    else:
-        failed = _failed_files(out)
-        passed = result.returncode == 0 and not failed
-        summary = f"exit {result.returncode}"
+    Pass/fail is anchored on the process exit code; counts and failing names
+    are best-effort parsing for the model's evidence. The raw tail is always
+    retained so a parser miss never hides the real error.
+    """
+    blob = f"{result.stdout}\n{result.stderr}"
+    passed = result.returncode == 0
 
-    raw = "\n".join(part for part in (out, err) if part)
+    passed_m = re.findall(r"(\d+)\s+passed", blob)
+    failed_m = re.findall(r"(\d+)\s+failed", blob)
+    total_passed = int(passed_m[-1]) if passed_m else 0
+    total_failed = int(failed_m[-1]) if failed_m else 0
+    total = total_passed + total_failed if (passed_m or failed_m) else 0
+
+    failed_names: list[str] = []
+    if kind in (CheckKind.UNIT, CheckKind.E2E):
+        for line in blob.splitlines():
+            m = re.match(r"\s*[×x]\s+(.+?)\s*$", line)
+            if m:
+                failed_names.append(m.group(1))
+        # De-duplicate while preserving order.
+        failed_names = list(dict.fromkeys(failed_names))
+
     return TestOutcome(
-        check=kind,
-        passed=passed,
-        total=0,
-        failed=failed,
-        summary=summary,
-        raw_tail=tail(raw),
-        argv=argv,
+        check=kind, passed=passed, total=total, failed=failed_names,
+        summary="passed" if passed else "failed",
+        raw_tail=_tail(blob), argv=list(argv),
     )
 
 
 class ControlledTools:
+    """The only surface the coder uses to touch the repository."""
+
     def __init__(self, workdir: Path | str, runner: Runner | None = None):
         self.workdir = Path(workdir)
-        self._run: Runner = runner or default_runner
+        self._run = runner or default_runner
 
     # -- read --------------------------------------------------------------
-    def read_file(self, rel: str) -> str:
-        path = safe_join(self.workdir, rel)
+    def read_file(self, rel: str, cwd: Path | str | None = None) -> str:
+        base = Path(cwd) if cwd else self.workdir
+        path = safe_join(base, rel)
         if not path.is_file():
             raise FileNotFoundError(f"not a file: {rel}")
-        if path.stat().st_size > _MAX_READ_BYTES:
-            raise ValueError(f"file too large to read in one call: {rel}")
-        return tail(path.read_text(encoding="utf-8", errors="replace"))
+        size = path.stat().st_size
+        if size > _MAX_READ_BYTES:
+            raise ValueError(f"file too large ({size} bytes): {rel}")
+        return path.read_text(encoding="utf-8", errors="replace")
 
     # -- verification ------------------------------------------------------
     def run_check(self, kind: CheckKind, cwd: Path | str | None = None) -> TestOutcome:
