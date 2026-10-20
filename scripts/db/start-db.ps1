@@ -44,9 +44,18 @@ $logFile = Join-Path $pgData "pg-server.log"
 if ($LASTEXITCODE -eq 0) {
   Write-Host "[start-db] PostgreSQL already running (data: $pgData)." -ForegroundColor Green
 } else {
-  & "$pgBin\pg_ctl.exe" start -D $pgData -l $logFile -w | Out-Null
-  if ($LASTEXITCODE -ne 0) {
-    throw "PostgreSQL failed to start. Check the log: $logFile"
+  # 非正常关闭后，PG 启动会先做崩溃恢复并 fsync 整个数据目录（Windows 上可能
+  # 30s 以上）。pg_ctl -w 偶尔在服务器真正 ready 前就报超时退出，因此这里 start
+  # 后再用 `pg_ctl status` 轮询兜底，只认实际状态，避免“其实已就绪却报失败”。
+  & "$pgBin\pg_ctl.exe" start -D $pgData -l $logFile -w -t 60 | Out-Null
+  $ready = $false
+  for ($i = 0; $i -lt 40; $i++) {
+    & "$pgBin\pg_ctl.exe" status -D $pgData 2>$null | Out-Null
+    if ($LASTEXITCODE -eq 0) { $ready = $true; break }
+    Start-Sleep -Seconds 2
+  }
+  if (-not $ready) {
+    throw "PostgreSQL failed to become ready within ~80s. Check the log: $logFile"
   }
   Write-Host "[start-db] PostgreSQL started (log: $logFile)." -ForegroundColor Green
 }

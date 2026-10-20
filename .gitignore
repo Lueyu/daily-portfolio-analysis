@@ -12,6 +12,7 @@ build/
 .env
 .env.*
 !.env.example
+!.env.local.example
 .env.local
 
 # Personal data dumps and backups
@@ -41,6 +42,12 @@ pids
 # Coverage directory used by tools like istanbul
 coverage/
 *.lcov
+
+# Playwright / E2E artifacts (browsers themselves live in the global cache)
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
 
 # IDE files
 .vscode/

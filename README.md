@@ -255,15 +255,55 @@ scoop install postgresql
 powershell -ExecutionPolicy Bypass -File scripts\db\rebuild-local.ps1
 ```
 
-Every time you start:
+Start it in either of two ways:
 
 ```powershell
-# Starts local PostgreSQL (if needed) + backend (local DB) + frontend
+# Option A — one PowerShell script, self-contained: it starts PostgreSQL,
+# auto-detects the owner id, injects every local env var inline, and opens the
+# backend and frontend in two windows.
 powershell -ExecutionPolicy Bypass -File scripts\dev-local-full.ps1
 # then open http://127.0.0.1:8080
+
+# Option B — single-window launcher (the Miaoda dev-local entry), driven by a
+# gitignored .env.local instead of inline variables:
+Copy-Item .env.local.example .env.local   # fill in LOCAL_DEV_USER_ID (see the file)
+npm run dev:local                          # = node scripts/dev-local.js
+# then open http://localhost:8080
 ```
 
-`LOCAL_DEV_USER_ID` defaults to the owner id in the snapshot, so only that account's data is shown (a holding owned by another account in the same snapshot is correctly filtered out by the `owner` condition). Set the variable before launch to switch accounts. The middleware is completely inert when `LOCAL_DEV_USER_ID` is unset and never overrides a real gateway header, so it has zero effect on production.
+Both paths run the same NestJS (3000) + Vite (8080) stack. The npm scripts set
+`NODE_ENV` through `cross-env`, so they work on Windows PowerShell, macOS and
+Linux. The local variables are documented in `.env.local.example`; the important
+ones are:
+
+- `SUDA_DATABASE_URL` — the datapaas connection string; the `?schema=<workspace>`
+  query param is the RLS role suffix.
+- `LOCAL_DEV_USER_ID` — the snapshot owner id (Option A auto-detects it; Option B
+  reads it from `.env.local`). The middleware is completely inert when this is
+  unset and never overrides a real gateway header, so it has zero effect on
+  production. Another owner's row in the same snapshot is correctly filtered out.
+- `DISABLE_CSRF=true` — the local Vite frontend has no gateway cookie session;
+  production keeps CSRF enabled when the variable is absent.
+- `FORCE_AUTHN_INNERAPI_DOMAIN` — a placeholder required at construction time;
+  local data/auth do not call the platform inner API.
+
+### Testing
+
+```bash
+npm run test:unit          # Vitest: pure-function unit tests under server/**/*.spec.ts
+npm run test:unit:watch    # watch mode
+npm run test:unit:coverage # coverage report (V8)
+
+npm run test:e2e:install   # one-time: download the Playwright Chromium browser
+npm run test:e2e           # Playwright: boots the Vite dev server and checks the UI
+npm run test:e2e:ui        # interactive Playwright UI for debugging
+```
+
+Unit tests deliberately exercise pure business logic and do not boot NestJS or
+touch the database. The Playwright e2e project boots the Vite dev server on its
+own and currently asserts the front-end bundle mounts without an error boundary;
+full-stack scenarios that require NestJS + PostgreSQL (for example login- and
+rating-related flows) are added on top of the running local stack.
 
 ### Official cloud mode
 
