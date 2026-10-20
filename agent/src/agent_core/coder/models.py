@@ -110,3 +110,60 @@ class DevTask(BaseModel):
             raise ValueError(f"illegal transition {self.status.value} -> {dst.value}")
         self.status = dst
         self.updated_at = datetime.now(timezone.utc)
+
+
+class CommandResult(BaseModel):
+    """Result of running one controlled subprocess."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    argv: list[str]
+    returncode: int
+    stdout: str = ""
+    stderr: str = ""
+    duration_ms: int = 0
+
+    @property
+    def ok(self) -> bool:
+        return self.returncode == 0
+
+
+class TestOutcome(BaseModel):
+    """Parsed result of a verification check (unit/e2e/typecheck/lint)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    check: CheckKind
+    passed: bool
+    total: int = 0
+    failed: list[str] = []
+    summary: str = ""
+    raw_tail: str = ""
+    argv: list[str] = []
+
+
+class Patch(BaseModel):
+    """A proposed unified diff. It is only applied after human approval."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    patch_id: str
+    diff: str
+    target_files: list[str] = []
+    hypothesis: str = ""
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class Iteration(BaseModel):
+    """One replayable record of what the agent tried in a round."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    index: int
+    phase: str
+    hypothesis: str = ""
+    action: str = ""
+    model_calls: int = 0
+    observations: list[str] = []
+    decision: str = ""
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
