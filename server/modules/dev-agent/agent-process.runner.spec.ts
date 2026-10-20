@@ -34,6 +34,7 @@ const cfg = {
   tasksDir: '/repo/agent/data/coder/tasks',
   workdir: '/repo',
   runTimeoutMs: 30000,
+  binArgs: [],
 } satisfies DevAgentConfig;
 
 /** Runner that substitutes a fake child process instead of spawning one. */
@@ -72,7 +73,7 @@ describe('ChildProcessRunner', () => {
 
     expect(captured.cmd).toBe(cfg.binPath);
     expect(captured.args).toEqual([
-      'new', '--title', 't', '--problem', 'p',
+      'dev', 'new', '--title', 't', '--problem', 'p',
       '--acceptance', 'a:unit:d', '--json',
     ]);
     const opts = captured.opts as { cwd: string; shell: boolean };
@@ -80,6 +81,24 @@ describe('ChildProcessRunner', () => {
     expect(opts.shell).toBe(false);
     expect(res.returnCode).toBe(0);
     expect(res.stdout).toContain('"id":"dev_x"');
+  });
+
+  it('prepends configured bin args (interpreter + script) before the command', async () => {
+    const child = makeFakeChild();
+    const captured: { args?: string[] } = {};
+    const runner = new TestableRunner(
+      { ...cfg, binArgs: ['fake-agent.cjs'] },
+      (_cmd, args) => {
+        captured.args = args;
+        return child;
+      },
+    );
+    const p = runner.exec(['new', '--title', 't']);
+    child.emit('close', 0);
+    await p;
+    expect(captured.args).toEqual([
+      'fake-agent.cjs', 'dev', 'new', '--title', 't', '--json',
+    ]);
   });
 
   it('rejects a subcommand that is not on the whitelist', async () => {

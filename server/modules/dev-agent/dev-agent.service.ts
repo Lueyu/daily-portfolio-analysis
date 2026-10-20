@@ -116,7 +116,7 @@ export class DevAgentService {
 
   // --------------------------------------------------------------- write side
 
-  async createTask(input: CreateDevTaskInput): Promise<{ id: string }> {
+  async createTask(input: CreateDevTaskInput): Promise<DevTaskDetail> {
     this.requireEnabled();
     const argv = ['new', '--title', input.title, '--problem', input.problem];
     for (const a of input.acceptance) {
@@ -130,7 +130,9 @@ export class DevAgentService {
     if (!payload.id) {
       throw new InternalServerErrorException('agent new returned no task id');
     }
-    return { id: payload.id };
+    // The CLI has written task.json by now; return the full detail so the
+    // client can navigate straight into it without a second round trip.
+    return this.reader.getTask(payload.id);
   }
 
   /** Start the reproduction/fix loop. Returns immediately; UI polls. */

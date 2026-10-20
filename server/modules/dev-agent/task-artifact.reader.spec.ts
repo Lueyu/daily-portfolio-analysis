@@ -13,6 +13,7 @@ function readerConfig(tasksDir: string): DevAgentConfig {
   return {
     enabled: true,
     binPath: '',
+    binArgs: [],
     tasksDir,
     workdir: '',
     runTimeoutMs: 1,

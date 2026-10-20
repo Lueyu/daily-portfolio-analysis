@@ -14,6 +14,12 @@ export interface DevAgentConfig {
   enabled: boolean;
   /** Absolute path to the Python agent executable. */
   binPath: string;
+  /**
+   * Extra arguments placed right after the executable, before the command.
+   * Empty for the packaged agent; lets an interpreter run a script (e.g.
+   * `node` + `e2e/fixtures/fake-agent.cjs` in deterministic E2E tests).
+   */
+  binArgs: string[];
   /** Directory holding `<task-id>/task.json` work products. */
   tasksDir: string;
   /** Working directory the agent is allowed to operate in. */
@@ -35,6 +41,20 @@ function parseTimeout(raw: string | undefined): number {
   return Number.isFinite(n) && n > 0 ? n : DEFAULT_RUN_TIMEOUT_MS;
 }
 
+/** Parse the optional AGENT_DEV_BIN_ARGS JSON array; never throw on bad input. */
+function parseBinArgs(raw: string | undefined): string[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed) && parsed.every((x) => typeof x === 'string')) {
+      return parsed;
+    }
+    return [];
+  } catch {
+    return [];
+  }
+}
+
 /**
  * Build config from an environment map. Pure and easy to unit test: pass the
  * env and an explicit repo root; no process globals are touched directly.
@@ -47,6 +67,7 @@ export function loadDevAgentConfig(
   return {
     enabled: env.AGENT_DEV_ENABLED === 'true',
     binPath: env.AGENT_DEV_BIN ? env.AGENT_DEV_BIN : defaultBinPath(root),
+    binArgs: parseBinArgs(env.AGENT_DEV_BIN_ARGS),
     tasksDir: env.AGENT_DEV_TASKS_DIR
       ? env.AGENT_DEV_TASKS_DIR
       : path.join(root, 'agent', 'data', 'coder', 'tasks'),

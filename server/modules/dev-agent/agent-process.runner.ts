@@ -65,7 +65,15 @@ export class ChildProcessRunner implements AgentProcessRunner {
         `agent subcommand not allowed: ${sub ?? '(none)'}`,
       );
     }
-    const args = [...argv.slice(1), '--json'];
+    // Optional interpreter args first (e.g. a script path), then the `dev`
+    // command group (`agent dev new`), and always --json last.
+    const args = [
+      ...this.config.binArgs,
+      'dev',
+      sub,
+      ...argv.slice(1),
+      '--json',
+    ];
     const timeoutMs = opts?.timeoutMs ?? this.config.runTimeoutMs;
 
     return new Promise<ProcessResult>((resolve, reject) => {
@@ -73,7 +81,7 @@ export class ChildProcessRunner implements AgentProcessRunner {
       let stderr = '';
       let settled = false;
 
-      const child = this.spawnChild(this.config.binPath, [sub, ...args], {
+      const child = this.spawnChild(this.config.binPath, args, {
         cwd: this.config.workdir,
         shell: false,
         env: process.env,

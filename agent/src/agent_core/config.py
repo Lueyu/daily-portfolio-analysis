@@ -60,7 +60,14 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
 
     # Coder persona (C2).
-    coder_data_dir: str = "data/coder"
+    # Anchor work products to the agent package root rather than the process
+    # cwd: the Nest console spawns the agent with the webapp root as cwd (so it
+    # can edit webapp files), but the artifacts must still live under
+    # agent/data/coder no matter where the process was launched from.
+    # config.py is at agent/src/agent_core/config.py, so parents[2] = agent/.
+    coder_data_dir: str = str(
+        Path(__file__).resolve().parents[2] / "data" / "coder",
+    )
     # Webapp root the coding agent operates on. config.py lives at
     # agent/src/agent_core/config.py, so parents[3] is the monorepo root.
     webapp_workdir: str = str(Path(__file__).resolve().parents[3])

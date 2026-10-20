@@ -110,6 +110,8 @@ agent/.env.local
 agent/data/checkpoints/*
 !agent/data/checkpoints/.gitkeep
 agent/data/evolution/
+# Coding-agent dev tasks (file artifacts produced at runtime; never committed)
+agent/data/coder/
 
 # 本地真实数据快照（从妙搭导出的个人持仓 *.sql，仅本地，不公开）；
 # 保留目录里的 README.md，而 scripts/db/ 的建表 SQL 与启动脚本正常入库。

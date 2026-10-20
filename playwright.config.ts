@@ -26,6 +26,10 @@ const ENTRY_URL = `${ORIGIN}/client/index.html`;
 
 export default defineConfig({
   testDir: './e2e',
+  // Fullstack specs need the Nest+DB stack and the deterministic fake agent;
+  // they run via playwright.fullstack.config.ts (`npm run test:e2e:fullstack`).
+  // Exclude them here so the Vite-only smoke run never picks them up.
+  testIgnore: /\/fullstack\//,
   timeout: 30_000,
   expect: { timeout: 7_000 },
   fullyParallel: true,

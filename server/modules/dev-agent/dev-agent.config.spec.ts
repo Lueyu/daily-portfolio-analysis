@@ -39,4 +39,21 @@ describe('loadDevAgentConfig', () => {
     const cfg = loadDevAgentConfig({ AGENT_DEV_RUN_TIMEOUT_MS: 'abc' }, '/r');
     expect(cfg.runTimeoutMs).toBe(DEFAULT_RUN_TIMEOUT_MS);
   });
+
+  it('has no extra bin arguments by default', () => {
+    expect(loadDevAgentConfig({}, '/r').binArgs).toEqual([]);
+  });
+
+  it('parses AGENT_DEV_BIN_ARGS as a JSON array (e.g. interpreter + script)', () => {
+    const cfg = loadDevAgentConfig(
+      { AGENT_DEV_BIN: 'node', AGENT_DEV_BIN_ARGS: '["e2e/fixtures/fake-agent.cjs"]' },
+      '/r',
+    );
+    expect(cfg.binArgs).toEqual(['e2e/fixtures/fake-agent.cjs']);
+  });
+
+  it('ignores a malformed AGENT_DEV_BIN_ARGS instead of crashing startup', () => {
+    const cfg = loadDevAgentConfig({ AGENT_DEV_BIN_ARGS: 'not-json' }, '/r');
+    expect(cfg.binArgs).toEqual([]);
+  });
 });

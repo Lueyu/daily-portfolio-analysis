@@ -71,7 +71,14 @@ describe('DevAgentService', () => {
     await fs.mkdir(tasksDir, { recursive: true });
     const binPath = path.join(root, 'agent.exe');
     writeFileSync(binPath, '');
-    cfg = { enabled: true, binPath, tasksDir, workdir: root, runTimeoutMs: 1000 };
+    cfg = {
+      enabled: true,
+      binPath,
+      binArgs: [],
+      tasksDir,
+      workdir: root,
+      runTimeoutMs: 1000,
+    };
     runner = new FakeRunner();
     service = new DevAgentService(cfg, new TaskArtifactReader(cfg), runner);
   });
@@ -112,7 +119,10 @@ describe('DevAgentService', () => {
     expect(h.tasksDirExists).toBe(true);
   });
 
-  it('creates a task and builds the acceptance spec (with optional target)', async () => {
+  it('creates a task and returns the full detail (with optional target)', async () => {
+    // The CLI writes task.json before returning; seed the artifact so the
+    // service can read back the full detail it returns to the client.
+    await writeTask(task({ id: 'dev_new1', status: 'new', red_seen: false }));
     runner.nextResult = {
       returnCode: 0,
       stdout: JSON.stringify({ ok: true, id: 'dev_new1' }),
@@ -127,6 +137,10 @@ describe('DevAgentService', () => {
       ],
     });
     expect(out.id).toBe('dev_new1');
+    expect(out.status).toBe('new');
+    expect(out.iterations).toEqual([]);
+    expect(out.patchCount).toBe(0);
+    expect(out.latestPatch).toBeNull();
     const argv = runner.calls[0];
     expect(argv[0]).toBe('new');
     expect(argv).toContain('ac1:unit:Hold： no buy');
