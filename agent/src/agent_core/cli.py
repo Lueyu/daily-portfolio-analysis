@@ -11,6 +11,7 @@ from rich.console import Console
 from rich.table import Table
 
 from .config import ensure_dirs, get_settings
+from .coder.cli import app as coder_app
 from .evolution.cli import app as evolution_app
 from .logging_conf import setup_logging
 from .models import ChatChunk, ChatRequest, ChatService, ModelTask
@@ -19,6 +20,7 @@ from .runtime.webapp_client import WebappClient
 
 app = typer.Typer(help="Stock Agent CLI")
 app.add_typer(evolution_app, name="evolution")
+app.add_typer(coder_app, name="dev")
 console = Console()
 
 

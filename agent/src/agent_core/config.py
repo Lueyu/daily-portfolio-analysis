@@ -10,6 +10,7 @@ Routing which tier a task uses is a one-line choice on the caller side; the
 provider construction is identical for both.
 """
 
+from functools import lru_cache
 from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -58,10 +59,18 @@ class Settings(BaseSettings):
     checkpoint_dir: str = "data/checkpoints"
     log_level: str = "INFO"
 
+    # Coder persona (C2).
+    coder_data_dir: str = "data/coder"
+    # Webapp root the coding agent operates on. config.py lives at
+    # agent/src/agent_core/config.py, so parents[3] is the monorepo root.
+    webapp_workdir: str = str(Path(__file__).resolve().parents[3])
 
+
+@lru_cache(maxsize=None)
 def get_settings() -> Settings:
     return Settings()
 
 
 def ensure_dirs(s: Settings) -> None:
     Path(s.checkpoint_dir).mkdir(parents=True, exist_ok=True)
+    Path(s.coder_data_dir).mkdir(parents=True, exist_ok=True)
