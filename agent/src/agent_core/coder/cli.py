@@ -48,18 +48,25 @@ def _store() -> TaskStore:
 
 
 def _parse_acceptance(raw: str) -> AcceptanceCriterion:
-    """Parse 'id:kind:description', e.g. 'ac1:unit:Hold has no buy verbs'."""
-    parts = raw.split(":", 2)
-    if len(parts) != 3:
+    """Parse 'id:kind:description[:target]'.
+
+    A fourth segment is an optional target (a file path or free-text hint
+    shown to the model). maxsplit=3 keeps any colons inside the target
+    (e.g. http://localhost:8080) intact.
+    """
+    parts = raw.split(":", 3)
+    if len(parts) < 3:
         raise typer.BadParameter(
-            f"acceptance must be 'id:kind:description', got {raw!r}")
-    crit_id, kind, desc = parts
+            f"acceptance must be 'id:kind:description[:target]', got {raw!r}")
+    crit_id, kind, desc = parts[0], parts[1], parts[2]
+    target = parts[3].strip() if len(parts) == 4 else None
     try:
         check = CheckKind(kind.strip())
     except ValueError as exc:
         raise typer.BadParameter(f"unknown check kind: {kind!r}") from exc
     return AcceptanceCriterion(
-        id=crit_id.strip(), description=desc.strip(), check=check
+        id=crit_id.strip(), description=desc.strip(), check=check,
+        target=target,
     )
 
 

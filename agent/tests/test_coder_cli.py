@@ -51,6 +51,34 @@ def test_new_rejects_bad_acceptance_spec(isolated_store):
     assert r.exit_code != 0
 
 
+def test_new_acceptance_with_optional_target(isolated_store):
+    r = runner.invoke(coder_cli.app, [
+        "new", "--title", "t", "--problem", "p",
+        "--acceptance", "ac1:e2e:login works:tests/login.spec.ts",
+        "--json",
+    ])
+    assert r.exit_code == 0, r.stdout
+    tid = json.loads(r.stdout.strip().splitlines()[-1])["id"]
+    task = TaskStore(isolated_store / "coder" / "tasks").load(tid)
+    criterion = task.acceptance[0]
+    assert criterion.check == CheckKind.E2E
+    assert criterion.description == "login works"
+    assert criterion.target == "tests/login.spec.ts"
+
+
+def test_new_acceptance_without_target_is_none(isolated_store):
+    r = runner.invoke(coder_cli.app, [
+        "new", "--title", "t", "--problem", "p",
+        "--acceptance", "ac1:unit:Hold has no buy verbs",
+        "--json",
+    ])
+    assert r.exit_code == 0, r.stdout
+    tid = json.loads(r.stdout.strip().splitlines()[-1])["id"]
+    task = TaskStore(isolated_store / "coder" / "tasks").load(tid)
+    assert task.acceptance[0].target is None
+    assert task.acceptance[0].description == "Hold has no buy verbs"
+
+
 class FakeHarness:
     def __init__(self, task):
         self.task = task
