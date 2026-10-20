@@ -8,6 +8,7 @@ place real network calls are introduced, so it can be swapped in tests.
 
 from __future__ import annotations
 
+import json
 import uuid
 from pathlib import Path
 
@@ -17,12 +18,29 @@ from rich.console import Console
 from ..config import get_settings
 from ..models import ChatService
 from .harness import CoderHarness
-from .models import AcceptanceCriterion, CheckKind, DevTask, TaskStatus
+from .models import AcceptanceCriterion, CheckKind, DevTask, Iteration, TaskStatus
 from .task_store import TaskStore
 from .tools import ControlledTools
 
 app = typer.Typer(help="Coding agent: reproduce, fix, verify webapp changes.")
 console = Console()
+
+
+def _emit(payload: dict, *, as_json: bool) -> None:
+    """Print a single line of machine-readable JSON, or nothing for humans.
+
+    Human-readable output is emitted by the caller; when ``--json`` is set we
+    only emit one JSON object on the last line so callers (e.g. the Nest
+    dev-agent backend) can parse it without scraping rich text.
+    """
+    if as_json:
+        console.print(
+            json.dumps(payload, ensure_ascii=False), markup=False, soft_wrap=True
+        )
+
+
+def _task_payload(task_id: str, status: TaskStatus) -> dict:
+    return {"ok": True, "id": task_id, "status": status.value}
 
 
 def _store() -> TaskStore:
@@ -63,6 +81,7 @@ def new_cmd(
     acceptance: list[str] = typer.Option(
         ..., "--acceptance", help="'id:kind:description'; repeatable"),
     workdir: str = typer.Option(None, "--workdir"),
+    as_json: bool = typer.Option(False, "--json", help="Emit one JSON line."),
 ):
     """Create a dev task with fixed acceptance criteria."""
     settings = get_settings()
@@ -72,15 +91,24 @@ def new_cmd(
         workdir=workdir or settings.webapp_workdir,
     )
     _store().create(task)
+    if as_json:
+        _emit({"ok": True, "id": task.id}, as_json=True)
+        return
     console.print(f"[green]created[/] {task.id}")
     console.print("next: [cyan]agent dev run " + task.id + "[/]")
 
 
 @app.command("run")
-def run_cmd(task_id: str):
+def run_cmd(
+    task_id: str,
+    as_json: bool = typer.Option(False, "--json", help="Emit one JSON line."),
+):
     """Run the inner loop until verified/blocked or a patch awaiting approval."""
     h = build_harness(task_id)
     task = h.run(auto_approve=False)
+    if as_json:
+        _emit(_task_payload(task_id, task.status), as_json=True)
+        return
     if task.status == TaskStatus.AWAITING_APPROVAL:
         patches = sorted((Path(get_settings().coder_data_dir) / "tasks"
                           / task_id / "patches").glob("*.diff"))
@@ -93,12 +121,52 @@ def run_cmd(task_id: str):
 
 
 @app.command("approve")
-def approve_cmd(task_id: str):
+def approve_cmd(
+    task_id: str,
+    as_json: bool = typer.Option(False, "--json", help="Emit one JSON line."),
+):
     """Apply the proposed patch and run the fixed verification set."""
     h = build_harness(task_id)
     task = h.run(auto_approve=True)
+    if as_json:
+        _emit(_task_payload(task_id, task.status), as_json=True)
+        return
     colour = "green" if task.status == TaskStatus.VERIFIED else "red"
     console.print(f"status: [bold {colour}]{task.status.value}[/]")
+
+
+@app.command("reject")
+def reject_cmd(
+    task_id: str,
+    reason: str = typer.Option(..., "--reason", help="Why the patch is rejected."),
+    as_json: bool = typer.Option(False, "--json", help="Emit one JSON line."),
+):
+    """Reject the proposed patch (do not apply it); move the task to blocked."""
+    store = _store()
+    task = store.load(task_id)
+    if task.status != TaskStatus.AWAITING_APPROVAL:
+        raise typer.BadParameter(
+            "can only reject while awaiting approval, "
+            f"current={task.status.value}"
+        )
+    task.transition(TaskStatus.BLOCKED)
+    next_index = len(store.read_iterations(task_id))
+    store.append_iteration(
+        task_id,
+        Iteration(
+            index=next_index,
+            phase="approval",
+            action="reject",
+            model_calls=0,
+            observations=[reason],
+            decision="human rejected",
+        ),
+    )
+    store.save(task)
+    if as_json:
+        _emit(_task_payload(task_id, task.status), as_json=True)
+        return
+    console.print(f"status: [bold red]{task.status.value}[/]")
 
 
 @app.command("show")
