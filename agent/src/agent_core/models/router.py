@@ -22,6 +22,7 @@ from .openai_compatible import OpenAICompatibleProvider, build_provider
 from .specs import build_specs
 from .types import (
     TASK_TIER,
+    ChatChunk,
     ChatRequest,
     ChatResponse,
     ModelTier,
@@ -101,6 +102,55 @@ class ChatService:
 
     def _call(self, tier: str, req: ChatRequest) -> ChatResponse:
         return self.provider_for(tier).chat(req)
+
+    # ------------------------------------------------------------------
+    # Streaming
+    # ------------------------------------------------------------------
+
+    def stream_chat(self, req: ChatRequest):
+        """Return a generator of :class:`ChatChunk` events for a routed call.
+
+        pro tasks with ``fallback_to_flash`` go through the stream-aware
+        fallback; everything else streams straight from the chosen tier.
+        """
+        requested = self.resolve_tier(req)
+        if requested == ModelTier.PRO.value and self.settings.fallback_to_flash:
+            return self._stream_pro_with_fallback(req)
+        return self.provider_for(requested).stream_chat(req)
+
+    def _stream_pro_with_fallback(self, req: ChatRequest):
+        """Stream pro, switching to flash only if the pro stream never starts.
+
+        We pull the first event before yielding anything to the caller. If the
+        pro stream fails while being established (auth / not-open / rate
+        limit), no text has been shown, so we can transparently switch to
+        flash. Once the first event has been delivered, a mid-stream failure is
+        raised as-is — silently restarting after partial output would duplicate
+        or contradict what the user already saw.
+        """
+        pro = self.provider_for(ModelTier.PRO.value)
+        gen = pro.stream_chat(req)
+        try:
+            first = next(gen)
+        except StopIteration:
+            return
+        except Exception as exc:  # noqa: BLE001 - any pro outage -> fallback
+            if not self.settings.fallback_to_flash:
+                raise
+            yield ChatChunk(
+                tier=ModelTier.FLASH.value,
+                model=self.specs[ModelTier.FLASH.value].model,
+                requested_tier=ModelTier.PRO.value,
+                degraded=True,
+                degrade_reason=f"{type(exc).__name__}: {exc}",
+            )
+            yield from self.provider_for(ModelTier.FLASH.value).stream_chat(req)
+            return
+
+        # The pro stream started successfully: relay the first event and the
+        # rest. A failure from here on is NOT transparently retried/fallbacked.
+        yield first
+        yield from gen
 
 
 # ---------------------------------------------------------------------------

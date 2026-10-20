@@ -15,6 +15,7 @@ from .openai_compatible import (
 from .router import ChatService, chat
 from .specs import build_specs
 from .types import (
+    ChatChunk,
     ChatRequest,
     ChatResponse,
     ModelSpec,
@@ -32,6 +33,7 @@ __all__ = [
     "chat",
     "ChatRequest",
     "ChatResponse",
+    "ChatChunk",
     "ModelSpec",
     "ModelTask",
     "ModelTier",

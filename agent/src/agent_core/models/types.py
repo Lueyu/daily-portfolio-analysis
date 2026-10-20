@@ -120,6 +120,8 @@ class ChatRequest:
     max_tokens: int | None = None
     stop: list[str] | None = None
     json_mode: bool = False
+    # Stream tokens back over SSE instead of waiting for the whole reply.
+    stream: bool = False
     task: ModelTask | None = None
     # Hard cap on context length the router should tolerate; set from the spec.
     estimated_prompt_tokens: int = 0
@@ -151,6 +153,33 @@ class ChatResponse:
         that need structured output should handle this explicitly.
         """
         return parse_json(self.content)
+
+
+@dataclass
+class ChatChunk:
+    """One incremental event from a streamed completion (SSE).
+
+    Token events carry ``delta_content`` / ``delta_reasoning`` (often one token
+    each). The final event carries the aggregated ``usage``, ``latency_ms`` and
+    ``finish_reason`` but no text. When the router falls pro -> flash, the very
+    first event carries only the ``degraded`` / ``degrade_reason`` metadata.
+    """
+
+    tier: str = ""
+    model: str = ""
+    delta_content: str = ""
+    delta_reasoning: str = ""
+    finish_reason: str | None = None
+    usage: Usage | None = None
+    latency_ms: int = 0
+    # Transparent fallback metadata (only on the first event when degraded).
+    requested_tier: str = ""
+    degraded: bool = False
+    degrade_reason: str | None = None
+
+    def is_final(self) -> bool:
+        """True for the terminal event that carries usage/latency."""
+        return self.usage is not None
 
 
 def parse_json(text: str) -> dict | list:

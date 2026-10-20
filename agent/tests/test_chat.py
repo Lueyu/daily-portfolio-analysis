@@ -51,9 +51,10 @@ class _Response:
 class _ScriptedCompletions:
     """Returns a queued response or raises a queued exception per call."""
 
-    def __init__(self, *, responses=None, exceptions=None) -> None:
+    def __init__(self, *, responses=None, exceptions=None, stream=None) -> None:
         self.responses = list(responses or [])
         self.exceptions = list(exceptions or [])
+        self.stream = stream
         self.calls = 0
         self.kwargs_list: list[dict] = []
 
@@ -61,11 +62,83 @@ class _ScriptedCompletions:
         i = self.calls
         self.calls += 1
         self.kwargs_list.append(kwargs)
+        if kwargs.get("stream"):
+            # The real SDK is lazy: the request (and any establishment error)
+            # fires when this object is iterated, not when create() returns.
+            return self.stream if self.stream is not None else iter(())
         if i < len(self.exceptions) and self.exceptions[i] is not None:
             raise self.exceptions[i]
         if i < len(self.responses):
             return self.responses[i]
         return self.responses[-1]
+
+
+# ---------------------------------------------------------------------------
+# Streaming fakes
+# ---------------------------------------------------------------------------
+
+
+class _Delta:
+    def __init__(self, content: str | None = None, reasoning: str | None = None) -> None:
+        self.content = content
+        self.reasoning_content = reasoning
+
+
+class _ChunkChoice:
+    def __init__(self, delta: _Delta, finish_reason: str | None = None) -> None:
+        self.delta = delta
+        self.finish_reason = finish_reason
+
+
+class _StreamChunk:
+    def __init__(self, choices=None, usage=None) -> None:
+        self.model = "fake-model"
+        self.choices = choices if choices is not None else []
+        self.usage = usage
+
+
+def _text_chunk(text: str) -> _StreamChunk:
+    return _StreamChunk(choices=[_ChunkChoice(_Delta(content=text))])
+
+
+def _reasoning_chunk(text: str) -> _StreamChunk:
+    return _StreamChunk(choices=[_ChunkChoice(_Delta(reasoning=text))])
+
+
+def _usage_chunk(p: int = 10, c: int = 4) -> _StreamChunk:
+    return _StreamChunk(choices=[], usage=_Usage(p, c))
+
+
+class _Stream:
+    """Re-iterable fake SSE stream.
+
+    - ``establish_exc``: raised on the first iteration (stream never starts).
+    - ``fail_after`` / ``mid_exc``: yield this many chunks then raise (cut off).
+    """
+
+    def __init__(
+        self,
+        chunks=None,
+        establish_exc=None,
+        fail_after: int | None = None,
+        mid_exc=None,
+    ) -> None:
+        self.chunks = list(chunks or [])
+        self.establish_exc = establish_exc
+        self.fail_after = fail_after
+        self.mid_exc = mid_exc
+        self.iterations = 0
+
+    def __iter__(self):
+        self.iterations += 1
+        if self.establish_exc is not None:
+            raise self.establish_exc
+        emitted = 0
+        for chunk in self.chunks:
+            yield chunk
+            emitted += 1
+            if self.fail_after is not None and emitted >= self.fail_after:
+                raise self.mid_exc
 
 
 class _ScriptedChat:
@@ -350,3 +423,126 @@ def test_parse_json_raises_without_json() -> None:
 
 def test_token_estimate_is_positive() -> None:
     assert estimate_prompt_tokens([{"role": "user", "content": "hello world"}]) >= 1
+
+
+# ---------------------------------------------------------------------------
+# Streaming
+# ---------------------------------------------------------------------------
+
+
+def test_stream_yields_deltas_and_final_usage() -> None:
+    chunks = [
+        _reasoning_chunk("thinking"),
+        _text_chunk("你"),
+        _text_chunk("好"),
+        _usage_chunk(8, 4),
+    ]
+    comp = _ScriptedCompletions(stream=_Stream(chunks=chunks))
+    p = _provider(completions=comp)
+
+    events = list(p.stream_chat(ChatRequest(messages=[{"role": "user", "content": "x"}])))
+
+    assert "".join(e.delta_reasoning for e in events) == "thinking"
+    assert "".join(e.delta_content for e in events) == "你好"
+    final = [e for e in events if e.is_final()][0]
+    assert final.usage.prompt_tokens == 8
+    assert final.usage.completion_tokens == 4
+    assert final.latency_ms >= 0
+    kwargs = comp.kwargs_list[0]
+    assert kwargs["stream"] is True
+    assert kwargs["stream_options"] == {"include_usage": True}
+
+
+def test_stream_does_not_retry_establishment_error() -> None:
+    # Even a transient (429) error must not be retried in streaming mode:
+    # fallback is the router's job, not a silent re-drive of the stream.
+    stream = _Stream(establish_exc=_status_error(openai.RateLimitError, 429))
+    p = _provider(completions=_ScriptedCompletions(stream=stream), max_attempts=5)
+    with pytest.raises(openai.RateLimitError):
+        list(p.stream_chat(ChatRequest(messages=[{"role": "user", "content": "x"}])))
+    assert stream.iterations == 1
+
+
+def test_stream_pro_establishment_failure_falls_back_to_flash() -> None:
+    pro_stream = _Stream(
+        establish_exc=_status_error(openai.NotFoundError, 404)
+    )
+    pro_comp = _ScriptedCompletions(stream=pro_stream)
+    pro = _provider(tier="pro", completions=pro_comp, max_attempts=1)
+
+    flash_stream = _Stream(chunks=[_text_chunk("ok"), _usage_chunk(6, 2)])
+    flash_comp = _ScriptedCompletions(stream=flash_stream)
+    flash = _provider(tier="flash", completions=flash_comp)
+
+    svc = _service_with_providers(pro, flash)
+    events = list(
+        svc.stream_chat(
+            ChatRequest(messages=[{"role": "user", "content": "x"}], task=ModelTask.RATING)
+        )
+    )
+
+    first = events[0]
+    assert first.degraded is True
+    assert first.requested_tier == "pro"
+    assert first.tier == "flash"
+    assert "NotFound" in first.degrade_reason
+    assert "".join(e.delta_content for e in events) == "ok"
+    final = [e for e in events if e.is_final()][0]
+    assert final.tier == "flash"
+    assert flash_comp.calls == 1  # flash actually answered
+
+
+def test_stream_pro_midstream_failure_is_not_fallbacked() -> None:
+    # First token is delivered, then the stream breaks. We must surface the
+    # error (not silently restart on flash and duplicate/contradict output).
+    mid_exc = openai.APIConnectionError(
+        request=httpx.Request("POST", "http://ark/chat/completions")
+    )
+    pro_stream = _Stream(
+        chunks=[_text_chunk("partial")],
+        fail_after=1,
+        mid_exc=mid_exc,
+    )
+    pro_comp = _ScriptedCompletions(stream=pro_stream)
+    pro = _provider(tier="pro", completions=pro_comp, max_attempts=1)
+
+    flash_comp = _ScriptedCompletions(
+        stream=_Stream(chunks=[_text_chunk("NEVER"), _usage_chunk()])
+    )
+    flash = _provider(tier="flash", completions=flash_comp)
+
+    svc = _service_with_providers(pro, flash)
+    gen = svc.stream_chat(
+        ChatRequest(messages=[{"role": "user", "content": "x"}], task=ModelTask.RATING)
+    )
+
+    received: list[str] = []
+    with pytest.raises(openai.APIConnectionError):
+        for event in gen:
+            received.append(event.delta_content)
+    assert "".join(received) == "partial"
+    assert flash_comp.calls == 0  # flash never started
+
+
+def test_stream_fallback_disabled_raises_pro_error() -> None:
+    pro_stream = _Stream(
+        establish_exc=_status_error(openai.NotFoundError, 404)
+    )
+    pro = _provider(
+        tier="pro", completions=_ScriptedCompletions(stream=pro_stream), max_attempts=1
+    )
+    flash = _provider(
+        tier="flash",
+        completions=_ScriptedCompletions(
+            stream=_Stream(chunks=[_text_chunk("ok"), _usage_chunk()])
+        ),
+    )
+    svc = _service_with_providers(pro, flash, _settings(fallback_to_flash=False))
+    with pytest.raises(openai.NotFoundError):
+        list(
+            svc.stream_chat(
+                ChatRequest(
+                    messages=[{"role": "user", "content": "x"}], task=ModelTask.RATING
+                )
+            )
+        )

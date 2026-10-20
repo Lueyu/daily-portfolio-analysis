@@ -30,6 +30,7 @@ from tenacity import (
 
 from ..config import Settings
 from .types import (
+    ChatChunk,
     ChatRequest,
     ChatResponse,
     ModelSpec,
@@ -173,6 +174,71 @@ class OpenAICompatibleProvider:
             latency_ms=latency_ms,
             finish_reason=getattr(resp.choices[0], "finish_reason", None) or "stop",
             attempts=getattr(retryer, "statistics", {}).get("attempt_number", 1) or 1,
+        )
+
+    def stream_chat(self, req: ChatRequest):
+        """Yield :class:`ChatChunk` events from an SSE stream.
+
+        Streaming does **not** run tenacity retries: re-driving an in-flight
+        stream would duplicate already-emitted tokens, so that is not safe.
+        Establishment-phase errors (auth / model-not-found / rate limit) are
+        raised on the *first* iteration — the router uses this to fall back to
+        flash before any content is shown. A failure midway through the stream
+        is raised as-is, because partial output may already be visible.
+
+        ``stream_options.include_usage`` makes the final event carry token
+        usage (its ``choices`` list is then empty).
+        """
+        kwargs = self._build_kwargs(req)
+        kwargs["stream"] = True
+        kwargs["stream_options"] = {"include_usage": True}
+
+        started = time.perf_counter()
+        model = self.model
+        prompt_tokens = 0
+        completion_tokens = 0
+        finish_reason = "stop"
+
+        # The SDK is lazy: create() returns a stream object, and the request
+        # is actually fired on the first iteration. That is exactly where an
+        # establishment failure surfaces, letting the router fall back.
+        stream = self._client.chat.completions.create(**kwargs)
+        for chunk in stream:
+            if getattr(chunk, "model", None):
+                model = chunk.model
+            usage = getattr(chunk, "usage", None)
+            if usage is not None:
+                prompt_tokens = getattr(usage, "prompt_tokens", 0) or prompt_tokens
+                completion_tokens = (
+                    getattr(usage, "completion_tokens", 0) or completion_tokens
+                )
+            choices = getattr(chunk, "choices", None)
+            if not choices:
+                continue  # terminal usage-only event handled below
+            choice = choices[0]
+            delta = getattr(choice, "delta", None)
+            reasoning = getattr(delta, "reasoning_content", None) or ""
+            content = getattr(delta, "content", None) or ""
+            if getattr(choice, "finish_reason", None):
+                finish_reason = choice.finish_reason
+            if content or reasoning:
+                yield ChatChunk(
+                    tier=self.tier,
+                    model=model,
+                    delta_content=content,
+                    delta_reasoning=reasoning,
+                )
+
+        yield ChatChunk(
+            tier=self.tier,
+            model=model,
+            finish_reason=finish_reason,
+            usage=Usage(
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                cost_usd=self.spec.cost_usd(prompt_tokens, completion_tokens),
+            ),
+            latency_ms=int((time.perf_counter() - started) * 1000),
         )
 
     def ping(self, prompt: str = "Reply with exactly one word: pong") -> PingResult:
