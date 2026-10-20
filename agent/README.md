@@ -61,6 +61,58 @@ Set values in `agent/.env` (copied from `.env.example`; secrets are git-ignored)
 | `WEBAPP_AGENT_TOKEN` | shared secret sent as the `x-agent-token` header |
 | `WEBAPP_DEFAULT_USER_ID` | user id used in local development |
 
+## Evaluated evolution foundation (E0)
+
+The `evolution` CLI and `agent_core.evolution` library capture immutable decision
+exports and check whether their **supplied metadata** is suitable for historical
+replay. This is the data foundation for later feedback-driven improvement; it
+does not generate new rules, train a model or change the active portfolio policy.
+
+```powershell
+# Fully offline. The fictional example is deliberately rejected with exit code 1.
+uv run agent evolution validate examples/evolution_case.json --as-of 2026-10-17T00:00:00Z
+
+# Preserve even rejected decisions for audit; records only the decision, not outcomes.
+uv run agent evolution record examples/evolution_case.json --as-of 2026-10-17T00:00:00Z
+```
+
+`validate` prints JSON: `replay_eligible`, `eligible_outcome_ids`, and issue codes.
+Exit 0 means the decision passes the metadata checks; it **does not** mean there
+are mature outcomes, a profitable strategy, or authorization to publish. Exit 1
+means the decision is ineligible; exit 2 means invalid input or a storage error.
+Pending/unavailable labels never become zero-return observations.
+
+`record` saves one file per decision UUID in `data/evolution/` (git-ignored), or an
+explicit `--directory`. Identical writes are idempotent; conflicting content is
+rejected. Same-day runs retain separate IDs. Publication uses same-filesystem hard
+links to avoid partial reads and overwrites; unsupported filesystems fail rather
+than falling back to unsafe overwrite. A crash can leave an unused temporary file.
+This local export is not a multi-user database, signed audit log or Webapp backup.
+It contains research inputs and should stay private. PostgreSQL remains the
+business system of record; the Python agent does not connect to it directly.
+
+The frozen contract includes the model/config and rule/prompt/memory versions,
+actual evidence text and source times, original/final ratings, required rule IDs,
+executed rules separately from model citations, and predeclared forecast targets
+(horizon, benchmark, currency, price basis and cost model). Retrieved memories
+require owner, approval time and validity. An outcome must match its original
+forecast target and be observable at the explicitly supplied evaluation time.
+Supply only one as-of outcome revision per label/horizon; revision history and
+automatic market-calendar labeling will be implemented in the backend later.
+
+The checker cannot authenticate a caller's `quality=real` declaration or timestamps,
+verify returns against a vendor, reconstruct a model's training cutoff, prove rule
+coverage without a trustworthy required-rule manifest, or assess causal alpha.
+The example remains marked `synthetic`; never relabel fixtures as real data.
+Production adapters must generate these records from captured tool executions.
+Automatic capture into a future ReAct loop, feedback collection, candidate memory/
+rubric generation, independent evaluation, approval, rollback and scheduling are
+subsequent milestones, not implemented by these commands.
+
+Local project research and phased design live under the intentionally untracked
+`../docs/research/` and `../docs/superpowers/specs/` directories. Run the offline
+checks with `uv run pytest -q`; no new packages or paid APIs are required.
+
 ## License
 
 MIT

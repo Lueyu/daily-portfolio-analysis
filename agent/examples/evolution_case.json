@@ -1,0 +1,83 @@
+{
+  "decision": {
+    "decision_id": "00000000-0000-0000-0000-000000000001",
+    "run_id": "fixture-run",
+    "owner": "fixture-owner",
+    "ticker": "EXAMPLE",
+    "market": "US",
+    "engine": "agent",
+    "decision_at": "2026-10-01T12:00:00Z",
+    "information_cutoff_at": "2026-10-01T12:00:00Z",
+    "bundle": {
+      "rubric_version": "r1",
+      "prompt_version": "p1",
+      "memory_release": "m0",
+      "model_id": "fixture-model",
+      "model_config_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "tool_schema_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "safety_policy_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "evaluator_version": "e0",
+      "code_version": "fixture"
+    },
+    "evidence": [
+      {
+        "evidence_id": "e1",
+        "source": "fixture://earnings",
+        "provider": "fixture",
+        "content": "Revenue was 100 units in the fictional example.",
+        "published_at": "2026-10-01T10:00:00Z",
+        "available_at": "2026-10-01T10:00:00Z",
+        "fetched_at": "2026-10-01T11:00:00Z",
+        "quality": "synthetic"
+      }
+    ],
+    "original_rating": "Hold",
+    "final_rating": "Hold",
+    "action": "hold",
+    "rationale_summary": "Fictional fixture, not an investment recommendation.",
+    "required_rule_ids": [
+      "r1"
+    ],
+    "forecast_targets": [
+      {
+        "label_spec_version": "relative-return-v1",
+        "horizon_trading_days": 5,
+        "target_at": "2026-10-08T12:00:00Z",
+        "benchmark": "EXAMPLE-INDEX",
+        "currency": "USD",
+        "price_basis": "total-return",
+        "cost_model": "fixture-cost-v1"
+      }
+    ],
+    "executed_rules": [
+      {
+        "rule_id": "r1",
+        "rule_version": "1",
+        "result": "passed",
+        "required": true,
+        "evidence_ids": [
+          "e1"
+        ],
+        "detail": "Checked fixture."
+      }
+    ],
+    "cited_rule_ids": [
+      "r1"
+    ]
+  },
+  "outcomes": [
+    {
+      "outcome_id": "00000000-0000-0000-0000-000000000002",
+      "decision_id": "00000000-0000-0000-0000-000000000001",
+      "label_spec_version": "relative-return-v1",
+      "horizon_trading_days": 5,
+      "target_at": "2026-10-08T12:00:00Z",
+      "observed_at": "2026-10-08T13:00:00Z",
+      "status": "matured",
+      "raw_return": 0.02,
+      "benchmark_return": 0.01,
+      "source": "fixture://prices",
+      "quality": "synthetic"
+    }
+  ]
+}
