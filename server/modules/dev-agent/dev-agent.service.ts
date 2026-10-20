@@ -16,6 +16,7 @@
 import { existsSync } from 'node:fs';
 import {
   ConflictException,
+  Inject,
   Injectable,
   InternalServerErrorException,
   Logger,
@@ -32,8 +33,8 @@ import {
   type PatchDetail,
   TERMINAL_STATUSES,
 } from './dev-agent.types';
-import type { DevAgentConfig } from './dev-agent.config';
-import type { AgentProcessRunner } from './agent-process.runner';
+import { DEV_AGENT_CONFIG, type DevAgentConfig } from './dev-agent.config';
+import { AGENT_PROCESS_RUNNER, type AgentProcessRunner } from './agent-process.runner';
 import type { ProcessResult } from './dev-agent.types';
 import { TaskArtifactReader } from './task-artifact.reader';
 
@@ -43,9 +44,9 @@ export class DevAgentService {
   private readonly inFlight = new Set<string>();
 
   constructor(
-    private readonly config: DevAgentConfig,
+    @Inject(DEV_AGENT_CONFIG) private readonly config: DevAgentConfig,
     private readonly reader: TaskArtifactReader,
-    private readonly runner: AgentProcessRunner,
+    @Inject(AGENT_PROCESS_RUNNER) private readonly runner: AgentProcessRunner,
   ) {}
 
   /** Health is reported even when disabled so the UI can show the reason. */

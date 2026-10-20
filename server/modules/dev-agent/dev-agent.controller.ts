@@ -22,7 +22,13 @@ import { CreateDevTaskDto, RejectDevTaskDto } from './dev-agent.types';
 
 @Controller('api/dev')
 @NeedLogin()
-@UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
+@UsePipes(
+  new ValidationPipe({
+    transform: true,
+    whitelist: true,
+    forbidUnknownValues: true,
+  }),
+)
 export class DevAgentController {
   constructor(private readonly dev: DevAgentService) {}
 

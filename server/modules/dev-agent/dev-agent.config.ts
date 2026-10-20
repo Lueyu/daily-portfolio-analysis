@@ -54,3 +54,9 @@ export function loadDevAgentConfig(
     runTimeoutMs: parseTimeout(env.AGENT_DEV_RUN_TIMEOUT_MS),
   };
 }
+
+/**
+ * DI token for the resolved dev-agent configuration. A plain string token is
+ * used because the config is a plain object produced by a factory, not a class.
+ */
+export const DEV_AGENT_CONFIG = 'DevAgentConfig';

@@ -12,7 +12,8 @@
  */
 import { spawn } from 'node:child_process';
 import type { SpawnOptions } from 'node:child_process';
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable } from '@nestjs/common';
+import { DEV_AGENT_CONFIG, type DevAgentConfig } from './dev-agent.config';
 import type { ProcessResult } from './dev-agent.types';
 
 export interface SpawnedChild {
@@ -41,11 +42,21 @@ export interface AgentProcessRunner {
   exec(argv: string[], opts?: { timeoutMs?: number }): Promise<ProcessResult>;
 }
 
+/** DI token, since the interface type is erased at runtime. */
+export const AGENT_PROCESS_RUNNER = 'AgentProcessRunner';
+
+@Injectable()
 export class ChildProcessRunner implements AgentProcessRunner {
-  constructor(
-    private readonly config: RunnerConfig,
-    private readonly spawnFn: SpawnFn = spawn as unknown as SpawnFn,
-  ) {}
+  constructor(@Inject(DEV_AGENT_CONFIG) private readonly config: DevAgentConfig) {}
+
+  /** Indirection so tests can substitute a fake child process. */
+  protected spawnChild(
+    command: string,
+    args: string[],
+    options: SpawnOptions,
+  ): SpawnedChild {
+    return spawn(command, args, options) as unknown as SpawnedChild;
+  }
 
   async exec(argv: string[], opts?: { timeoutMs?: number }): Promise<ProcessResult> {
     const sub = argv[0];
@@ -62,7 +73,7 @@ export class ChildProcessRunner implements AgentProcessRunner {
       let stderr = '';
       let settled = false;
 
-      const child = this.spawnFn(this.config.binPath, [sub, ...args], {
+      const child = this.spawnChild(this.config.binPath, [sub, ...args], {
         cwd: this.config.workdir,
         shell: false,
         env: process.env,

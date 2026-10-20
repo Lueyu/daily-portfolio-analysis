@@ -1,7 +1,13 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { EventEmitter } from 'node:events';
+import type { SpawnOptions } from 'node:child_process';
 import { BadRequestException } from '@nestjs/common';
-import { ChildProcessRunner, type SpawnedChild, type SpawnFn } from './agent-process.runner';
+import {
+  ChildProcessRunner,
+  type SpawnedChild,
+  type SpawnFn,
+} from './agent-process.runner';
+import type { DevAgentConfig } from './dev-agent.config';
 
 function makeFakeChild(): SpawnedChild & { emit: (e: string, ...a: unknown[]) => void; killed: boolean } {
   const stdout = new EventEmitter();
@@ -23,10 +29,30 @@ function makeFakeChild(): SpawnedChild & { emit: (e: string, ...a: unknown[]) =>
 }
 
 const cfg = {
+  enabled: true,
   binPath: '/repo/agent/.venv/bin/agent',
+  tasksDir: '/repo/agent/data/coder/tasks',
   workdir: '/repo',
   runTimeoutMs: 30000,
-};
+} satisfies DevAgentConfig;
+
+/** Runner that substitutes a fake child process instead of spawning one. */
+class TestableRunner extends ChildProcessRunner {
+  constructor(
+    c: DevAgentConfig,
+    private readonly fake: SpawnFn,
+  ) {
+    super(c);
+  }
+
+  protected override spawnChild(
+    command: string,
+    args: string[],
+    options: SpawnOptions,
+  ): SpawnedChild {
+    return this.fake(command, args, options);
+  }
+}
 
 describe('ChildProcessRunner', () => {
   it('invokes the whitelisted subcommand with --json, fixed cwd and no shell', async () => {
@@ -38,7 +64,7 @@ describe('ChildProcessRunner', () => {
       captured.opts = opts;
       return child;
     };
-    const runner = new ChildProcessRunner(cfg, spawnFn);
+    const runner = new TestableRunner(cfg, spawnFn);
     const p = runner.exec(['new', '--title', 't', '--problem', 'p', '--acceptance', 'a:unit:d']);
     child.stdout?.emit('data', Buffer.from('{"ok":true,"id":"dev_x"}'));
     child.emit('close', 0);
@@ -57,13 +83,13 @@ describe('ChildProcessRunner', () => {
   });
 
   it('rejects a subcommand that is not on the whitelist', async () => {
-    const runner = new ChildProcessRunner(cfg, () => makeFakeChild());
+    const runner = new TestableRunner(cfg, () => makeFakeChild());
     await expect(runner.exec(['rm', '-rf', '/'])).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('forwards stderr and the exit code on a non-zero exit', async () => {
     const child = makeFakeChild();
-    const runner = new ChildProcessRunner(cfg, () => child);
+    const runner = new TestableRunner(cfg, () => child);
     const p = runner.exec(['run', 'dev_x']);
     child.stderr?.emit('data', Buffer.from('boom'));
     child.emit('close', 2);
@@ -74,7 +100,7 @@ describe('ChildProcessRunner', () => {
 
   it('kills the process and rejects when the timeout elapses', async () => {
     const child = makeFakeChild();
-    const runner = new ChildProcessRunner(cfg, () => child);
+    const runner = new TestableRunner(cfg, () => child);
     const p = runner.exec(['run', 'dev_x'], { timeoutMs: 20 });
     await expect(p).rejects.toThrow(/timed out/i);
     expect(child.killed).toBe(true);

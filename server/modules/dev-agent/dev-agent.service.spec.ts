@@ -73,7 +73,7 @@ describe('DevAgentService', () => {
     writeFileSync(binPath, '');
     cfg = { enabled: true, binPath, tasksDir, workdir: root, runTimeoutMs: 1000 };
     runner = new FakeRunner();
-    service = new DevAgentService(cfg, new TaskArtifactReader(tasksDir), runner);
+    service = new DevAgentService(cfg, new TaskArtifactReader(cfg), runner);
   });
 
   afterEach(async () => {
@@ -90,7 +90,7 @@ describe('DevAgentService', () => {
   it('reports the feature disabled without throwing', () => {
     const disabled = new DevAgentService(
       { ...cfg, enabled: false },
-      new TaskArtifactReader(tasksDir),
+      new TaskArtifactReader(cfg),
       runner,
     );
     expect(disabled.health().enabled).toBe(false);
@@ -99,7 +99,7 @@ describe('DevAgentService', () => {
   it('refuses data access while disabled with 503', async () => {
     const disabled = new DevAgentService(
       { ...cfg, enabled: false },
-      new TaskArtifactReader(tasksDir),
+      new TaskArtifactReader(cfg),
       runner,
     );
     await expect(disabled.listTasks()).rejects.toBeInstanceOf(ServiceUnavailableException);

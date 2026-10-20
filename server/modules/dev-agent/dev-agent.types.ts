@@ -11,7 +11,7 @@
 import {
   ArrayMinSize,
   IsArray,
-  IsIn,
+  IsEnum,
   IsOptional,
   IsString,
   MinLength,
@@ -31,8 +31,14 @@ export type DevTaskStatus =
   | 'blocked';
 
 /** The four whitelisted verification checks. */
-export const CHECK_KINDS = ['unit', 'e2e', 'typecheck', 'lint'] as const;
-export type CheckKind = (typeof CHECK_KINDS)[number];
+export const CHECK_KIND = {
+  Unit: 'unit',
+  E2E: 'e2e',
+  Typecheck: 'typecheck',
+  Lint: 'lint',
+} as const;
+export type CheckKind = (typeof CHECK_KIND)[keyof typeof CHECK_KIND];
+export const CHECK_KINDS: CheckKind[] = Object.values(CHECK_KIND);
 
 /** Terminal states stop the frontend polling. */
 export const TERMINAL_STATUSES: ReadonlySet<DevTaskStatus> = new Set<DevTaskStatus>([
@@ -134,7 +140,7 @@ export class AcceptanceInputDto {
   @MinLength(1)
   description!: string;
 
-  @IsIn(CHECK_KINDS as unknown as string[])
+  @IsEnum(CHECK_KIND)
   check!: CheckKind;
 
   @IsOptional()

@@ -5,7 +5,19 @@ import os from 'node:os';
 import path from 'node:path';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { TaskArtifactReader } from './task-artifact.reader';
+import type { DevAgentConfig } from './dev-agent.config';
 import type { DevTask } from './dev-agent.types';
+
+/** Minimal config: the reader only touches tasksDir. */
+function readerConfig(tasksDir: string): DevAgentConfig {
+  return {
+    enabled: true,
+    binPath: '',
+    tasksDir,
+    workdir: '',
+    runTimeoutMs: 1,
+  };
+}
 
 const DIFF = [
   'diff --git a/server/x.ts b/server/x.ts',
@@ -39,7 +51,7 @@ describe('TaskArtifactReader', () => {
 
   beforeEach(async () => {
     root = await fs.mkdtemp(path.join(os.tmpdir(), 'dev-tasks-'));
-    reader = new TaskArtifactReader(root);
+    reader = new TaskArtifactReader(readerConfig(root));
     const dir = path.join(root, 'dev_abc123');
     await fs.mkdir(path.join(dir, 'iterations'), { recursive: true });
     await fs.mkdir(path.join(dir, 'patches'), { recursive: true });
@@ -125,7 +137,7 @@ describe('TaskArtifactReader', () => {
   });
 
   it('returns an empty list when the tasks directory does not exist', async () => {
-    const missing = new TaskArtifactReader(path.join(root, 'does-not-exist'));
+    const missing = new TaskArtifactReader(readerConfig(path.join(root, 'does-not-exist')));
     await expect(missing.listTasks()).resolves.toEqual([]);
   });
 });

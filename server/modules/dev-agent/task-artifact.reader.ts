@@ -13,7 +13,8 @@
  */
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { DEV_AGENT_CONFIG, type DevAgentConfig } from './dev-agent.config';
 import type {
   DevTask,
   DevTaskDetail,
@@ -37,8 +38,13 @@ export function parseDiffFiles(diff: string): string[] {
   return [...new Set(files)];
 }
 
+@Injectable()
 export class TaskArtifactReader {
-  constructor(private readonly tasksDir: string) {}
+  private readonly tasksDir: string;
+
+  constructor(@Inject(DEV_AGENT_CONFIG) config: DevAgentConfig) {
+    this.tasksDir = path.resolve(config.tasksDir);
+  }
 
   /** Validate the id and resolve it inside the tasks directory. */
   private taskDir(id: string): string {
