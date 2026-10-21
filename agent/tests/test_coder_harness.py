@@ -381,3 +381,19 @@ def test_approval_in_new_process_loads_patch_from_disk(tmp_path):
     out = h2.run(auto_approve=True)
     assert out.status == TaskStatus.VERIFIED
     assert any(Path(c) == tmp_path for c, _d in runner.applied)  # landed
+
+
+def test_build_harness_wires_sandbox_when_enabled(monkeypatch, tmp_path):
+    from agent_core.coder import cli
+    from agent_core import config
+    store = TaskStore(tmp_path / "tasks")
+    task = make_task(tmp_path)
+    store.create(task)
+    monkeypatch.setattr(cli, "_store", lambda: store)
+    monkeypatch.setattr(cli, "get_settings", lambda: config.Settings(
+        _env_file=None, coder_data_dir=str(tmp_path / "coder"),
+        coder_worktree_dir=str(tmp_path / "coder" / "worktrees"),
+        webapp_workdir=str(tmp_path)))
+    h = cli.build_harness("dev_h1")
+    assert h.sandbox is not None
+    assert h.sandbox.path == tmp_path / "coder" / "worktrees" / "dev_h1"

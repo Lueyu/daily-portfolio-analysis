@@ -18,7 +18,9 @@ from rich.console import Console
 from ..config import get_settings
 from ..models import ChatService
 from .harness import CoderHarness
+from .linker import Linker
 from .models import AcceptanceCriterion, CheckKind, DevTask, Iteration, TaskStatus
+from .sandbox import WorktreeSandbox, prune_stale
 from .task_store import TaskStore
 from .tools import ControlledTools, build_probe_targets
 
@@ -82,7 +84,19 @@ def build_harness(task_id: str) -> CoderHarness:
         probe_targets=build_probe_targets(settings),
         probe_timeout=settings.probe_timeout_seconds,
     )
-    return CoderHarness(task, chat, tools, store, verify_cwd=workdir)
+    sandbox = None
+    if settings.coder_sandbox_enabled:
+        sandbox = WorktreeSandbox(
+            task_id=task_id,
+            main_workdir=workdir,
+            root=Path(settings.coder_worktree_dir),
+            tools=tools,
+            linker=Linker(),
+            link_dependencies=settings.coder_link_dependencies,
+            copy_env=settings.coder_copy_env_files,
+        )
+    return CoderHarness(task, chat, tools, store,
+                        verify_cwd=workdir, sandbox=sandbox)
 
 
 @app.command("new")
@@ -152,9 +166,10 @@ def reject_cmd(
     reason: str = typer.Option(..., "--reason", help="Why the patch is rejected."),
     as_json: bool = typer.Option(False, "--json", help="Emit one JSON line."),
 ):
-    """Reject the proposed patch (do not apply it); move the task to blocked."""
-    store = _store()
-    task = store.load(task_id)
+    """Reject the proposed patch; move the task to blocked and remove sandbox."""
+    h = build_harness(task_id)
+    store = h.store
+    task = h.task
     if task.status != TaskStatus.AWAITING_APPROVAL:
         raise typer.BadParameter(
             "can only reject while awaiting approval, "
@@ -174,6 +189,7 @@ def reject_cmd(
         ),
     )
     store.save(task)
+    h._teardown_sandbox()
     if as_json:
         _emit(_task_payload(task_id, task.status), as_json=True)
         return
@@ -192,3 +208,26 @@ def show_cmd(task_id: str):
     console.print(f"red_seen={task.red_seen}")
     for it in store.read_iterations(task_id):
         console.print(f"  #{it.index} {it.phase}: {it.decision}")
+
+
+@app.command("sandbox-prune")
+def sandbox_prune_cmd(
+    as_json: bool = typer.Option(False, "--json", help="Emit one JSON line."),
+):
+    """Remove sandbox worktrees that no longer correspond to an active task."""
+    settings = get_settings()
+    store = _store()
+    active = {t for t in store.list_tasks()
+              if store.load(t).status in (
+                  TaskStatus.NEW, TaskStatus.REPRODUCED, TaskStatus.DIAGNOSED,
+                  TaskStatus.PATCHED, TaskStatus.VERIFYING,
+                  TaskStatus.AWAITING_APPROVAL)}
+    workdir = Path(settings.webapp_workdir)
+    tools = ControlledTools(workdir)
+    prune_stale(Path(settings.coder_worktree_dir), workdir, tools, Linker(),
+                active_task_ids=active)
+    msg = {"ok": True, "active": sorted(active)}
+    if as_json:
+        _emit(msg, as_json=True)
+        return
+    console.print("[green]stale sandboxes pruned[/]")
