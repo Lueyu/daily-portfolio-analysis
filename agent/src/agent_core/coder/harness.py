@@ -75,14 +75,19 @@ def _checks_for(task: DevTask) -> list[CheckKind]:
 class CoderHarness:
     def __init__(self, task: DevTask, chat: ChatPort, tools: ControlledTools,
                  store: TaskStore, *, verify_cwd=None,
-                 budget: BudgetGuard | None = None, max_probes: int = 6):
+                 budget: BudgetGuard | None = None, max_probes: int = 10):
         self.task = task
         self.chat = chat
         self.tools = tools
         self.store = store
         self.verify_cwd = verify_cwd
         self.budget = budget or BudgetGuard(BudgetConfig())
+        # A real investigation (data source -> config -> client -> tests) reads
+        # several files; six was too tight and killed legitimate work.
         self.max_probes = max_probes
+        # Warn before the hard cap so the model has a clear last chance to
+        # actually run a check or declare itself blocked instead of looping.
+        self.probe_warning = max(1, max_probes - 2)
         self._latest_patch: Patch | None = None
         self._last_failure = ""
         self._probes = 0
@@ -166,7 +171,7 @@ class CoderHarness:
             messages = [{"role": "user", "content": prompt}]
             _, step = self._ask(messages, ModelTask.PLAN)
             if isinstance(step, ReadFileStep):
-                self._last_failure += self._read(step.path)
+                self._last_failure += self._read(step.path, phase="diagnose")
                 continue
             if isinstance(step, BlockedStep):
                 raise _Stop(step.reason or "model blocked during diagnosis")
@@ -262,20 +267,42 @@ class CoderHarness:
                 }]
         raise _Stop("model repeatedly returned malformed JSON")
 
-    def _read(self, path: str | None) -> str:
+    def _read(self, path: str | None, *, phase: str = "reproduce") -> str:
         self._probes += 1
         if self._probes > self.max_probes:
             raise _Stop("too many read probes without progress")
         target = path or ""
         try:
             content = self.tools.read_file(target, cwd=self.verify_cwd)
+            result = f"\nFILE {target}:\n{content[:4000]}\n"
+            status = "ok"
         except (FileNotFoundError, ValueError, OSError) as exc:
             # A bad path guess is feedback, not a fatal error. Surface it as an
             # observation so the model can choose an existing file next round
             # instead of crashing the whole run on one wrong filename.
-            return (f"\nREAD FAILED for {target}: {exc}. "
-                    "Choose a different, existing path.\n")
-        return f"\nFILE {target}:\n{content[:4000]}\n"
+            result = (f"\nREAD FAILED for {target}: {exc}. "
+                      "Choose a different, existing path.\n")
+            status = "failed"
+        # Leave a trace so the UI can show exactly what the agent inspected.
+        self._iter(
+            phase, action="read_file",
+            decision=f"probe {self._probes}/{self.max_probes}: {target} ({status})",
+            observations=[f"{target}: {status}"])
+        # Near the hard cap, give one explicit last chance instead of silently
+        # killing the run: reproduce with a check, or block with a human checklist.
+        if self._probes >= self.probe_warning:
+            result += (
+                "\n[PROBE BUDGET WARNING] You have read many files without "
+                "reproducing a failing check. Your next action MUST be either:\n"
+                "- run_check to actually reproduce the failure, or\n"
+                "- blocked if no test can reproduce it (e.g. local environment, "
+                "database, seeded data, or configuration problems). In that case "
+                "the reason MUST include a concrete human checklist such as: is the "
+                "database/service running? Is the data seeded/migrated? Which "
+                "config does the app point at?\n"
+                "Do not call read_file again.\n"
+            )
+        return result
 
     def _iter(self, phase, *, hypothesis="", action="", decision="",
               observations=None) -> None:

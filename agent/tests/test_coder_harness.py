@@ -170,6 +170,43 @@ def test_read_missing_file_is_feedback_not_crash(tmp_path):
     assert "missing.ts" in flat and "not a file" in flat
 
 
+def test_read_probes_are_recorded(tmp_path):
+    # Each read must be recorded so the UI shows what the agent inspected.
+    runner = FakeRunner([0])
+    (tmp_path / "server").mkdir()
+    (tmp_path / "server" / "x.ts").write_text("x", encoding="utf-8")
+    read = step("read_file", phase="reproduce", path="server/x.ts")
+    give_up = step("blocked", phase="reproduce", reason="environment issue")
+    chat = ScriptedChat([read, give_up])
+    h, store = harness_for(tmp_path, chat, runner)
+    h.run(auto_approve=True)
+    recs = store.read_iterations("dev_h1")
+    probes = [i for i in recs if i.action == "read_file"]
+    assert probes, "expected a read_file iteration to be recorded"
+    assert any("server/x.ts" in o for i in probes for o in i.observations)
+
+
+def test_probe_ultimatum_before_hard_cap(tmp_path):
+    # A realistic investigation reads several files. Before the hard cap kills
+    # the run, the model must be told to run_check or blocked with a checklist.
+    runner = FakeRunner([0])
+    (tmp_path / "server").mkdir()
+    (tmp_path / "server" / "x.ts").write_text("x", encoding="utf-8")
+    read = step("read_file", phase="reproduce", path="server/x.ts")
+    give_up = step(
+        "blocked", phase="reproduce",
+        reason="local database/data issue; no test reproduces empty page")
+    chat = CapturingChat([read] * 8 + [give_up])
+    h, _ = harness_for(tmp_path, chat, runner)
+    assert h.max_probes >= 10  # raised from 6 so real investigations fit
+    out = h.run(auto_approve=True)
+    assert out.status == TaskStatus.BLOCKED
+    flat = " ".join(
+        " ".join(str(m.get("content", "")) for m in ms) for ms in chat.seen)
+    assert "PROBE BUDGET WARNING" in flat
+    assert "run_check" in flat and "blocked" in flat
+
+
 def test_manual_gate_pauses_then_approve_continues(tmp_path):
     runner = FakeRunner([1, 0])
     chat = ScriptedChat([RED, PATCH1])

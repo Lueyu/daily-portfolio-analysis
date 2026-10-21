@@ -56,8 +56,11 @@ def reproduce_prompt(problem: str, acceptance: list[AcceptanceCriterion]) -> str
         f"问题描述：{problem}\n\n"
         "验收标准（不可放宽）：\n"
         f"{_fmt_acceptance(acceptance)}\n\n"
-        "先用 read_file 阅读相关代码与测试，再用 run_check 运行能复现该问题的测试。\n"
-        "若无法复现，输出 blocked 并说明原因。\n"
+        "先用 read_file 阅读相关代码与测试（少量、有针对性），再用 run_check 运行能复现该问题的测试。\n"
+        "不要连续读取大量文件：读完关键代码后就必须 run_check 取证。\n"
+        "若 run_check 无法复现，或你判断问题属于本地环境/数据库/数据迁移/seed/配置 "
+        "（而非代码缺陷），立即输出 blocked；reason 中给出可执行的人工排查清单，"
+        "例如：相关服务是否启动、数据库是否可连接、迁移与 seed 是否执行、应用实际指向哪个配置。\n"
         f"{_ACTION_CONTRACT}\n{_GUARDRAILS}"
     )
 
