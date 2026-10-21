@@ -54,3 +54,14 @@ def test_real_environment_overrides_dotenv(monkeypatch):
     assert settings.flash_model == "forced-from-env"
     # Restore module-level helper purity for other tests.
     config.get_settings.cache_clear()
+
+
+def test_probe_defaults_target_localhost(tmp_path, monkeypatch):
+    """The environment probe whitelist defaults to local services only."""
+    monkeypatch.chdir(tmp_path)
+    settings = Settings(_env_file=None)
+    assert settings.probe_pg_host == "127.0.0.1"
+    assert settings.probe_pg_port == 5432
+    assert settings.probe_backend_url == "http://localhost:3000"
+    assert settings.probe_frontend_url == "http://localhost:8080"
+    assert settings.probe_timeout_seconds == 2.0

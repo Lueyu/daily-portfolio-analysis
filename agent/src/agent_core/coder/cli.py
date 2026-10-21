@@ -20,7 +20,7 @@ from ..models import ChatService
 from .harness import CoderHarness
 from .models import AcceptanceCriterion, CheckKind, DevTask, Iteration, TaskStatus
 from .task_store import TaskStore
-from .tools import ControlledTools
+from .tools import ControlledTools, build_probe_targets
 
 app = typer.Typer(help="Coding agent: reproduce, fix, verify webapp changes.")
 console = Console()
@@ -77,7 +77,11 @@ def build_harness(task_id: str) -> CoderHarness:
     task = store.load(task_id)
     chat = ChatService(settings)
     workdir = Path(task.workdir)
-    tools = ControlledTools(workdir)
+    tools = ControlledTools(
+        workdir,
+        probe_targets=build_probe_targets(settings),
+        probe_timeout=settings.probe_timeout_seconds,
+    )
     return CoderHarness(task, chat, tools, store, verify_cwd=workdir)
 
 

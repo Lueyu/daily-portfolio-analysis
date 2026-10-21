@@ -3,7 +3,12 @@ from pathlib import Path
 
 import pytest
 
-from agent_core.coder.models import CheckKind, CommandResult
+from agent_core.coder.models import (
+    CheckKind,
+    CommandResult,
+    ProbeResult,
+    ProbeTarget,
+)
 from agent_core.coder.safety import SafetyViolation
 from agent_core.coder.tools import ControlledTools, parse_test_output
 
@@ -183,3 +188,67 @@ def test_grep_bad_regex_is_value_error(tmp_path):
 def test_grep_no_matches_message(tmp_path):
     (tmp_path / "a.txt").write_text("hello\n", encoding="utf-8")
     assert ControlledTools(tmp_path).grep("zzzz") == "(no matches)"
+
+
+# --- environment probe (localhost whitelist only) ----------------------
+
+def _probe_targets():
+    return [
+        ProbeTarget(name="postgres", kind="tcp", target="127.0.0.1:5432"),
+        ProbeTarget(name="backend", kind="http", target="http://localhost:3000"),
+    ]
+
+
+def _prober_from(mapping):
+    def prober(targets):
+        return [mapping[t.name] for t in targets]
+    return prober
+
+
+def test_probe_env_reports_up_and_down_and_summary(tmp_path):
+    prober = _prober_from({
+        "postgres": ProbeResult(name="postgres", kind="tcp",
+                                target="127.0.0.1:5432", up=False,
+                                detail="ConnectionRefused"),
+        "backend": ProbeResult(name="backend", kind="http",
+                               target="http://localhost:3000", up=True,
+                               latency_ms=5),
+    })
+    tools = ControlledTools(tmp_path, probe_targets=_probe_targets(), prober=prober)
+    out = tools.probe_env()
+    assert "DOWN" in out and "postgres" in out
+    assert "UP" in out and "backend" in out
+    assert "start-db" in out
+
+
+def test_probe_env_all_reachable_summary(tmp_path):
+    prober = _prober_from({
+        t.name: ProbeResult(name=t.name, kind=t.kind, target=t.target, up=True)
+        for t in _probe_targets()
+    })
+    tools = ControlledTools(tmp_path, probe_targets=_probe_targets(), prober=prober)
+    assert "reachable" in tools.probe_env()
+
+
+def test_probe_env_rejects_target_outside_whitelist(tmp_path):
+    tools = ControlledTools(tmp_path, probe_targets=_probe_targets(),
+                            prober=_prober_from({}))
+    with pytest.raises(ValueError):
+        tools.probe_env(["evil.example.com"])
+
+
+def test_probe_env_subset_by_name(tmp_path):
+    seen = {}
+
+    def prober(wanted):
+        seen["names"] = [t.name for t in wanted]
+        return [ProbeResult(name=t.name, kind=t.kind, target=t.target, up=True)
+                for t in wanted]
+
+    tools = ControlledTools(tmp_path, probe_targets=_probe_targets(), prober=prober)
+    tools.probe_env(["backend"])
+    assert seen["names"] == ["backend"]
+
+
+def test_probe_env_without_targets_is_informative(tmp_path):
+    assert "No environment probes configured" in ControlledTools(tmp_path).probe_env()

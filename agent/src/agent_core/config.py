@@ -78,6 +78,15 @@ class Settings(BaseSettings):
     # above the agent package.
     webapp_workdir: str = str(AGENT_ROOT.parent)
 
+    # Environment probes for the coder. A localhost-only whitelist; the model
+    # can never supply arbitrary hosts. Used to diagnose "service not running"
+    # (e.g. PostgreSQL down -> block with the start-db instruction).
+    probe_pg_host: str = "127.0.0.1"
+    probe_pg_port: int = 5432
+    probe_backend_url: str = "http://localhost:3000"
+    probe_frontend_url: str = "http://localhost:8080"
+    probe_timeout_seconds: float = 2.0
+
     @field_validator("checkpoint_dir", "coder_data_dir")
     @classmethod
     def _anchor_data_dirs(cls, value: str) -> str:

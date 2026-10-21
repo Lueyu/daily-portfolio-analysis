@@ -13,12 +13,21 @@ import fnmatch
 import os
 import re
 import shutil
+import socket
 import subprocess
 import time
 from collections.abc import Callable
 from pathlib import Path
+from urllib.error import HTTPError, URLError
+from urllib.request import urlopen
 
-from .models import CheckKind, CommandResult, TestOutcome
+from .models import (
+    CheckKind,
+    CommandResult,
+    ProbeResult,
+    ProbeTarget,
+    TestOutcome,
+)
 from .safety import (
     guard_git_args,
     is_sensitive_entry,
@@ -158,12 +167,72 @@ def parse_test_output(kind: CheckKind, argv: list[str],
     )
 
 
+# Prober maps a list of fixed localhost targets to their results. Injectable so
+# the layer is unit-testable offline without opening real sockets.
+Prober = Callable[[list[ProbeTarget]], list[ProbeResult]]
+
+
+def default_prober(timeout: float) -> Prober:
+    """Probe localhost targets with the stdlib only.
+
+    For TCP we open a short-lived connection. For HTTP we issue a GET; any
+    HTTP status (401/403/404/...) still proves an HTTP server is answering, so
+    only a refused connection / DNS failure / timeout counts as down.
+    """
+
+    def probe(targets: list[ProbeTarget]) -> list[ProbeResult]:
+        results: list[ProbeResult] = []
+        for target in targets:
+            start = time.monotonic()
+            latency = lambda: int((time.monotonic() - start) * 1000)
+            try:
+                if target.kind == "tcp":
+                    host, _, port = target.target.rpartition(":")
+                    with socket.create_connection((host, int(port)), timeout=timeout):
+                        pass
+                elif target.kind == "http":
+                    try:
+                        urlopen(target.target, timeout=timeout).close()
+                    except HTTPError:
+                        # A status code means an HTTP server responded.
+                        pass
+                else:
+                    raise ValueError(f"unknown probe kind: {target.kind}")
+                results.append(ProbeResult(
+                    name=target.name, kind=target.kind, target=target.target,
+                    up=True, latency_ms=latency()))
+            except (URLError, OSError, ValueError) as exc:
+                results.append(ProbeResult(
+                    name=target.name, kind=target.kind, target=target.target,
+                    up=False, latency_ms=latency(), detail=type(exc).__name__))
+        return results
+
+    return probe
+
+
+def build_probe_targets(settings) -> list[ProbeTarget]:
+    """Build the fixed localhost probe plan from settings."""
+    return [
+        ProbeTarget(
+            name="postgres", kind="tcp",
+            target=f"{settings.probe_pg_host}:{settings.probe_pg_port}"),
+        ProbeTarget(
+            name="backend", kind="http", target=settings.probe_backend_url),
+        ProbeTarget(
+            name="frontend", kind="http", target=settings.probe_frontend_url),
+    ]
+
+
 class ControlledTools:
     """The only surface the coder uses to touch the repository."""
 
-    def __init__(self, workdir: Path | str, runner: Runner | None = None):
+    def __init__(self, workdir: Path | str, runner: Runner | None = None,
+                 probe_targets: list[ProbeTarget] | None = None,
+                 prober: Prober | None = None, probe_timeout: float = 2.0):
         self.workdir = Path(workdir)
         self._run = runner or default_runner
+        self.probe_targets = probe_targets or []
+        self._probe = prober or default_prober(probe_timeout)
 
     # -- read --------------------------------------------------------------
     def read_file(self, rel: str, cwd: Path | str | None = None) -> str:
@@ -255,6 +324,43 @@ class ControlledTools:
                     if len(hits) >= limit:
                         return "\n".join(hits)
         return "\n".join(hits) or "(no matches)"
+
+    # -- environment probe (read-only, localhost whitelist) ----------------
+    def probe_env(self, names: list[str] | None = None,
+                  cwd: Path | str | None = None) -> str:
+        """Report whether configured local services are reachable.
+
+        The model may only select from the configured target names; an
+        arbitrary host/URL is rejected, so this cannot be used as a network
+        backdoor. With no selection it probes every configured target.
+        """
+        if not self.probe_targets:
+            return "No environment probes configured."
+        wanted = self.probe_targets
+        if names:
+            known = {t.name for t in self.probe_targets}
+            unknown = [n for n in names if n not in known]
+            if unknown:
+                raise ValueError(
+                    "probe_env only accepts configured localhost target names; "
+                    f"not allowed: {unknown}")
+            wanted = [t for t in self.probe_targets if t.name in names]
+        results = self._probe(wanted)
+        lines: list[str] = []
+        for r in results:
+            state = "UP  " if r.up else "DOWN"
+            detail = f" {r.detail}" if r.detail else ""
+            lines.append(
+                f"{state} {r.name} ({r.kind} {r.target}) {r.latency_ms}ms{detail}")
+        down = [r.name for r in results if not r.up]
+        lines.append("")
+        if down:
+            lines.append(
+                "DOWN: " + ", ".join(down) + ". Start the local services before "
+                "reproducing; for PostgreSQL run scripts/db/start-db.ps1.")
+        else:
+            lines.append("All configured local services are reachable.")
+        return "\n".join(lines)
 
     # -- verification ------------------------------------------------------
     def run_check(self, kind: CheckKind, cwd: Path | str | None = None) -> TestOutcome:

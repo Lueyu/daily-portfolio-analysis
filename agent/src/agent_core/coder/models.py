@@ -167,3 +167,26 @@ class Iteration(BaseModel):
     observations: list[str] = []
     decision: str = ""
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class ProbeTarget(BaseModel):
+    """A fixed localhost service the coder is allowed to check."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: Text
+    kind: Text            # "tcp" or "http"
+    target: Text          # host:port (tcp) or a full url (http)
+
+
+class ProbeResult(BaseModel):
+    """The outcome of probing one target."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: Text
+    kind: Text
+    target: Text
+    up: bool
+    latency_ms: int = 0
+    detail: str = ""
