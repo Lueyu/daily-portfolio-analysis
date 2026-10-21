@@ -17,6 +17,7 @@ state machine, not reported by the model, so the model cannot skip a gate.
 from __future__ import annotations
 
 import re
+from pathlib import Path
 from typing import Protocol
 
 from ..models import ChatRequest, ChatResponse, ModelTask
@@ -43,6 +44,7 @@ from .parser import (
 )
 from .prompts import diagnose_prompt, reproduce_prompt
 from .safety import SafetyViolation, scan_test_cheating
+from .sandbox import SandboxPort
 from .task_store import TaskStore
 from .tools import ControlledTools
 
@@ -80,12 +82,17 @@ def _checks_for(task: DevTask) -> list[CheckKind]:
 class CoderHarness:
     def __init__(self, task: DevTask, chat: ChatPort, tools: ControlledTools,
                  store: TaskStore, *, verify_cwd=None,
+                 sandbox: SandboxPort | None = None,
                  budget: BudgetGuard | None = None, max_probes: int = 10):
         self.task = task
         self.chat = chat
         self.tools = tools
         self.store = store
-        self.verify_cwd = verify_cwd
+        # Normalised main checkout. The keyword keeps its historical name
+        # (verify_cwd) so callers/tests do not change; internally every command
+        # resolves its cwd through _work_cwd() (sandbox) or self.main_cwd.
+        self.main_cwd = Path(verify_cwd) if verify_cwd else tools.workdir
+        self.sandbox = sandbox
         self.budget = budget or BudgetGuard(BudgetConfig())
         # A real investigation (data source -> config -> client -> tests) reads
         # several files; six was too tight and killed legitimate work.
@@ -96,6 +103,17 @@ class CoderHarness:
         self._latest_patch: Patch | None = None
         self._last_failure = ""
         self._probes = 0
+
+    def _work_cwd(self) -> Path:
+        """cwd for reproduction, exploration and verification.
+
+        With a sandbox this lazily prepares and returns the isolated worktree;
+        without one it returns the main checkout (legacy behaviour).
+        """
+        if self.sandbox is None:
+            return self.main_cwd
+        self.sandbox.ensure()
+        return self.sandbox.path
 
     # -- public entry point ------------------------------------------------
     def run(self, *, auto_approve: bool) -> DevTask:
@@ -111,15 +129,23 @@ class CoderHarness:
             while self.task.status in active:
                 if self.task.status == TaskStatus.AWAITING_APPROVAL:
                     if not auto_approve:
-                        return self._save()          # pause for human
-                    self._apply_and_verify()
+                        return self._save()          # pause; sandbox kept
+                    if self.sandbox is not None:
+                        self._land_to_main()
+                    else:
+                        self._apply_and_verify()      # legacy path
                     continue
-                self._produce_patch()                # -> AWAITING_APPROVAL
+                self._produce_patch()
                 if not auto_approve:
                     return self._save()
         except _Stop as stop:
             if stop.blocked:
                 self._block(stop.reason)
+        # Terminal states release the sandbox. An AWAITING pause is NOT terminal
+        # (the sandbox is kept for the later approve); a DIAGNOSED landing
+        # failure is also kept so the model can keep iterating.
+        if self.task.status in (TaskStatus.VERIFIED, TaskStatus.BLOCKED):
+            self._teardown_sandbox()
         return self._save()
 
     # -- phase 1: reproduction --------------------------------------------
@@ -137,7 +163,9 @@ class CoderHarness:
             if isinstance(step, ReadOnlyStep):
                 evidence += self._observe(step, phase="reproduce")
             elif isinstance(step, RunCheckStep):
-                outcome = self.tools.run_check(step.kind, cwd=self.verify_cwd)
+                outcome = self.tools.run_check(
+                    step.kind, cwd=self._work_cwd(),
+                    sandboxed=self.sandbox is not None)
                 if outcome.passed:
                     already_green += 1
                     evidence += (
@@ -198,6 +226,8 @@ class CoderHarness:
                     raise _Stop("repeated test-weakening patches")
                 continue
             self._accept_patch(step.hypothesis or "unlabelled", step.diff)
+            if self.task.status == TaskStatus.DIAGNOSED:
+                continue  # sandbox verification failed; ask the model to retry
             return
 
     def _accept_patch(self, hypothesis: str, diff: str) -> None:
@@ -209,22 +239,71 @@ class CoderHarness:
         self.store.save_patch(self.task.id, self._latest_patch)
         self.task.transition(TaskStatus.PATCHED)
         self.task.transition(TaskStatus.VERIFYING)
-        self.task.transition(TaskStatus.AWAITING_APPROVAL)
         self._iter("patch", hypothesis=hypothesis, action="apply_patch",
-                   decision="patch proposed; awaiting approval",
+                   decision="patch proposed",
                    observations=[f"files: {self._latest_patch.target_files}"])
         self._save()
+        if self.sandbox is not None:
+            self._verify_in_sandbox()
+        else:
+            # Legacy: no isolated verification; approval applies to main.
+            self.task.transition(TaskStatus.AWAITING_APPROVAL)
+            self._save()
+
+    def _verify_in_sandbox(self) -> None:
+        """Apply the candidate patch in the isolated worktree, run the fixed
+        checks there, then always revert so the sandbox returns to clean HEAD.
+        Green -> awaiting approval. Red -> route back to diagnosis."""
+        patch = self._latest_patch
+        if patch is None:
+            raise _Stop("no patch to verify")
+        cwd = self._work_cwd()
+        applied = self.sandbox.apply(patch.diff)
+        if not applied.ok:
+            self.budget.tick_iteration()
+            self._iter("verify", hypothesis=patch.hypothesis,
+                       decision="patch did not apply in sandbox",
+                       observations=[applied.stderr[:500]])
+            self._route_failure(patch, f"patch did not apply cleanly:\n{applied.stderr}")
+            return
+        results = [(k, self.tools.run_check(k, cwd=cwd, sandboxed=True))
+                   for k in _checks_for(self.task)]
+        # Always revert first, before any branching, so the sandbox stays clean.
+        self.sandbox.revert(patch.diff)
+        failed = [(k, o) for k, o in results if not o.passed]
+        self.budget.tick_iteration()
+        obs = [f"{k.value}: {'PASS' if o.passed else 'FAIL'}" for k, o in results]
+        if not failed:
+            self.task.transition(TaskStatus.AWAITING_APPROVAL)
+            self._iter("verify", hypothesis=patch.hypothesis,
+                       decision="sandbox checks green; awaiting approval",
+                       observations=obs + ["sandbox reverted to clean HEAD"])
+            self._save()
+            return
+        evidence = "\n".join(o.raw_tail for _, o in failed)[:3000]
+        self._iter("verify", hypothesis=patch.hypothesis,
+                   decision="sandbox checks failed; reverted", observations=obs)
+        self._route_failure(patch, evidence)
+
+    def _route_failure(self, patch: Patch, evidence: str) -> None:
+        self._latest_patch = None
+        self._last_failure = evidence
+        self.task.transition(TaskStatus.DIAGNOSED)
+        self._save()
+        if self.budget.note_hypothesis_failure(patch.hypothesis):
+            if self.budget.note_rethink():
+                raise _Stop("repeated unsuccessful diagnosis; escalated to human")
 
     # -- phase 3: apply + verify ------------------------------------------
     def _apply_and_verify(self) -> None:
         patch = self._latest_patch
         if patch is None:
             raise _Stop("no patch to verify")
-        applied = self.tools.git_apply(patch.diff, cwd=self.verify_cwd)
+        applied = self.tools.git_apply(patch.diff, cwd=self.main_cwd)
         if not applied.ok:
             self._rollback_state(applied.stderr)
             return
-        results = [(k, self.tools.run_check(k, cwd=self.verify_cwd))
+        results = [(k, self.tools.run_check(k, cwd=self.main_cwd))
                    for k in _checks_for(self.task)]
         failed = [(k, o) for k, o in results if not o.passed]
         self.budget.tick_iteration()
@@ -235,7 +314,7 @@ class CoderHarness:
                        decision="all checks green", observations=obs)
             return
         # Roll the patch back, then route the failure back to diagnosis.
-        self.tools.git_apply(patch.diff, cwd=self.verify_cwd, reverse=True)
+        self.tools.git_apply(patch.diff, cwd=self.main_cwd, reverse=True)
         evidence = "\n".join(o.raw_tail for _, o in failed)[:3000]
         self._iter("verify", hypothesis=patch.hypothesis,
                    decision="checks failed; rolled back", observations=obs)
@@ -250,6 +329,63 @@ class CoderHarness:
         self._latest_patch = None
         self._last_failure = f"patch did not apply cleanly:\n{stderr}"
         self.task.transition(TaskStatus.DIAGNOSED)
+
+    # -- human-approved landing on the main checkout ----------------------
+    def _land_to_main(self) -> None:
+        """Human-approved: apply the already-verified patch to the main checkout
+        and run a final unit smoke (decision 3). A failed apply or unit run is
+        rolled back; nothing is ever committed automatically."""
+        patch = self._latest_patch or self._load_latest_patch()
+        if patch is None:
+            raise _Stop("no patch to apply")
+        main = self.main_cwd
+        applied = self.tools.git_apply(patch.diff, cwd=main)
+        if not applied.ok:
+            self._iter("landing", decision="patch failed to apply to main",
+                       observations=[applied.stderr[:500]])
+            self._save()
+            raise _Stop("approved patch did not apply to the main checkout: "
+                        + applied.stderr[:300])
+        outcome = self.tools.run_check(CheckKind.UNIT, cwd=main)
+        if outcome.passed:
+            self.task.transition(TaskStatus.VERIFIED)
+            self._iter("landing", hypothesis=patch.hypothesis,
+                       decision="applied to main; unit green",
+                       observations=["unit: PASS"])
+            self._save()
+            return
+        # Main unit failed: undo the patch and send the failure back. The same
+        # retry discipline as a sandbox failure prevents an infinite loop.
+        self.tools.git_apply(patch.diff, cwd=main, reverse=True)
+        self._iter("landing", hypothesis=patch.hypothesis,
+                   decision="main unit failed; rolled back",
+                   observations=[outcome.raw_tail[:500]])
+        self._latest_patch = None
+        self._last_failure = outcome.raw_tail
+        self.task.transition(TaskStatus.DIAGNOSED)
+        self._save()
+        self.budget.tick_iteration()
+        if self.budget.note_hypothesis_failure(patch.hypothesis):
+            if self.budget.note_rethink():
+                raise _Stop(
+                    "approved patch repeatedly failed on the main checkout; "
+                    "escalated to human")
+
+    def _load_latest_patch(self) -> Patch | None:
+        try:
+            return self.store.latest_patch(self.task.id)
+        except FileNotFoundError:
+            return None
+
+    def _teardown_sandbox(self) -> None:
+        if self.sandbox is None:
+            return
+        try:
+            self.sandbox.teardown()
+        except OSError as exc:
+            # A teardown hiccup must not flip a recorded verdict; just log it.
+            self._iter("landing", decision="sandbox teardown warning",
+                       observations=[str(exc)[:300]])
 
     # -- helpers -----------------------------------------------------------
     def _ask(self, messages, task_kind):
@@ -279,7 +415,7 @@ class CoderHarness:
         self._probes += 1
         if self._probes > self.max_probes:
             raise _Stop("too many read-only probes without progress")
-        label, target, fn = self._dispatch_readonly(step)
+        label, target, fn = self._dispatch_readonly(step, self._work_cwd())
         try:
             body = fn()
             status = "ok"
@@ -313,9 +449,8 @@ class CoderHarness:
             )
         return result
 
-    def _dispatch_readonly(self, step: ReadOnlyStep) -> tuple[str, str, object]:
+    def _dispatch_readonly(self, step: ReadOnlyStep, cwd: Path) -> tuple[str, str, object]:
         """Map a read-only step to (action label, target desc, result thunk)."""
-        cwd = self.verify_cwd
         if isinstance(step, ReadFileStep):
             return ("read_file", step.path,
                     lambda: f"FILE {step.path}:\n"
