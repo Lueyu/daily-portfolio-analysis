@@ -32,12 +32,17 @@ from .models import (
 from .parser import (
     ApplyPatchStep,
     BlockedStep,
+    GlobStep,
+    GrepStep,
+    ListDirStep,
+    ProbeEnvStep,
     ReadFileStep,
+    ReadOnlyStep,
     RunCheckStep,
     parse_agent_step,
 )
 from .prompts import diagnose_prompt, reproduce_prompt
-from .safety import scan_test_cheating
+from .safety import SafetyViolation, scan_test_cheating
 from .task_store import TaskStore
 from .tools import ControlledTools
 
@@ -129,8 +134,8 @@ class CoderHarness:
             if evidence:
                 messages = messages + [{"role": "user", "content": evidence}]
             _, step = self._ask(messages, ModelTask.EXTRACT)
-            if isinstance(step, ReadFileStep):
-                evidence += self._read(step.path)
+            if isinstance(step, ReadOnlyStep):
+                evidence += self._observe(step, phase="reproduce")
             elif isinstance(step, RunCheckStep):
                 outcome = self.tools.run_check(step.kind, cwd=self.verify_cwd)
                 if outcome.passed:
@@ -170,8 +175,8 @@ class CoderHarness:
             )
             messages = [{"role": "user", "content": prompt}]
             _, step = self._ask(messages, ModelTask.PLAN)
-            if isinstance(step, ReadFileStep):
-                self._last_failure += self._read(step.path, phase="diagnose")
+            if isinstance(step, ReadOnlyStep):
+                self._last_failure += self._observe(step, phase="diagnose")
                 continue
             if isinstance(step, BlockedStep):
                 raise _Stop(step.reason or "model blocked during diagnosis")
@@ -267,42 +272,73 @@ class CoderHarness:
                 }]
         raise _Stop("model repeatedly returned malformed JSON")
 
-    def _read(self, path: str | None, *, phase: str = "reproduce") -> str:
+    def _observe(self, step: ReadOnlyStep, *, phase: str) -> str:
+        """Run one read-only tool, count it against the shared probe budget,
+        and leave a trace. Every read-only action shares one budget so the
+        model cannot dodge the cap by switching tools."""
         self._probes += 1
         if self._probes > self.max_probes:
-            raise _Stop("too many read probes without progress")
-        target = path or ""
+            raise _Stop("too many read-only probes without progress")
+        label, target, fn = self._dispatch_readonly(step)
         try:
-            content = self.tools.read_file(target, cwd=self.verify_cwd)
-            result = f"\nFILE {target}:\n{content[:4000]}\n"
+            body = fn()
             status = "ok"
-        except (FileNotFoundError, ValueError, OSError) as exc:
-            # A bad path guess is feedback, not a fatal error. Surface it as an
-            # observation so the model can choose an existing file next round
-            # instead of crashing the whole run on one wrong filename.
-            result = (f"\nREAD FAILED for {target}: {exc}. "
-                      "Choose a different, existing path.\n")
+        except (FileNotFoundError, ValueError, OSError, SafetyViolation) as exc:
+            # A bad guess (missing path, invalid regex, denied probe target) is
+            # feedback, not a fatal error: surface it so the model self-corrects.
+            body = (f"{label.upper()} FAILED for {target}: {exc}. "
+                    "Choose valid input.")
             status = "failed"
-        # Leave a trace so the UI can show exactly what the agent inspected.
+        result = f"\n{body}\n"
+        # Leave a trace (including a short output snippet) so the UI can show
+        # exactly what the agent inspected and what it found.
         self._iter(
-            phase, action="read_file",
+            phase, action=label,
             decision=f"probe {self._probes}/{self.max_probes}: {target} ({status})",
-            observations=[f"{target}: {status}"])
+            observations=[f"{target}: {status}", body[:300]])
         # Near the hard cap, give one explicit last chance instead of silently
         # killing the run: reproduce with a check, or block with a human checklist.
         if self._probes >= self.probe_warning:
             result += (
-                "\n[PROBE BUDGET WARNING] You have read many files without "
-                "reproducing a failing check. Your next action MUST be either:\n"
+                "\n[PROBE BUDGET WARNING] You have run many read-only probes "
+                "without reproducing a failing check. Your next action MUST be "
+                "either:\n"
                 "- run_check to actually reproduce the failure, or\n"
-                "- blocked if no test can reproduce it (e.g. local environment, "
-                "database, seeded data, or configuration problems). In that case "
-                "the reason MUST include a concrete human checklist such as: is the "
-                "database/service running? Is the data seeded/migrated? Which "
-                "config does the app point at?\n"
-                "Do not call read_file again.\n"
+                "- blocked if no test can reproduce it (e.g. a local service or "
+                "database is down). Call probe_env first; if a service is DOWN the "
+                "reason MUST name the service and how to start it (for PostgreSQL "
+                "run scripts/db/start-db.ps1). Also state whether data is seeded/"
+                "migrated and which config the app points at.\n"
+                "Do not run another read-only probe.\n"
             )
         return result
+
+    def _dispatch_readonly(self, step: ReadOnlyStep) -> tuple[str, str, object]:
+        """Map a read-only step to (action label, target desc, result thunk)."""
+        cwd = self.verify_cwd
+        if isinstance(step, ReadFileStep):
+            return ("read_file", step.path,
+                    lambda: f"FILE {step.path}:\n"
+                            + self.tools.read_file(step.path, cwd=cwd)[:4000])
+        if isinstance(step, ListDirStep):
+            return ("list_dir", step.path,
+                    lambda: f"LIST {step.path}:\n"
+                            + self.tools.list_dir(step.path, cwd=cwd))
+        if isinstance(step, GlobStep):
+            return ("glob", step.pattern,
+                    lambda: f"GLOB {step.pattern}:\n"
+                            + self.tools.glob(step.pattern, step.path, cwd=cwd))
+        if isinstance(step, GrepStep):
+            return ("grep", step.pattern,
+                    lambda: f"GREP {step.pattern}:\n"
+                            + self.tools.grep(step.pattern, step.path,
+                                              step.glob_include, step.max_results,
+                                              cwd=cwd))
+        if isinstance(step, ProbeEnvStep):
+            return ("probe_env", "env",
+                    lambda: "ENVIRONMENT:\n"
+                            + self.tools.probe_env(step.targets, cwd=cwd))
+        raise ValueError(f"unsupported read-only step: {type(step).__name__}")
 
     def _iter(self, phase, *, hypothesis="", action="", decision="",
               observations=None) -> None:

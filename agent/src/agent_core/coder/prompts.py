@@ -1,8 +1,8 @@
 """Prompt templates for the coder inner loop.
 
 The prompts are deliberately explicit about:
-  * the closed action set (only read_file / run_check / apply_patch / finish /
-    blocked);
+  * the closed action set (read-only exploration read_file/list_dir/glob/grep/
+    probe_env, then run_check / apply_patch / finish / blocked);
   * the red-first verification gate and the ban on editing/skipping tests;
   * the fact that a patch is proposed, never committed or pushed by the agent.
 
@@ -16,6 +16,10 @@ from .models import AcceptanceCriterion, CheckKind
 _ACTION_CONTRACT = (
     "只输出一个 JSON 对象，不要输出多余解释。允许的 action 仅有：\n"
     "1. read_file：{\"action\":\"read_file\",\"params\":{\"path\":\"server/...\"}}\n"
+    "1b. list_dir：{\"action\":\"list_dir\",\"params\":{\"path\":\"server\"}}\n"
+    "1c. glob：{\"action\":\"glob\",\"params\":{\"pattern\":\"server/**/*.ts\"}}\n"
+    "1d. grep：{\"action\":\"grep\",\"params\":{\"pattern\":\"正则\",\"glob_include\":\"*.ts\"}}\n"
+    "1e. probe_env：{\"action\":\"probe_env\"}（探测本地数据库/后端/前端是否在运行）\n"
     "2. run_check：{\"action\":\"run_check\",\"params\":{\"check\":\"unit|e2e|typecheck|lint\"}}\n"
     "3. apply_patch：{\"action\":\"apply_patch\",\"params\":{\"diff\":\"<unified diff>\",\"hypothesis\":\"<根因>\"}}\n"
     "4. finish：{\"action\":\"finish\",\"params\":{\"summary\":\"...\"}}\n"
@@ -56,8 +60,12 @@ def reproduce_prompt(problem: str, acceptance: list[AcceptanceCriterion]) -> str
         f"问题描述：{problem}\n\n"
         "验收标准（不可放宽）：\n"
         f"{_fmt_acceptance(acceptance)}\n\n"
-        "先用 read_file 阅读相关代码与测试（少量、有针对性），再用 run_check 运行能复现该问题的测试。\n"
-        "不要连续读取大量文件：读完关键代码后就必须 run_check 取证。\n"
+        "先用 list_dir / glob / grep 定位相关代码与测试（少量、有针对性），"
+        "再用 read_file 读关键文件，然后用 run_check 运行能复现该问题的测试。\n"
+        "不要连续盲读文件：定位到关键代码后就必须 run_check 取证。\n"
+        "凡是现象像“页面为空、本地无数据、连不上、服务无响应”，先调用 probe_env："
+        "若有服务 DOWN，直接输出 blocked，reason 写明哪个服务没起、如何启动"
+        "（例如 PostgreSQL 未运行就执行 scripts/db/start-db.ps1）。\n"
         "若 run_check 无法复现，或你判断问题属于本地环境/数据库/数据迁移/seed/配置 "
         "（而非代码缺陷），立即输出 blocked；reason 中给出可执行的人工排查清单，"
         "例如：相关服务是否启动、数据库是否可连接、迁移与 seed 是否执行、应用实际指向哪个配置。\n"

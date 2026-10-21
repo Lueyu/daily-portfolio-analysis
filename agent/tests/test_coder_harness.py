@@ -9,6 +9,8 @@ from agent_core.coder.models import (
     CheckKind,
     CommandResult,
     DevTask,
+    ProbeResult,
+    ProbeTarget,
     TaskStatus,
 )
 from agent_core.coder.task_store import TaskStore
@@ -217,3 +219,41 @@ def test_manual_gate_pauses_then_approve_continues(tmp_path):
     resumed = h.run(auto_approve=True)
     assert resumed.status == TaskStatus.VERIFIED
     assert runner.applied               # applied after approval
+
+
+def test_probe_env_detects_down_db_and_blocks_with_checklist(tmp_path):
+    # A down database is an environment problem: the agent must detect it with
+    # probe_env and block with a concrete human checklist, not burn the budget.
+    runner = FakeRunner([1])
+    probe = step("probe_env", phase="reproduce")
+    give_up = step(
+        "blocked", phase="reproduce",
+        reason="postgres down; run scripts/db/start-db.ps1")
+    chat = ScriptedChat([probe, give_up])
+    h, store = harness_for(tmp_path, chat, runner)
+    h.tools.probe_targets = [
+        ProbeTarget(name="postgres", kind="tcp", target="127.0.0.1:5432")]
+    h.tools._probe = lambda targets: [
+        ProbeResult(name="postgres", kind="tcp", target="127.0.0.1:5432",
+                    up=False, detail="ConnectionRefused")]
+    out = h.run(auto_approve=True)
+    assert out.status == TaskStatus.BLOCKED
+    assert any(i.action == "probe_env" for i in store.read_iterations("dev_h1"))
+
+
+def test_grep_then_run_check_reproduces_and_continues(tmp_path):
+    # grep is a read-only probe: it must be traced and not break the loop that
+    # then reproduces the failure with run_check and completes a fix.
+    runner = FakeRunner([1, 0])
+    (tmp_path / "server").mkdir()
+    (tmp_path / "server" / "x.ts").write_text("caps()\n", encoding="utf-8")
+    grep_step = step("grep", phase="reproduce", pattern="caps",
+                     glob_include="*.ts")
+    chat = ScriptedChat([grep_step, RED, PATCH1])
+    h, store = harness_for(tmp_path, chat, runner)
+    out = h.run(auto_approve=True)
+    assert out.status == TaskStatus.VERIFIED
+    recs = store.read_iterations("dev_h1")
+    assert any(i.action == "grep" for i in recs)
+    assert any("server/x.ts" in o for i in recs if i.action == "grep"
+               for o in i.observations)
