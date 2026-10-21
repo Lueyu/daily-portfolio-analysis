@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import tempfile
 from pathlib import Path
 
@@ -84,6 +85,18 @@ class TaskStore:
         path = d / f"{n:04d}.diff"
         path.write_text(patch.diff, encoding="utf-8")
         return path
+
+    def latest_patch(self, task_id: str) -> Patch:
+        """Reload the newest saved patch from disk (cross-process approval)."""
+        d = self._dir(task_id) / "patches"
+        files = sorted(d.glob("*.diff"))
+        if not files:
+            raise FileNotFoundError(f"no patch found for task {task_id}")
+        diff = files[-1].read_text(encoding="utf-8")
+        targets = list(dict.fromkeys(
+            re.findall(r"^\+\+\+ b/(.+)$", diff, re.M)))
+        return Patch(patch_id=files[-1].stem, diff=diff,
+                     target_files=targets, hypothesis="")
 
     # -- helper ------------------------------------------------------------
     @staticmethod

@@ -9,7 +9,12 @@ from pathlib import Path
 import pytest
 
 from agent_core.coder.linker import Linker
-from agent_core.coder.models import CommandResult
+from agent_core.coder.models import (
+    AcceptanceCriterion,
+    CheckKind,
+    CommandResult,
+    DevTask,
+)
 from agent_core.coder.sandbox import WorktreeSandbox, SandboxError, prune_stale
 from agent_core.coder.tools import ControlledTools
 
@@ -174,3 +179,24 @@ def test_options_skip_link_and_copy(tmp_path):
     sb.ensure()
     assert linker.made == []
     assert not (sb.path / ".env").exists()
+
+
+def _a_task(tmp):
+    return DevTask(
+        id="dev_1", title="t", problem="p",
+        acceptance=[AcceptanceCriterion(id="a", description="d",
+                                        check=CheckKind.UNIT)],
+        workdir=str(tmp / "main"))
+
+
+def test_latest_patch_reads_newest_diff(tmp_path):
+    from agent_core.coder.models import Patch
+    from agent_core.coder.task_store import TaskStore
+    store = TaskStore(tmp_path / "tasks")
+    task = _a_task(tmp_path)
+    store.create(task)
+    store.save_patch("dev_1", Patch(patch_id="p1", diff="--- a/a.ts\n+++ b/a.ts\n@@\n+1\n"))
+    store.save_patch("dev_1", Patch(patch_id="p2", diff="--- a/b.ts\n+++ b/b.ts\n@@\n+2\n"))
+    latest = store.latest_patch("dev_1")
+    assert "b.ts" in latest.diff
+    assert latest.target_files == ["b.ts"]

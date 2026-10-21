@@ -65,3 +65,24 @@ def test_probe_defaults_target_localhost(tmp_path, monkeypatch):
     assert settings.probe_backend_url == "http://localhost:3000"
     assert settings.probe_frontend_url == "http://localhost:8080"
     assert settings.probe_timeout_seconds == 2.0
+
+
+def test_sandbox_defaults(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    settings = Settings(_env_file=None)
+    assert settings.coder_sandbox_enabled is True
+    assert settings.coder_link_dependencies is True
+    assert settings.coder_copy_env_files is True
+    wt = Path(settings.coder_worktree_dir)
+    assert wt.is_absolute()
+    assert AGENT_ROOT in wt.parents
+
+
+def test_sandbox_can_be_disabled(monkeypatch):
+    monkeypatch.setenv("CODER_SANDBOX_ENABLED", "false")
+    config.get_settings.cache_clear()
+    try:
+        s = Settings(_env_file=None)
+        assert s.coder_sandbox_enabled is False
+    finally:
+        config.get_settings.cache_clear()

@@ -87,7 +87,17 @@ class Settings(BaseSettings):
     probe_frontend_url: str = "http://localhost:8080"
     probe_timeout_seconds: float = 2.0
 
-    @field_validator("checkpoint_dir", "coder_data_dir")
+    # Coder execution sandbox (P0b). When enabled, reproduction/verification run
+    # in an isolated git worktree; the main checkout is touched only after a
+    # human approves the patch. The isolated E2E script name and its timeout are
+    # constants in safety.py / tools.py (single source of truth), so they are
+    # not duplicated here.
+    coder_sandbox_enabled: bool = True
+    coder_worktree_dir: str = str(AGENT_ROOT / "data" / "coder" / "worktrees")
+    coder_link_dependencies: bool = True
+    coder_copy_env_files: bool = True
+
+    @field_validator("checkpoint_dir", "coder_data_dir", "coder_worktree_dir")
     @classmethod
     def _anchor_data_dirs(cls, value: str) -> str:
         """Resolve relative data paths against the agent package root.
@@ -110,3 +120,4 @@ def get_settings() -> Settings:
 def ensure_dirs(s: Settings) -> None:
     Path(s.checkpoint_dir).mkdir(parents=True, exist_ok=True)
     Path(s.coder_data_dir).mkdir(parents=True, exist_ok=True)
+    Path(s.coder_worktree_dir).mkdir(parents=True, exist_ok=True)
