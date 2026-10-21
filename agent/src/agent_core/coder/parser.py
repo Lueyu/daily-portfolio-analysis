@@ -1,31 +1,54 @@
 """Parse model actions into a closed, validated set of step objects.
 
-The model may only propose one of five actions. Anything else (unknown action,
-malformed payload, a relative check script, missing required fields) raises
-ValueError and the harness re-prompts rather than executing garbage.
+Validation and dispatch are owned by the tool registry (registry.py). This
+module defines the concrete step models and builds the default registry. An
+unknown action, malformed payload or missing field raises ValueError; the
+harness re-prompts rather than executing garbage.
+
+The read-only exploration family (read_file/list_dir/glob/grep/probe_env)
+shares the ReadOnlyStep marker base so the harness can route it through one
+budgeted observation path.
 """
 
 from __future__ import annotations
 
-from enum import Enum
-
 from pydantic import BaseModel, ConfigDict
 
-from ..models import parse_json
-from .models import CheckKind
+from .models import CheckKind, Text
+from .registry import Phase, ToolKind, ToolRegistry, ToolSpec
 
 
-class ActionType(str, Enum):
-    READ_FILE = "read_file"
-    RUN_CHECK = "run_check"
-    APPLY_PATCH = "apply_patch"
-    FINISH = "finish"
-    BLOCKED = "blocked"
+class ReadOnlyStep(BaseModel):
+    """Marker base for every side-effect-free exploration tool."""
 
-
-class ReadFileStep(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    path: str
+
+
+class ReadFileStep(ReadOnlyStep):
+    path: Text
+
+
+class ListDirStep(ReadOnlyStep):
+    path: str = "."
+
+
+class GlobStep(ReadOnlyStep):
+    pattern: Text
+    path: str = "."
+
+
+class GrepStep(ReadOnlyStep):
+    pattern: Text
+    path: str = "."
+    glob_include: str | None = None
+    max_results: int = 100
+
+
+class ProbeEnvStep(ReadOnlyStep):
+    # Names of configured targets; None/empty means all configured targets.
+    # The execution layer whitelists these against the configured localhost
+    # set, so the model can never name an arbitrary host.
+    targets: list[str] | None = None
 
 
 class RunCheckStep(BaseModel):
@@ -35,62 +58,60 @@ class RunCheckStep(BaseModel):
 
 class ApplyPatchStep(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    diff: str
+    diff: Text
     hypothesis: str = ""
 
 
 class FinishStep(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    summary: str
+    summary: Text
 
 
 class BlockedStep(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    reason: str
+    reason: Text
+
+
+def _run_check(payload: dict) -> RunCheckStep:
+    """Map the JSON 'check' name to the CheckKind enum, refusing free-form paths."""
+    check = payload.get("check")
+    if not isinstance(check, str) or ".." in check:
+        raise ValueError("run_check requires a whitelisted check kind")
+    try:
+        return RunCheckStep(kind=CheckKind(check))
+    except ValueError as exc:
+        raise ValueError(f"unknown check kind: {check!r}") from exc
+
+
+def build_default_registry() -> ToolRegistry:
+    """Register every tool available to the coder."""
+    reg = ToolRegistry()
+    both = frozenset({Phase.REPRODUCE, Phase.DIAGNOSE})
+    diagnose_only = frozenset({Phase.DIAGNOSE})
+
+    # Read-only exploration (available in both phases).
+    reg.register(ToolSpec("read_file", ToolKind.READ_ONLY, ReadFileStep, both))
+    reg.register(ToolSpec("list_dir", ToolKind.READ_ONLY, ListDirStep, both))
+    reg.register(ToolSpec("glob", ToolKind.READ_ONLY, GlobStep, both))
+    reg.register(ToolSpec("grep", ToolKind.READ_ONLY, GrepStep, both))
+    reg.register(ToolSpec("probe_env", ToolKind.READ_ONLY, ProbeEnvStep, both))
+    # Verification: run an allow-listed check.
+    reg.register(ToolSpec(
+        "run_check", ToolKind.VERIFY, RunCheckStep, both,
+        from_payload=_run_check))
+    # Proposing a change or finishing is only allowed after reproduction.
+    reg.register(ToolSpec(
+        "apply_patch", ToolKind.PATCH, ApplyPatchStep, diagnose_only))
+    reg.register(ToolSpec(
+        "finish", ToolKind.TERMINAL, FinishStep, diagnose_only))
+    reg.register(ToolSpec(
+        "blocked", ToolKind.TERMINAL, BlockedStep, both))
+    return reg
+
+
+_DEFAULT_REGISTRY = build_default_registry()
 
 
 def parse_agent_step(text: str) -> BaseModel:
-    """Validate raw model text and return the matching typed step."""
-    data = parse_json(text)
-    if not isinstance(data, dict):
-        raise ValueError("model action must be a JSON object")
-    action = data.get("action")
-    payload = data.get("params", data)
-
-    if action == ActionType.READ_FILE.value:
-        path = payload.get("path")
-        if not isinstance(path, str) or not path.strip():
-            raise ValueError("read_file requires a non-empty path")
-        return ReadFileStep(path=path.strip())
-
-    if action == ActionType.RUN_CHECK.value:
-        check = payload.get("check")
-        if not isinstance(check, str) or ".." in check:
-            raise ValueError("run_check requires a whitelisted check kind")
-        try:
-            kind = CheckKind(check)
-        except ValueError as exc:
-            raise ValueError(f"unknown check kind: {check!r}") from exc
-        return RunCheckStep(kind=kind)
-
-    if action == ActionType.APPLY_PATCH.value:
-        diff = payload.get("diff")
-        if not isinstance(diff, str) or not diff.strip():
-            raise ValueError("apply_patch requires a non-empty diff")
-        return ApplyPatchStep(
-            diff=diff, hypothesis=str(payload.get("hypothesis", "") or "")
-        )
-
-    if action == ActionType.FINISH.value:
-        summary = payload.get("summary")
-        if not isinstance(summary, str) or not summary.strip():
-            raise ValueError("finish requires a summary")
-        return FinishStep(summary=summary.strip())
-
-    if action == ActionType.BLOCKED.value:
-        reason = payload.get("reason")
-        if not isinstance(reason, str) or not reason.strip():
-            raise ValueError("blocked requires a reason")
-        return BlockedStep(reason=reason.strip())
-
-    raise ValueError(f"unsupported action: {action!r}")
+    """Validate raw model text via the default registry."""
+    return _DEFAULT_REGISTRY.parse(text)
