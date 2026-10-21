@@ -57,6 +57,39 @@ _FORBIDDEN_GIT_TOKENS = {
 }
 _ALLOWED_GIT = {"status", "diff", "stash", "apply", "log", "rev-parse"}
 
+# The only `git worktree` subcommands the sandbox lifecycle may use.
+_ALLOWED_WORKTREE_SUB = {"add", "remove", "list", "prune"}
+
+
+def guard_worktree_args(args: list[str]) -> None:
+    """Validate the tokens that follow `git worktree`.
+
+    Only fixed shapes are accepted:
+      add --detach <path> HEAD | remove <path> | list --porcelain | prune
+    """
+    if not args:
+        raise SafetyViolation("empty worktree command")
+    sub = args[0]
+    if sub not in _ALLOWED_WORKTREE_SUB:
+        raise SafetyViolation(f"worktree subcommand not allowed: {sub!r}")
+    for token in args[1:]:
+        if token in _FORBIDDEN_GIT_TOKENS or token.startswith("--force"):
+            raise SafetyViolation(f"worktree argument not allowed: {token!r}")
+    if sub == "add":
+        if len(args) != 4 or args[1] != "--detach" or args[3] != "HEAD":
+            raise SafetyViolation("worktree add must be: add --detach <path> HEAD")
+        if not args[2] or args[2].startswith("-"):
+            raise SafetyViolation("worktree add requires a concrete path")
+    elif sub == "remove":
+        if len(args) != 2 or not args[1] or args[1].startswith("-"):
+            raise SafetyViolation("worktree remove requires a concrete path")
+    elif sub == "list":
+        if args != ["list", "--porcelain"]:
+            raise SafetyViolation("worktree list must be: list --porcelain")
+    elif sub == "prune":
+        if args != ["prune"]:
+            raise SafetyViolation("worktree prune takes no arguments")
+
 
 def _is_forbidden(path: Path) -> bool:
     if set(path.parts) & _FORBIDDEN_NAMES:
@@ -95,7 +128,7 @@ def safe_join(workdir: Path | str, rel: str) -> Path:
     return candidate
 
 
-def npm_run_args(kind: CheckKind | str) -> list[str]:
+def npm_run_args(kind: CheckKind | str, sandboxed: bool = False) -> list[str]:
     """Return the fixed argv for an allowed check, or raise for anything else."""
     if not isinstance(kind, CheckKind):
         try:
@@ -104,7 +137,13 @@ def npm_run_args(kind: CheckKind | str) -> list[str]:
             raise SafetyViolation(f"unknown check kind: {kind!r}") from exc
     if kind not in _CHECK_SCRIPTS:
         raise SafetyViolation(f"check kind not allow-listed: {kind!r}")
-    return ["npm", "run", _CHECK_SCRIPTS[kind]]
+    script = _CHECK_SCRIPTS[kind]
+    # Inside a worktree the E2E suite must use the isolated-port fullstack
+    # config (3099/8090 + deterministic fake agent). The default script binds
+    # Vite to 8080 and would collide with the developer's running stack.
+    if sandboxed and kind == CheckKind.E2E:
+        script = "test:e2e:fullstack"
+    return ["npm", "run", script]
 
 
 # Patterns that weaken or silence the test suite.

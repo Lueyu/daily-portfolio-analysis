@@ -9,7 +9,7 @@ from agent_core.coder.models import (
     ProbeResult,
     ProbeTarget,
 )
-from agent_core.coder.safety import SafetyViolation
+from agent_core.coder.safety import SafetyViolation, guard_worktree_args
 from agent_core.coder.tools import ControlledTools, parse_test_output
 
 
@@ -252,3 +252,58 @@ def test_probe_env_subset_by_name(tmp_path):
 
 def test_probe_env_without_targets_is_informative(tmp_path):
     assert "No environment probes configured" in ControlledTools(tmp_path).probe_env()
+
+
+# --- worktree guard and controlled commands ----------------------------
+def test_guard_worktree_accepts_fixed_shapes():
+    guard_worktree_args(["add", "--detach", "D:/wt/t1", "HEAD"])
+    guard_worktree_args(["remove", "D:/wt/t1"])
+    guard_worktree_args(["list", "--porcelain"])
+    guard_worktree_args(["prune"])
+
+
+def test_guard_worktree_rejects_unknown_subcommand():
+    with pytest.raises(SafetyViolation):
+        guard_worktree_args(["move", "x"])
+
+
+def test_guard_worktree_rejects_force_and_branch_flexibility():
+    for bad in (
+        ["add", "--force", "--detach", "D:/wt/t1", "HEAD"],
+        ["add", "--detach", "D:/wt/t1", "main"],
+        ["remove", "--force", "D:/wt/t1"],
+        ["add", "-f", "D:/wt/t1"],
+    ):
+        with pytest.raises(SafetyViolation):
+            guard_worktree_args(bad)
+
+
+def test_git_worktree_add_uses_fixed_argv(tmp_path):
+    runner = script_runner(
+        [("worktree", CommandResult(argv=["git", "worktree"], returncode=0))])
+    tools = ControlledTools(tmp_path, runner=runner)
+    tools.git_worktree_add(tmp_path / "wt" / "t1")
+    assert runner.calls[0][0] == ["git", "worktree", "add", "--detach",
+                                 str(tmp_path / "wt" / "t1"), "HEAD"]
+
+
+def test_git_worktree_list_and_prune_argv(tmp_path):
+    runner = script_runner(
+        [("worktree", CommandResult(argv=["git", "worktree"], returncode=0,
+                                    stdout="worktree D:/stock/code"))])
+    tools = ControlledTools(tmp_path, runner=runner)
+    assert "D:/stock/code" in tools.git_worktree_list()
+    tools.git_worktree_prune()
+    assert any(c[0] == ["git", "worktree", "list", "--porcelain"]
+               for c in runner.calls)
+    assert runner.calls[-1][0] == ["git", "worktree", "prune"]
+
+
+def test_sandbox_e2e_uses_fullstack_script(tmp_path):
+    runner = script_runner([])  # every check returns rc=0
+    tools = ControlledTools(tmp_path, runner=runner)
+    tools.run_check(CheckKind.E2E, sandboxed=True)
+    assert runner.calls[0][0] == ["npm", "run", "test:e2e:fullstack"]
+    # Non-sandbox E2E still uses the Vite-only smoke script.
+    tools.run_check(CheckKind.E2E, sandboxed=False)
+    assert runner.calls[-1][0] == ["npm", "run", "test:e2e"]

@@ -30,6 +30,7 @@ from .models import (
 )
 from .safety import (
     guard_git_args,
+    guard_worktree_args,
     is_sensitive_entry,
     npm_run_args,
     safe_join,
@@ -363,10 +364,12 @@ class ControlledTools:
         return "\n".join(lines)
 
     # -- verification ------------------------------------------------------
-    def run_check(self, kind: CheckKind, cwd: Path | str | None = None) -> TestOutcome:
-        argv = npm_run_args(kind)
+    def run_check(self, kind: CheckKind, cwd: Path | str | None = None,
+                  sandboxed: bool = False) -> TestOutcome:
+        argv = npm_run_args(kind, sandboxed=sandboxed)
         base = Path(cwd) if cwd else self.workdir
-        result = self._run(argv, base, _CHECK_TIMEOUTS[kind], None)
+        timeout = 900.0 if (sandboxed and kind == CheckKind.E2E) else _CHECK_TIMEOUTS[kind]
+        result = self._run(argv, base, timeout, None)
         return parse_test_output(kind, argv, result)
 
     # -- git (harness-internal only; never exposed as a model action) ------
@@ -390,3 +393,23 @@ class ControlledTools:
         guard_git_args(["status", "--short"])
         base = Path(cwd) if cwd else self.workdir
         return self._run(["git", "status", "--short"], base, 120.0, None).stdout
+
+    # -- git worktree (harness-internal sandbox management; never a model action)
+    def git_worktree_add(self, path: Path | str,
+                         cwd: Path | str | None = None) -> CommandResult:
+        args = ["worktree", "add", "--detach", str(Path(path)), "HEAD"]
+        guard_worktree_args(args[1:])
+        base = Path(cwd) if cwd else self.workdir
+        return self._run(["git", *args], base, 120.0, None)
+
+    def git_worktree_list(self, cwd: Path | str | None = None) -> str:
+        args = ["worktree", "list", "--porcelain"]
+        guard_worktree_args(args[1:])
+        base = Path(cwd) if cwd else self.workdir
+        return self._run(["git", *args], base, 120.0, None).stdout
+
+    def git_worktree_prune(self, cwd: Path | str | None = None) -> CommandResult:
+        args = ["worktree", "prune"]
+        guard_worktree_args(args[1:])
+        base = Path(cwd) if cwd else self.workdir
+        return self._run(["git", *args], base, 60.0, None)
