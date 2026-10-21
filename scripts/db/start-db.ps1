@@ -12,6 +12,14 @@
 #   powershell -ExecutionPolicy Bypass -File scripts\db\start-db.ps1
 # ============================================================================
 
+# pg_ctl uses exit code 3 to mean "no server running", which this script relies
+# on to decide whether a start is needed. Some hosts turn native non-zero exit
+# codes into terminating errors ($ErrorActionPreference=Stop together with
+# $PSNativeCommandUseErrorActionPreference). Disable that here so the expected
+# status=3 does not abort the script before it can start the server.
+$ErrorActionPreference = 'Continue'
+$PSNativeCommandUseErrorActionPreference = $false
+
 # Locate the PostgreSQL binary directory.
 if (-not $pgBin) {
   $pgBin = $env:PG_BIN
@@ -44,18 +52,33 @@ $logFile = Join-Path $pgData "pg-server.log"
 if ($LASTEXITCODE -eq 0) {
   Write-Host "[start-db] PostgreSQL already running (data: $pgData)." -ForegroundColor Green
 } else {
+  # 非正常关闭后可能残留 postmaster.pid：pg_ctl 报告“未运行”，但锁文件仍指向
+  # 一个已不存在的 postmaster。只有当该 PID 已消失且 5432 无监听时，才删除陈旧锁。
+  $lockFilePath = Join-Path $pgData "postmaster.pid"
+  if (Test-Path -LiteralPath $lockFilePath) {
+    $stalePid = (Get-Content -LiteralPath $lockFilePath -ErrorAction SilentlyContinue | Select-Object -First 1)
+    $staleAlive = $false
+    if ($stalePid) { $staleAlive = [bool](Get-Process -Id $stalePid -ErrorAction SilentlyContinue) }
+    $portBusy = [bool](Get-NetTCPConnection -LocalPort 5432 -State Listen -ErrorAction SilentlyContinue)
+    if (-not $staleAlive -and -not $portBusy) {
+      Remove-Item -LiteralPath $lockFilePath -Force
+      Write-Host "[start-db] removed stale postmaster.pid (PID $stalePid not running)." -ForegroundColor Yellow
+    }
+  }
+
   # 非正常关闭后，PG 启动会先做崩溃恢复并 fsync 整个数据目录（Windows 上可能
-  # 30s 以上）。pg_ctl -w 偶尔在服务器真正 ready 前就报超时退出，因此这里 start
+  # 30s 以上），叠加偶发的日志文件 sharing violation 重试约 30s，因此等待上限
+  # 给到 120s。pg_ctl -w 偶尔在服务器真正 ready 前就报超时退出，所以这里 start
   # 后再用 `pg_ctl status` 轮询兜底，只认实际状态，避免“其实已就绪却报失败”。
-  & "$pgBin\pg_ctl.exe" start -D $pgData -l $logFile -w -t 60 | Out-Null
+  & "$pgBin\pg_ctl.exe" start -D $pgData -l $logFile -w -t 120 | Out-Null
   $ready = $false
-  for ($i = 0; $i -lt 40; $i++) {
+  for ($i = 0; $i -lt 60; $i++) {
     & "$pgBin\pg_ctl.exe" status -D $pgData 2>$null | Out-Null
     if ($LASTEXITCODE -eq 0) { $ready = $true; break }
     Start-Sleep -Seconds 2
   }
   if (-not $ready) {
-    throw "PostgreSQL failed to become ready within ~80s. Check the log: $logFile"
+    throw "PostgreSQL failed to become ready within ~120s. Check the log: $logFile"
   }
   Write-Host "[start-db] PostgreSQL started (log: $logFile)." -ForegroundColor Green
 }
