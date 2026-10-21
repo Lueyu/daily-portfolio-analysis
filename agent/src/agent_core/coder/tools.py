@@ -9,6 +9,8 @@ into an argv list.
 
 from __future__ import annotations
 
+import fnmatch
+import os
 import re
 import shutil
 import subprocess
@@ -17,19 +19,59 @@ from collections.abc import Callable
 from pathlib import Path
 
 from .models import CheckKind, CommandResult, TestOutcome
-from .safety import guard_git_args, npm_run_args, safe_join
+from .safety import (
+    guard_git_args,
+    is_sensitive_entry,
+    npm_run_args,
+    safe_join,
+)
 
 # Runner signature is fixed at four args; stdin is used for `git apply`.
 Runner = Callable[[list[str], Path, float | None, str | None], CommandResult]
 
 _MAX_READ_BYTES = 200_000
 _TAIL_CHARS = 4000
+_MAX_LIST_ENTRIES = 200
+_MAX_MATCHES = 100
+_MAX_GREP_LINE_CHARS = 200
+_BINARY_SAMPLE_BYTES = 2048
 _CHECK_TIMEOUTS = {
     CheckKind.UNIT: 300.0,
     CheckKind.E2E: 600.0,
     CheckKind.TYPECHECK: 300.0,
     CheckKind.LINT: 300.0,
 }
+
+
+def _is_probably_binary(path: Path) -> bool:
+    """Heuristic: a NUL byte in the first 2 KiB marks a binary file."""
+    try:
+        with open(path, "rb") as fh:
+            return b"\x00" in fh.read(_BINARY_SAMPLE_BYTES)
+    except OSError:
+        return True
+
+
+def _walk_files(root: Path, glob_include: str | None = None):
+    """Yield files under root, pruning sensitive dirs in place for speed.
+
+    Pruning ``dirnames`` in place keeps os.walk from descending into
+    node_modules/.venv/.git at all, which is what makes grep fast on a real
+    project. An optional fnmatch filter applies to the file name.
+    """
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if not is_sensitive_entry(d)]
+        for name in filenames:
+            if is_sensitive_entry(name):
+                continue
+            if glob_include and not fnmatch.fnmatch(name, glob_include):
+                continue
+            yield Path(dirpath) / name
+
+
+def _rel_posix(path: Path, root: Path) -> str:
+    """Path of ``path`` relative to ``root`` using forward slashes."""
+    return path.resolve().relative_to(root.resolve()).as_posix()
 
 
 def _decode(blob) -> str:
@@ -133,6 +175,86 @@ class ControlledTools:
         if size > _MAX_READ_BYTES:
             raise ValueError(f"file too large ({size} bytes): {rel}")
         return path.read_text(encoding="utf-8", errors="replace")
+
+    # -- read-only exploration ---------------------------------------------
+    def list_dir(self, rel: str = ".", cwd: Path | str | None = None) -> str:
+        """List one directory level; directories end with '/'. Sensitive
+        entries (deps, secrets, VCS) are hidden and the listing is capped."""
+        base = Path(cwd) if cwd else self.workdir
+        root = safe_join(base, rel)
+        if not root.is_dir():
+            raise FileNotFoundError(f"not a directory: {rel}")
+        dirs: list[str] = []
+        files: list[str] = []
+        for entry in root.iterdir():
+            if is_sensitive_entry(entry.name):
+                continue
+            (dirs if entry.is_dir() else files).append(entry.name)
+        names = [n + "/" for n in sorted(dirs, key=str.lower)]
+        names += sorted(files, key=str.lower)
+        note = ""
+        if len(names) > _MAX_LIST_ENTRIES:
+            names = names[:_MAX_LIST_ENTRIES]
+            note = (f"\n... truncated to the first {_MAX_LIST_ENTRIES} entries; "
+                    "narrow the path")
+        return "\n".join(names) + note
+
+    def glob(self, pattern: str, rel: str = ".",
+             cwd: Path | str | None = None) -> str:
+        """Find files by name pattern (e.g. server/**/*.ts). Pure pathlib,
+        no shell. Sensitive paths are filtered and the result is capped."""
+        base = Path(cwd) if cwd else self.workdir
+        root = safe_join(base, rel)
+        if not root.is_dir():
+            raise FileNotFoundError(f"not a directory: {rel}")
+        root_resolved = root.resolve()
+        found: list[str] = []
+        for p in root.glob(pattern):
+            if not p.is_file():
+                continue
+            try:
+                rel_path = p.resolve().relative_to(root_resolved)
+            except ValueError:
+                continue  # a pattern with '..' must never leak outside the root
+            if any(is_sensitive_entry(part) for part in rel_path.parts):
+                continue
+            found.append(rel_path.as_posix())
+            if len(found) >= _MAX_MATCHES:
+                break
+        return "\n".join(sorted(found)) or "(no matches)"
+
+    def grep(self, pattern: str, rel: str = ".", glob_include: str | None = None,
+             max_results: int = _MAX_MATCHES, cwd: Path | str | None = None) -> str:
+        """Search file contents with a regex, returning 'path:line: text'.
+
+        Skips sensitive dirs, binary files and oversized files. Implemented in
+        pure Python (no system ripgrep dependency on Windows)."""
+        try:
+            regex = re.compile(pattern)
+        except re.error as exc:
+            raise ValueError(f"invalid regex {pattern!r}: {exc}") from exc
+        base = Path(cwd) if cwd else self.workdir
+        root = safe_join(base, rel)
+        if not root.is_dir():
+            raise FileNotFoundError(f"not a directory: {rel}")
+        limit = max(1, min(int(max_results or _MAX_MATCHES), _MAX_MATCHES))
+        hits: list[str] = []
+        for path in _walk_files(root, glob_include):
+            try:
+                if path.stat().st_size > _MAX_READ_BYTES or _is_probably_binary(path):
+                    continue
+                lines = path.read_text(
+                    encoding="utf-8", errors="replace").splitlines()
+            except OSError:
+                continue
+            rel_name = _rel_posix(path, root)
+            for lineno, line in enumerate(lines, 1):
+                if regex.search(line):
+                    snippet = line.strip()[:_MAX_GREP_LINE_CHARS]
+                    hits.append(f"{rel_name}:{lineno}: {snippet}")
+                    if len(hits) >= limit:
+                        return "\n".join(hits)
+        return "\n".join(hits) or "(no matches)"
 
     # -- verification ------------------------------------------------------
     def run_check(self, kind: CheckKind, cwd: Path | str | None = None) -> TestOutcome:

@@ -120,3 +120,66 @@ def test_git_diff_is_readonly(tmp_path):
     tools = ControlledTools(tmp_path, runner=runner)
     assert "DIFF" in tools.git_diff()
     assert runner.calls[0][0] == ["git", "diff"]
+
+
+# --- read-only exploration: list_dir / glob / grep ---------------------
+
+def test_list_dir_lists_entries_and_hides_sensitive(tmp_path):
+    (tmp_path / "server").mkdir()
+    (tmp_path / "server" / "a.ts").write_text("x", encoding="utf-8")
+    (tmp_path / "node_modules").mkdir()
+    (tmp_path / "node_modules" / "x").write_text("x", encoding="utf-8")
+    (tmp_path / ".env").write_text("SECRET=1", encoding="utf-8")
+    tools = ControlledTools(tmp_path)
+    out = tools.list_dir(".")
+    assert "server/" in out and "a.ts" not in out        # only one level deep
+    assert "node_modules" not in out and ".env" not in out
+
+
+def test_list_dir_rejects_escape(tmp_path):
+    with pytest.raises(SafetyViolation):
+        ControlledTools(tmp_path).list_dir("..")
+
+
+def test_list_dir_missing_path_is_file_not_found(tmp_path):
+    with pytest.raises(FileNotFoundError):
+        ControlledTools(tmp_path).list_dir("nope")
+
+
+def test_glob_finds_files_and_hides_sensitive(tmp_path):
+    (tmp_path / "server").mkdir()
+    (tmp_path / "server" / "a.service.ts").write_text("x", encoding="utf-8")
+    (tmp_path / "node_modules").mkdir()
+    (tmp_path / "node_modules" / "b.service.ts").write_text("x", encoding="utf-8")
+    out = ControlledTools(tmp_path).glob("**/*.service.ts")
+    assert "server/a.service.ts" in out
+    assert "node_modules" not in out
+
+
+def test_glob_no_matches_message(tmp_path):
+    assert ControlledTools(tmp_path).glob("**/*.zzz") == "(no matches)"
+
+
+def test_grep_matches_content_with_line_numbers(tmp_path):
+    (tmp_path / "server").mkdir(parents=True)
+    (tmp_path / "server" / "a.ts").write_text(
+        "const keep = 1\nconst findme = 2\n", encoding="utf-8")
+    out = ControlledTools(tmp_path).grep("findme", glob_include="*.ts")
+    assert "server/a.ts:2:" in out and "findme" in out
+
+
+def test_grep_respects_max_results_and_skips_binary(tmp_path):
+    (tmp_path / "a.bin").write_bytes(b"\x00\x01findme\x00")
+    (tmp_path / "a.txt").write_text("findme\n", encoding="utf-8")
+    out = ControlledTools(tmp_path).grep("findme", max_results=50)
+    assert "a.txt" in out and "a.bin" not in out
+
+
+def test_grep_bad_regex_is_value_error(tmp_path):
+    with pytest.raises(ValueError):
+        ControlledTools(tmp_path).grep("(")
+
+
+def test_grep_no_matches_message(tmp_path):
+    (tmp_path / "a.txt").write_text("hello\n", encoding="utf-8")
+    assert ControlledTools(tmp_path).grep("zzzz") == "(no matches)"

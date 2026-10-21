@@ -68,6 +68,22 @@ def _is_forbidden(path: Path) -> bool:
     return False
 
 
+def is_sensitive_entry(name: str) -> bool:
+    """True for a single file/dir name that must never be explored.
+
+    Shared by list_dir / glob / grep so secrets and dependency trees stay
+    hidden across every read-only tool. ``name`` is a single entry name, not
+    a path.
+    """
+    if name in _FORBIDDEN_NAMES:
+        return True
+    if name.startswith(".env"):
+        return True
+    if Path(name).suffix in _FORBIDDEN_SUFFIXES:
+        return True
+    return False
+
+
 def safe_join(workdir: Path | str, rel: str) -> Path:
     """Resolve rel under workdir and guarantee it stays inside and is not sensitive."""
     base = Path(workdir).resolve()
