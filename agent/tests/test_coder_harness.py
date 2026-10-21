@@ -142,6 +142,34 @@ def test_budget_exhausted_blocks(tmp_path):
     assert out.status == TaskStatus.BLOCKED
 
 
+class CapturingChat(ScriptedChat):
+    """Remembers every request's messages so feedback can be asserted."""
+    def __init__(self, contents):
+        super().__init__(contents)
+        self.seen = []
+
+    def chat(self, request):
+        self.seen.append(request.messages)
+        return super().chat(request)
+
+
+def test_read_missing_file_is_feedback_not_crash(tmp_path):
+    # The model guesses a path that does not exist. A robust loop feeds the
+    # tool error back as an observation so the model can correct itself,
+    # instead of crashing the whole process.
+    runner = FakeRunner([1])
+    bad_read = step("read_file", phase="reproduce", path="server/src/missing.ts")
+    give_up = step("blocked", phase="reproduce", reason="target file absent")
+    chat = CapturingChat([bad_read, give_up])
+    h, _ = harness_for(tmp_path, chat, runner)
+    out = h.run(auto_approve=True)
+    assert out.status == TaskStatus.BLOCKED
+    # Second model round must carry the read failure back to the model.
+    assert len(chat.seen) == 2
+    flat = " ".join(str(m.get("content", "")) for m in chat.seen[1])
+    assert "missing.ts" in flat and "not a file" in flat
+
+
 def test_manual_gate_pauses_then_approve_continues(tmp_path):
     runner = FakeRunner([1, 0])
     chat = ScriptedChat([RED, PATCH1])

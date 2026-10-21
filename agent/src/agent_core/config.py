@@ -13,12 +13,21 @@ provider construction is identical for both.
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Agent package root. config.py lives at agent/src/agent_core/config.py, so
+# parents[2] = agent/. Every path that used to be relative to cwd is anchored
+# here: the Nest dev console spawns the agent with the webapp root as cwd (so
+# the coder can edit webapp files), and a relative ".env" would then be looked
+# up in the webapp root and fail to find the model API keys.
+AGENT_ROOT = Path(__file__).resolve().parents[2]
+ENV_FILE = AGENT_ROOT / ".env"
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=str(ENV_FILE),
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -55,22 +64,33 @@ class Settings(BaseSettings):
     max_retries: int = 3            # total attempts for a retryable error
     fallback_to_flash: bool = True  # degrade pro -> flash when pro is unavailable
 
-    # Runtime
-    checkpoint_dir: str = "data/checkpoints"
+    # Runtime. Anchored to the package root so a non-agent cwd does not scatter
+    # checkpoints into the webapp tree.
+    checkpoint_dir: str = str(AGENT_ROOT / "data" / "checkpoints")
     log_level: str = "INFO"
 
     # Coder persona (C2).
-    # Anchor work products to the agent package root rather than the process
-    # cwd: the Nest console spawns the agent with the webapp root as cwd (so it
-    # can edit webapp files), but the artifacts must still live under
-    # agent/data/coder no matter where the process was launched from.
-    # config.py is at agent/src/agent_core/config.py, so parents[2] = agent/.
-    coder_data_dir: str = str(
-        Path(__file__).resolve().parents[2] / "data" / "coder",
-    )
-    # Webapp root the coding agent operates on. config.py lives at
-    # agent/src/agent_core/config.py, so parents[3] is the monorepo root.
-    webapp_workdir: str = str(Path(__file__).resolve().parents[3])
+    # Work products live under agent/data/coder no matter where the process was
+    # launched from (the Nest console spawns the agent with the webapp root as
+    # cwd so it can edit webapp files).
+    coder_data_dir: str = str(AGENT_ROOT / "data" / "coder")
+    # Webapp root the coding agent operates on = the monorepo root, one level
+    # above the agent package.
+    webapp_workdir: str = str(AGENT_ROOT.parent)
+
+    @field_validator("checkpoint_dir", "coder_data_dir")
+    @classmethod
+    def _anchor_data_dirs(cls, value: str) -> str:
+        """Resolve relative data paths against the agent package root.
+
+        The .env can still spell these as "data/..." (a relative path); such
+        values must mean *inside the agent package*, not relative to whatever
+        cwd the process was spawned with. Absolute paths pass through unchanged.
+        """
+        path = Path(value)
+        if not path.is_absolute():
+            path = AGENT_ROOT / path
+        return str(path)
 
 
 @lru_cache(maxsize=None)

@@ -10,6 +10,7 @@ into an argv list.
 from __future__ import annotations
 
 import re
+import shutil
 import subprocess
 import time
 from collections.abc import Callable
@@ -45,21 +46,36 @@ def default_runner(argv: list[str], cwd: Path, timeout: float | None,
     # Byte mode on purpose: with text=True on Windows, subprocess rewrites the
     # stdin '\n' to '\r\n', which corrupts a patch piped into `git apply`.
     # Encoding explicitly keeps the diff byte-for-byte and output decoding stable.
+    # Resolve the executable via PATH/PATHEXT. On Windows, shell=False cannot
+    # spawn "npm" directly (it is shipped as npm.cmd); shutil.which finds the
+    # right extension. Fall back to the raw name so a missing binary is reported
+    # below instead of crashing the whole run.
+    executable = shutil.which(argv[0]) or argv[0]
+    run_argv = [executable, *argv[1:]]
     kwargs = dict(cwd=str(cwd), capture_output=True, shell=False, timeout=timeout)
     if stdin is not None:
         kwargs["input"] = stdin.encode("utf-8")
+    elapsed = lambda: int((time.monotonic() - start) * 1000)
     try:
-        proc = subprocess.run(argv, **kwargs)
+        proc = subprocess.run(run_argv, **kwargs)
         return CommandResult(
-            argv=argv, returncode=proc.returncode,
+            argv=run_argv, returncode=proc.returncode,
             stdout=_decode(proc.stdout), stderr=_decode(proc.stderr),
-            duration_ms=int((time.monotonic() - start) * 1000),
+            duration_ms=elapsed(),
         )
     except subprocess.TimeoutExpired as exc:
         return CommandResult(
-            argv=argv, returncode=124,
+            argv=run_argv, returncode=124,
             stdout=_decode(exc.stdout), stderr=f"timeout after {timeout}s",
             duration_ms=int((timeout or 0) * 1000),
+        )
+    except FileNotFoundError:
+        # A missing tool (e.g. npm not on PATH) is a failed check with the
+        # conventional 127 code, fed back as evidence -- never a process crash.
+        return CommandResult(
+            argv=run_argv, returncode=127, stdout="",
+            stderr=f"command not found: {argv[0]}",
+            duration_ms=elapsed(),
         )
 
 

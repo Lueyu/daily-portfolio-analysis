@@ -84,6 +84,37 @@ def test_git_apply_uses_stdin_not_shell(tmp_path):
     assert runner.calls[0][0] == ["git", "apply", "--whitespace=nowarn", "-"]
 
 
+def test_default_runner_missing_command_returns_127(tmp_path):
+    from agent_core.coder.tools import default_runner
+    res = default_runner(["definitely_no_such_binary_xyz_9"], tmp_path, 5.0, None)
+    assert res.returncode == 127
+    assert "definitely_no_such_binary_xyz_9" in res.stderr
+
+
+def test_default_runner_resolves_executable_via_which(tmp_path, monkeypatch):
+    # On Windows, shell=False cannot spawn "npm" (it is npm.cmd); the runner
+    # must resolve the executable through shutil.which/PATHEXT.
+    import agent_core.coder.tools as tools_mod
+
+    captured = {}
+
+    class FakeProc:
+        returncode = 0
+        stdout = b""
+        stderr = b""
+
+    def fake_run(argv, **kwargs):
+        captured["argv"] = argv
+        return FakeProc()
+
+    monkeypatch.setattr(
+        tools_mod.shutil, "which",
+        lambda name: f"/resolved/{name}.cmd" if name == "npm" else None)
+    monkeypatch.setattr(tools_mod.subprocess, "run", fake_run)
+    tools_mod.default_runner(["npm", "run", "test:unit"], tmp_path, 5.0, None)
+    assert captured["argv"][0] == "/resolved/npm.cmd"
+
+
 def test_git_diff_is_readonly(tmp_path):
     runner = script_runner([("git diff", CommandResult(argv=["git", "diff"], returncode=0, stdout="DIFF"))])
     tools = ControlledTools(tmp_path, runner=runner)

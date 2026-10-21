@@ -266,8 +266,16 @@ class CoderHarness:
         self._probes += 1
         if self._probes > self.max_probes:
             raise _Stop("too many read probes without progress")
-        content = self.tools.read_file(path or "", cwd=self.verify_cwd)
-        return f"\nFILE {path}:\n{content[:4000]}\n"
+        target = path or ""
+        try:
+            content = self.tools.read_file(target, cwd=self.verify_cwd)
+        except (FileNotFoundError, ValueError, OSError) as exc:
+            # A bad path guess is feedback, not a fatal error. Surface it as an
+            # observation so the model can choose an existing file next round
+            # instead of crashing the whole run on one wrong filename.
+            return (f"\nREAD FAILED for {target}: {exc}. "
+                    "Choose a different, existing path.\n")
+        return f"\nFILE {target}:\n{content[:4000]}\n"
 
     def _iter(self, phase, *, hypothesis="", action="", decision="",
               observations=None) -> None:
