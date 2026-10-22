@@ -110,3 +110,31 @@ def test_build_provider_explicit_pro_tier() -> None:
     provider = build_provider(_settings(), "pro")  # type: ignore[arg-type]
     assert provider.tier == "pro"
     assert provider.model == "pro-model"
+
+
+def test_chat_request_carries_tools():
+    from agent_core.models import ChatRequest
+    req = ChatRequest(
+        messages=[{"role": "user", "content": "go"}],
+        tools=[{"type": "function", "function": {"name": "read_file"}}],
+        tool_choice="auto",
+    )
+    assert req.tools is not None and req.tools[0]["function"]["name"] == "read_file"
+    assert req.tool_choice == "auto"
+
+
+def test_chat_response_carries_tool_calls():
+    from agent_core.models import ChatResponse, ToolCall, Usage
+    resp = ChatResponse(
+        content="", model="m", tier="flash", usage=Usage(), latency_ms=0,
+        tool_calls=[ToolCall(id="call_1", name="read_file",
+                              arguments={"path": "a.ts"})],
+    )
+    assert resp.tool_calls[0].name == "read_file"
+    assert resp.tool_calls[0].arguments == {"path": "a.ts"}
+
+
+def test_code_task_routes_to_flash():
+    from agent_core.models import ModelTask, TASK_TIER, ModelTier
+    assert ModelTask.CODE.value == "code"
+    assert TASK_TIER[ModelTask.CODE] == ModelTier.FLASH

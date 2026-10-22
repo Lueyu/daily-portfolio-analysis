@@ -40,6 +40,7 @@ class ModelTask(str, Enum):
     EXTRACT = "extract"       # structured extraction (JSON facts)
     TRANSLATE = "translate"
     DEBATE = "debate"         # one bull/bear argument (many calls per run)
+    CODE = "code"             # coder ReAct loop: high-volume tool calls -> flash
     # --- high-stakes, worth the stronger model -> pro ---
     RATING = "rating"         # final rating / sizing decision
     PLAN = "plan"             # planning / reflection
@@ -52,6 +53,7 @@ TASK_TIER: dict[ModelTask, ModelTier] = {
     ModelTask.EXTRACT: ModelTier.FLASH,
     ModelTask.TRANSLATE: ModelTier.FLASH,
     ModelTask.DEBATE: ModelTier.FLASH,
+    ModelTask.CODE: ModelTier.FLASH,
     ModelTask.RATING: ModelTier.PRO,
     ModelTask.PLAN: ModelTier.PRO,
     ModelTask.CRITIC: ModelTier.PRO,
@@ -122,10 +124,24 @@ class ChatRequest:
     json_mode: bool = False
     # Stream tokens back over SSE instead of waiting for the whole reply.
     stream: bool = False
+    # Native function calling (OpenAI tool-calling). When set and the model
+    # declares supports_tools, the provider forwards these schemas and the
+    # model answers with tool_calls instead of free-form JSON.
+    tools: list[dict] | None = None
+    tool_choice: str | dict | None = None
     task: ModelTask | None = None
     # Hard cap on context length the router should tolerate; set from the spec.
     estimated_prompt_tokens: int = 0
     timeout: float = 60.0
+
+
+@dataclass(frozen=True)
+class ToolCall:
+    """One native function-call request returned by the model."""
+
+    id: str
+    name: str
+    arguments: dict
 
 
 @dataclass
@@ -145,6 +161,8 @@ class ChatResponse:
     degraded: bool = False
     degrade_reason: str | None = None
     attempts: int = 1
+    # Parsed native tool calls (None when the model replied with plain text).
+    tool_calls: list[ToolCall] | None = None
 
     def json(self) -> dict | list:
         """Parse JSON content, tolerating a ```json code fence and prose.
