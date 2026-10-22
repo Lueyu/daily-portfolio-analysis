@@ -148,7 +148,8 @@ def harness_for(tmp, chat, runner, cfg=None, sandbox_enabled=True):
             "dev_h1", tmp, tmp / SANDBOX_ROOT_NAME, tools, linker=Linker())
     h = CoderHarness(task, chat, tools, store, verify_cwd=tmp,
                      sandbox=sandbox,
-                     budget=BudgetGuard(cfg) if cfg else BudgetGuard(BudgetConfig()))
+                     budget=BudgetGuard(cfg) if cfg else BudgetGuard(BudgetConfig()),
+                     supports_tools=False)
     return h, store
 
 
@@ -157,11 +158,12 @@ PATCH1 = step("apply_patch", phase="patch", hypothesis="h1",
               diff="--- a/x.ts\n+++ b/x.ts\n@@\n+1\n")
 PATCH2 = step("apply_patch", phase="patch", hypothesis="h2-different",
               diff="--- a/y.ts\n+++ b/y.ts\n@@\n+2\n")
+FINISH = step("finish", summary="verified patch ready for review")
 
 
 def test_happy_path_reproduce_patch_verify_verified(tmp_path):
     runner = FakeRunner([1, 0])      # red in sandbox, green in sandbox; main unit green
-    chat = ScriptedChat([RED, PATCH1])
+    chat = ScriptedChat([RED, PATCH1, FINISH])
     h, store = harness_for(tmp_path, chat, runner)
     out = h.run(auto_approve=True)
     assert out.status == TaskStatus.VERIFIED
@@ -176,7 +178,7 @@ def test_happy_path_reproduce_patch_verify_verified(tmp_path):
 
 def test_first_patch_fails_then_second_succeeds(tmp_path):
     runner = FakeRunner([1, 1, 0])  # red, patch1 still red, patch2 green
-    chat = ScriptedChat([RED, PATCH1, PATCH2])
+    chat = ScriptedChat([RED, PATCH1, PATCH2, FINISH])
     h, _ = harness_for(tmp_path, chat, runner)
     out = h.run(auto_approve=True)
     assert out.status == TaskStatus.VERIFIED
@@ -191,7 +193,7 @@ def test_cheating_patch_rejected_then_clean_patch_accepted(tmp_path):
     runner = FakeRunner([1, 0])
     cheat = step("apply_patch", phase="patch", hypothesis="bad",
                  diff="--- a/spec.ts\n+++ b/spec.ts\n@@\n+  it.only('x', () => {})\n")
-    chat = ScriptedChat([RED, cheat, PATCH1])
+    chat = ScriptedChat([RED, cheat, PATCH1, FINISH])
     h, _ = harness_for(tmp_path, chat, runner)
     out = h.run(auto_approve=True)
     assert out.status == TaskStatus.VERIFIED
@@ -209,7 +211,7 @@ def test_cannot_reproduce_blocks(tmp_path):
 
 def test_manual_gate_pauses_then_approve_continues(tmp_path):
     runner = FakeRunner([1, 0])
-    chat = ScriptedChat([RED, PATCH1])
+    chat = ScriptedChat([RED, PATCH1, FINISH])
     h, store = harness_for(tmp_path, chat, runner)
     paused = h.run(auto_approve=False)
     assert paused.status == TaskStatus.AWAITING_APPROVAL
@@ -300,7 +302,7 @@ def test_grep_then_run_check_reproduces_and_continues(tmp_path):
     seed_sb(tmp_path, "server/x.ts", "caps()\n")
     grep_step = step("grep", phase="reproduce", pattern="caps",
                      glob_include="*.ts")
-    chat = ScriptedChat([grep_step, RED, PATCH1])
+    chat = ScriptedChat([grep_step, RED, PATCH1, FINISH])
     h, store = harness_for(tmp_path, chat, runner)
     out = h.run(auto_approve=True)
     assert out.status == TaskStatus.VERIFIED
@@ -315,7 +317,7 @@ def test_sandbox_e2e_acceptance_runs_fullstack(tmp_path):
     task_accept = step("run_check", phase="reproduce", check="e2e")
     patch = step("apply_patch", phase="patch", hypothesis="h",
                  diff="--- a/x.ts\n+++ b/x.ts\n@@\n+1\n")
-    chat = ScriptedChat([task_accept, patch])
+    chat = ScriptedChat([task_accept, patch, FINISH])
     # Build an e2e-acceptance task.
     store = TaskStore(tmp_path / "tasks")
     t = DevTask(id="dev_h1", title="e2e", problem="p",
@@ -328,7 +330,8 @@ def test_sandbox_e2e_acceptance_runs_fullstack(tmp_path):
     from agent_core.coder.linker import Linker
     sb = WorktreeSandbox("dev_h1", tmp_path, tmp_path / "worktrees", tools,
                          linker=Linker())
-    h = CoderHarness(t, chat, tools, store, verify_cwd=tmp_path, sandbox=sb)
+    h = CoderHarness(t, chat, tools, store, verify_cwd=tmp_path, sandbox=sb,
+                     supports_tools=False)
     h.run(auto_approve=True)
     cmds = [" ".join(a) for a, c, s in runner.calls
             if "test:e2e" in " ".join(a) and SANDBOX_ROOT_NAME in Path(c).parts]
@@ -339,7 +342,7 @@ def test_main_unit_failure_rolls_back_and_returns_to_diagnosis(tmp_path):
     runner = FakeRunner([1, 0], main_unit=1)   # sandbox green, main unit red
     # The same patch keeps failing the main-unit smoke; the retry discipline
     # must eventually block rather than loop forever.
-    chat = ScriptedChat([RED, PATCH1], loop=PATCH1)
+    chat = ScriptedChat([RED, PATCH1, FINISH], loop=PATCH1)
     h, _ = harness_for(tmp_path, chat, runner)
     out = h.run(auto_approve=True)
     # The main checkout saw an apply followed by a rollback (-R).
@@ -351,7 +354,7 @@ def test_main_unit_failure_rolls_back_and_returns_to_diagnosis(tmp_path):
 
 def test_sandbox_disabled_uses_legacy_main_path(tmp_path):
     runner = FakeRunner(sandbox_unit=[], main_unit=[1, 0])  # red then green on main
-    chat = ScriptedChat([RED, PATCH1])
+    chat = ScriptedChat([RED, PATCH1, FINISH])
     h, _ = harness_for(tmp_path, chat, runner, sandbox_enabled=False)
     out = h.run(auto_approve=True)
     assert out.status == TaskStatus.VERIFIED
@@ -366,7 +369,7 @@ def test_approval_in_new_process_loads_patch_from_disk(tmp_path):
     a naive `_latest_patch is None` check would hit with 'no patch to verify').
     """
     runner = FakeRunner([1, 0])
-    h1, store = harness_for(tmp_path, ScriptedChat([RED, PATCH1]), runner)
+    h1, store = harness_for(tmp_path, ScriptedChat([RED, PATCH1, FINISH]), runner)
     assert h1.run(auto_approve=False).status == TaskStatus.AWAITING_APPROVAL
     # Simulate the fresh CLI process: reload the task, new harness has no patch
     # in RAM and must not call the model (AWAITING goes straight to landing).

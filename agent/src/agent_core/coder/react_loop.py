@@ -70,7 +70,13 @@ class ReactLoop:
         self.supports_tools = supports_tools
         self.gate = gate
         self.max_probes = max_probes
-        self.probe_warning = max(1, max_probes - 2)
+        # The tool-step budget can be tighter than the probe cap. Warn early
+        # enough that the model gets another turn to act on the warning.
+        self.probe_warning = max(1, min(
+            max_probes - 2,
+            budget.config.max_iterations - 1,
+            budget.config.max_model_calls - 1,
+        ))
         self._probes = 0
 
     def run(self) -> tuple[str, str]:

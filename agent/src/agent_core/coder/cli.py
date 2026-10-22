@@ -16,7 +16,7 @@ import typer
 from rich.console import Console
 
 from ..config import get_settings
-from ..models import ChatService
+from ..models import ChatService, ModelTask
 from .harness import CoderHarness
 from .linker import Linker
 from .models import AcceptanceCriterion, CheckKind, DevTask, Iteration, TaskStatus
@@ -96,7 +96,8 @@ def build_harness(task_id: str) -> CoderHarness:
             copy_env=settings.coder_copy_env_files,
         )
     return CoderHarness(task, chat, tools, store,
-                        verify_cwd=workdir, sandbox=sandbox)
+                        verify_cwd=workdir, sandbox=sandbox,
+                        supports_tools=chat.supports_tools_for(ModelTask.CODE))
 
 
 @app.command("new")
