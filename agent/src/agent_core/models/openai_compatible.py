@@ -16,6 +16,7 @@ single provider should not know about other tiers.
 
 from __future__ import annotations
 
+import json
 import random
 import time
 from typing import Callable
@@ -36,6 +37,7 @@ from .types import (
     ModelSpec,
     ModelTier,
     PingResult,
+    ToolCall,
     Usage,
 )
 
@@ -138,6 +140,9 @@ class OpenAICompatibleProvider:
             kwargs["max_tokens"] = req.max_tokens
         if req.stop:
             kwargs["stop"] = req.stop
+        if req.tools and self.spec.supports_tools:
+            kwargs["tools"] = req.tools
+            kwargs["tool_choice"] = req.tool_choice or "auto"
         if req.json_mode:
             if self.spec.supports_json:
                 kwargs["response_format"] = {"type": "json_object"}
@@ -157,6 +162,25 @@ class OpenAICompatibleProvider:
 
         message = resp.choices[0].message
         reasoning = getattr(message, "reasoning_content", None) or ""
+        raw_calls = getattr(message, "tool_calls", None) or []
+        tool_calls: list[ToolCall] = []
+        for rc in raw_calls:
+            fn = getattr(rc, "function", None)
+            raw_args = getattr(fn, "arguments", "") or "{}"
+            try:
+                args = json.loads(raw_args) if isinstance(raw_args, str) else dict(raw_args)
+            except (json.JSONDecodeError, TypeError):
+                # Malformed arguments are fed back as an empty-arg call: the
+                # registry validation then rejects it and the model re-prompts,
+                # instead of crashing the whole run.
+                args = {}
+            if not isinstance(args, dict):
+                args = {}
+            tool_calls.append(ToolCall(
+                id=getattr(rc, "id", "") or "",
+                name=getattr(fn, "name", "") or "",
+                arguments=args,
+            ))
         usage = resp.usage
         prompt_tokens = getattr(usage, "prompt_tokens", 0) or 0
         completion_tokens = getattr(usage, "completion_tokens", 0) or 0
@@ -174,6 +198,7 @@ class OpenAICompatibleProvider:
             latency_ms=latency_ms,
             finish_reason=getattr(resp.choices[0], "finish_reason", None) or "stop",
             attempts=getattr(retryer, "statistics", {}).get("attempt_number", 1) or 1,
+            tool_calls=tool_calls or None,
         )
 
     def stream_chat(self, req: ChatRequest):

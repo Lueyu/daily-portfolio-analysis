@@ -546,3 +546,79 @@ def test_stream_fallback_disabled_raises_pro_error() -> None:
                 )
             )
         )
+
+
+# ---------------------------------------------------------------------------
+# Native function calling (tools)
+# ---------------------------------------------------------------------------
+
+
+class _Function:
+    def __init__(self, name: str, arguments: str) -> None:
+        self.name = name
+        self.arguments = arguments
+
+
+class _RawToolCall:
+    def __init__(self, cid: str, name: str, arguments: str) -> None:
+        self.id = cid
+        self.type = "function"
+        self.function = _Function(name, arguments)
+
+
+class _ToolMessage:
+    def __init__(self, tool_calls) -> None:
+        self.content = None
+        self.reasoning_content = ""
+        self.tool_calls = tool_calls
+
+
+class _ToolChoice:
+    def __init__(self, tool_calls) -> None:
+        self.model = "fake-model"
+        self.usage = _Usage()
+        self.choices = [SimpleNamespace(message=_ToolMessage(tool_calls),
+                                        finish_reason="tool_calls")]
+
+
+def test_provider_forwards_tools_when_supported() -> None:
+    tc = _RawToolCall("call_1", "read_file", '{"path": "a.ts"}')
+    comp = _ScriptedCompletions(responses=[_ToolChoice([tc])])
+    p = _provider(completions=comp)  # default spec supports_tools=True
+    resp = p.chat(ChatRequest(
+        messages=[{"role": "user", "content": "x"}],
+        tools=[{"type": "function", "function": {"name": "read_file"}}],
+        tool_choice="auto",
+    ))
+    kwargs = comp.kwargs_list[0]
+    assert kwargs["tools"][0]["function"]["name"] == "read_file"
+    assert kwargs["tool_choice"] == "auto"
+    assert resp.tool_calls[0].name == "read_file"
+    assert resp.tool_calls[0].arguments == {"path": "a.ts"}
+    assert resp.tool_calls[0].id == "call_1"
+
+
+def test_provider_omits_tools_when_spec_unsupported() -> None:
+    tc = _RawToolCall("call_1", "read_file", '{"path": "a.ts"}')
+    comp = _ScriptedCompletions(responses=[_ToolChoice([tc])])
+    spec = ModelSpec(tier="flash", model="fake-model", context_window=128_000,
+                     supports_tools=False)
+    p = _provider(completions=comp, spec=spec)
+    p.chat(ChatRequest(
+        messages=[{"role": "user", "content": "x"}],
+        tools=[{"type": "function", "function": {"name": "read_file"}}],
+    ))
+    kwargs = comp.kwargs_list[0]
+    assert "tools" not in kwargs
+
+
+def test_provider_tolerates_malformed_tool_arguments() -> None:
+    tc = _RawToolCall("call_1", "read_file", "not-json{")
+    comp = _ScriptedCompletions(responses=[_ToolChoice([tc])])
+    p = _provider(completions=comp)
+    resp = p.chat(ChatRequest(
+        messages=[{"role": "user", "content": "x"}],
+        tools=[{"type": "function", "function": {"name": "read_file"}}],
+    ))
+    assert resp.tool_calls[0].name == "read_file"
+    assert resp.tool_calls[0].arguments == {}
