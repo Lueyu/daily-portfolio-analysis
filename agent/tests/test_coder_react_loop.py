@@ -169,3 +169,19 @@ def test_json_malformed_reply_is_reprompted():
     signal, _ = loop_for(chat, executor, supports=False).run()
     assert signal == LoopSignal.BLOCKED
     assert len(chat.requests) == 2
+
+
+def test_json_contract_tracks_gate_visibility_each_turn():
+    chat = FakeChat([
+        json_resp("run_check", check="unit"),
+        json_resp("apply_patch", diff="--- a/x\n+++ b/x\n", hypothesis="h"),
+        json_resp("finish", summary="done"),
+    ])
+    signal, _ = loop_for(chat, ScriptedExecutor(), supports=False).run()
+    assert signal == LoopSignal.FINISH
+    initial_contract = chat.requests[0].messages[-1]["content"]
+    patch_contract = chat.requests[1].messages[-1]["content"]
+    finish_contract = chat.requests[2].messages[-1]["content"]
+    assert "apply_patch" not in initial_contract
+    assert "apply_patch" in patch_contract and "finish" not in patch_contract
+    assert "finish" in finish_contract
