@@ -25,6 +25,7 @@ from .types import (
     ChatChunk,
     ChatRequest,
     ChatResponse,
+    ModelSpec,
     ModelTier,
     estimate_prompt_tokens,
 )
@@ -75,6 +76,16 @@ class ChatService:
             if self.specs[other].context_window > spec.context_window:
                 return other
         return tier
+
+    def spec_for_task(self, task) -> ModelSpec:
+        """Return the capability spec of the tier that would serve a task."""
+        tier = self.resolve_tier(ChatRequest(
+            messages=[{"role": "user", "content": ""}], task=task))
+        return self.specs[tier]
+
+    def supports_tools_for(self, task) -> bool:
+        """Whether the model that serves this task supports function calling."""
+        return bool(self.spec_for_task(task).supports_tools)
 
     def chat(self, req: ChatRequest) -> ChatResponse:
         """Run a chat call with tier routing and transparent pro->flash fallback."""

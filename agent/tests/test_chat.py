@@ -622,3 +622,21 @@ def test_provider_tolerates_malformed_tool_arguments() -> None:
     ))
     assert resp.tool_calls[0].name == "read_file"
     assert resp.tool_calls[0].arguments == {}
+
+
+# ---------------------------------------------------------------------------
+# Capability query for function calling
+# ---------------------------------------------------------------------------
+
+
+def test_service_reports_supports_tools_for_task() -> None:
+    svc = ChatService(_settings(), sleep=lambda s: None)
+    assert svc.supports_tools_for(ModelTask.CODE) is True
+
+
+def test_service_reports_no_tools_when_spec_disables() -> None:
+    import dataclasses
+    svc = ChatService(_settings(), sleep=lambda s: None)
+    svc.specs["flash"] = dataclasses.replace(
+        svc.specs["flash"], supports_tools=False)
+    assert svc.supports_tools_for(ModelTask.CODE) is False
