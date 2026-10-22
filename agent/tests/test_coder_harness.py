@@ -17,7 +17,7 @@ from agent_core.coder.models import (
 )
 from agent_core.coder.task_store import TaskStore
 from agent_core.coder.tools import ControlledTools
-from agent_core.models import ChatResponse, Usage
+from agent_core.models import ChatResponse, ToolCall, Usage
 
 
 def make_task(tmp):
@@ -400,3 +400,67 @@ def test_build_harness_wires_sandbox_when_enabled(monkeypatch, tmp_path):
     h = cli.build_harness("dev_h1")
     assert h.sandbox is not None
     assert h.sandbox.path == tmp_path / "coder" / "worktrees" / "dev_h1"
+
+
+def tool_reply(*calls):
+    return ChatResponse(
+        content="", model="script", tier="flash", usage=Usage(), latency_ms=0,
+        tool_calls=[ToolCall(id=f"c{i}", name=name, arguments=args)
+                    for i, (name, args) in enumerate(calls)],
+    )
+
+
+class FunctionChat:
+    def __init__(self, responses):
+        self.responses = list(responses)
+        self.i = 0
+        self.requests = []
+
+    def chat(self, request):
+        self.requests.append(request)
+        response = self.responses[min(self.i, len(self.responses) - 1)]
+        self.i += 1
+        return response
+
+
+def harness_for_function(tmp, chat, runner, cfg=None):
+    store = TaskStore(tmp / "tasks")
+    task = make_task(tmp)
+    store.create(task)
+    tools = ControlledTools(tmp, runner=runner)
+    from agent_core.coder.sandbox import WorktreeSandbox
+    from agent_core.coder.linker import Linker
+    sandbox = WorktreeSandbox(
+        "dev_h1", tmp, tmp / SANDBOX_ROOT_NAME, tools, linker=Linker())
+    harness = CoderHarness(
+        task, chat, tools, store, verify_cwd=tmp, sandbox=sandbox,
+        budget=BudgetGuard(cfg) if cfg else BudgetGuard(BudgetConfig()),
+        supports_tools=True,
+    )
+    return harness, store
+
+
+def test_function_protocol_happy_path(tmp_path):
+    runner = FakeRunner([1, 0])
+    chat = FunctionChat([
+        tool_reply(("run_check", {"check": "unit"})),
+        tool_reply(("apply_patch", {
+            "diff": "--- a/x.ts\n+++ b/x.ts\n@@\n+1\n",
+            "hypothesis": "h1",
+        })),
+        tool_reply(("finish", {"summary": "done"})),
+    ])
+    harness, _ = harness_for_function(tmp_path, chat, runner)
+    out = harness.run(auto_approve=True)
+    assert out.status == TaskStatus.VERIFIED
+    assert out.red_seen is True
+    assert all(request.tools is not None for request in chat.requests)
+
+
+def test_function_gate_hides_apply_patch_before_red(tmp_path):
+    runner = FakeRunner([1, 0])
+    chat = FunctionChat([tool_reply(("run_check", {"check": "unit"}))])
+    harness, _ = harness_for_function(tmp_path, chat, runner)
+    harness.run(auto_approve=True)
+    first_tools = {tool["function"]["name"] for tool in chat.requests[0].tools}
+    assert "apply_patch" not in first_tools and "finish" not in first_tools
