@@ -2,7 +2,7 @@
 import pytest
 
 from agent_core.coder.registry import (
-    Phase,
+    GateKind,
     ToolKind,
     ToolRegistry,
     UnknownToolError,
@@ -72,11 +72,39 @@ def test_run_check_rejects_relative_and_unknown_kind():
         parse_agent_step('{"action":"run_check","params":{"check":"build"}}')
 
 
-def test_phase_metadata_is_declared():
+def test_validate_accepts_dict_payload():
     reg = build_default_registry()
-    assert reg.is_allowed("read_file", Phase.REPRODUCE)
-    assert reg.is_allowed("read_file", Phase.DIAGNOSE)
-    assert not reg.is_allowed("apply_patch", Phase.REPRODUCE)
-    assert reg.is_allowed("apply_patch", Phase.DIAGNOSE)
+    step = reg.validate("read_file", {"path": "a.ts"})
+    assert isinstance(step, ReadFileStep) and step.path == "a.ts"
+
+
+def test_validate_rejects_extra_fields():
+    reg = build_default_registry()
+    with pytest.raises(ValueError):
+        reg.validate("read_file", {"path": "a.ts", "bogus": 1})
+
+
+def test_validate_unknown_tool():
+    reg = build_default_registry()
+    with pytest.raises(UnknownToolError):
+        reg.validate("rm_rf", {"path": "/"})
+
+
+def test_parse_action_returns_name_and_payload():
+    reg = build_default_registry()
+    name, payload = reg.parse_action(
+        '{"action":"read_file","params":{"path":"a.ts"}}')
+    assert name == "read_file" and payload == {"path": "a.ts"}
+    name2, payload2 = reg.parse_action('{"action":"read_file","path":"b.ts"}')
+    assert name2 == "read_file" and payload2 == {"path": "b.ts"}
+
+
+def test_gate_metadata_is_declared():
+    reg = build_default_registry()
+    assert reg.get("read_file").gate == GateKind.ALWAYS
+    assert reg.get("run_check").gate == GateKind.ALWAYS
+    assert reg.get("apply_patch").gate == GateKind.NEEDS_RED
+    assert reg.get("finish").gate == GateKind.NEEDS_GREEN
+    assert reg.get("blocked").gate == GateKind.ALWAYS
     assert reg.get("read_file").kind == ToolKind.READ_ONLY
     assert reg.get("apply_patch").kind == ToolKind.PATCH

@@ -15,7 +15,7 @@ from __future__ import annotations
 from pydantic import BaseModel, ConfigDict
 
 from .models import CheckKind, Text
-from .registry import Phase, ToolKind, ToolRegistry, ToolSpec
+from .registry import GateKind, ToolKind, ToolRegistry, ToolSpec
 
 
 class ReadOnlyStep(BaseModel):
@@ -84,28 +84,47 @@ def _run_check(payload: dict) -> RunCheckStep:
 
 
 def build_default_registry() -> ToolRegistry:
-    """Register every tool available to the coder."""
+    """Register every tool available to the coder, with its capability gate."""
     reg = ToolRegistry()
-    both = frozenset({Phase.REPRODUCE, Phase.DIAGNOSE})
-    diagnose_only = frozenset({Phase.DIAGNOSE})
 
-    # Read-only exploration (available in both phases).
-    reg.register(ToolSpec("read_file", ToolKind.READ_ONLY, ReadFileStep, both))
-    reg.register(ToolSpec("list_dir", ToolKind.READ_ONLY, ListDirStep, both))
-    reg.register(ToolSpec("glob", ToolKind.READ_ONLY, GlobStep, both))
-    reg.register(ToolSpec("grep", ToolKind.READ_ONLY, GrepStep, both))
-    reg.register(ToolSpec("probe_env", ToolKind.READ_ONLY, ProbeEnvStep, both))
-    # Verification: run an allow-listed check.
+    # Read-only exploration: always available.
+    reg.register(ToolSpec("read_file", ToolKind.READ_ONLY, ReadFileStep,
+                          GateKind.ALWAYS, description="Read a UTF-8 text file."))
+    reg.register(ToolSpec("list_dir", ToolKind.READ_ONLY, ListDirStep,
+                          GateKind.ALWAYS, description="List a directory (non-recursive)."))
+    reg.register(ToolSpec("glob", ToolKind.READ_ONLY, GlobStep,
+                          GateKind.ALWAYS, description="Find files matching a pattern."))
+    reg.register(ToolSpec("grep", ToolKind.READ_ONLY, GrepStep,
+                          GateKind.ALWAYS, description="Search file contents with a regex."))
+    reg.register(ToolSpec("probe_env", ToolKind.READ_ONLY, ProbeEnvStep,
+                          GateKind.ALWAYS, description="Check configured localhost services."))
+    # Verification: always available; the model must run checks before patching.
     reg.register(ToolSpec(
-        "run_check", ToolKind.VERIFY, RunCheckStep, both,
-        from_payload=_run_check))
-    # Proposing a change or finishing is only allowed after reproduction.
+        "run_check", ToolKind.VERIFY, RunCheckStep, GateKind.ALWAYS,
+        from_payload=_run_check,
+        parameters={
+            "type": "object",
+            "properties": {
+                "check": {
+                    "type": "string",
+                    "enum": [c.value for c in CheckKind],
+                    "description": "Which allow-listed verification command to run.",
+                },
+            },
+            "required": ["check"],
+            "additionalProperties": False,
+        },
+        description="Run one allow-listed verification check (unit/e2e/typecheck/lint)."))
+    # Patching only after a red test was observed; finishing only after green.
     reg.register(ToolSpec(
-        "apply_patch", ToolKind.PATCH, ApplyPatchStep, diagnose_only))
+        "apply_patch", ToolKind.PATCH, ApplyPatchStep, GateKind.NEEDS_RED,
+        description="Propose a unified diff. It is applied and checked in the sandbox."))
     reg.register(ToolSpec(
-        "finish", ToolKind.TERMINAL, FinishStep, diagnose_only))
+        "finish", ToolKind.TERMINAL, FinishStep, GateKind.NEEDS_GREEN,
+        description="Finish after the fix is verified green."))
     reg.register(ToolSpec(
-        "blocked", ToolKind.TERMINAL, BlockedStep, both))
+        "blocked", ToolKind.TERMINAL, BlockedStep, GateKind.ALWAYS,
+        description="Stop and report a blocker with its reason."))
     return reg
 
 
