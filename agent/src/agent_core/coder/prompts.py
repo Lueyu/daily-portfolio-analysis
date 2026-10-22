@@ -97,3 +97,41 @@ def verify_prompt(acceptance: list[AcceptanceCriterion]) -> str:
         f"{_fmt_acceptance(acceptance)}\n\n"
         f"{_ACTION_CONTRACT}\n{_GUARDRAILS}"
     )
+
+
+_REACT_RULES = (
+    "工作方式（ReAct）：每一轮只做一个决定——调用一个工具，或宣布完成/受阻。\n"
+    "1. 先复现：在看到一个真正失败的测试之前，禁止修改代码。\n"
+    "   先做少量、有针对性的只读探查，然后用 run_check 取证。\n"
+    "2. 看到红灯后，才允许 apply_patch；补丁必须最小、对症。\n"
+    "3. 补丁会在隔离沙箱里自动跑验收检查；只有全部通过后你才会看到 finish 工具。\n"
+    "4. 不要连续盲读：若现象像本地环境/数据/连不上，先 probe_env，服务 DOWN 就 blocked。\n"
+    "5. 一轮最多提交一个写操作（apply_patch）。\n"
+)
+
+
+def react_system_prompt(problem: str, acceptance: list[AcceptanceCriterion]) -> str:
+    """System prompt shared by the native and JSON ReAct protocols."""
+    return (
+        "你是资深工程师，正在一个隔离的 git worktree 沙箱里修复 webapp 缺陷。\n"
+        "你通过调用工具推进；每一步都基于上一步工具返回的真实证据，不要猜测。\n\n"
+        f"问题描述：{problem}\n"
+        "验收标准（不可放宽）：\n"
+        f"{_fmt_acceptance(acceptance)}\n\n"
+        f"{_REACT_RULES}\n"
+        f"{_GUARDRAILS}"
+    )
+
+
+def json_tools_contract(visible_specs) -> str:
+    """Describe only the tools currently exposed by the capability gates."""
+    lines = ["只输出一个 JSON 对象，不要输出多余解释。当前可用工具："]
+    for item in visible_specs:
+        if isinstance(item, str):
+            name, description = item, ""
+        else:
+            name, description = item.name, item.description
+        lines.append(f"- {name}：{description}" if description else f"- {name}")
+    lines.append(
+        '形如：{"action":"工具名","params":{...}}（也允许把参数平铺在顶层）。')
+    return "\n".join(lines)
