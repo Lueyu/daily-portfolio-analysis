@@ -99,6 +99,12 @@ class DevTask(BaseModel):
     branch: str = ""
     status: TaskStatus = TaskStatus.NEW
     red_seen: bool = False
+    # Live gate state (mirrored from gates.GateState so it persists per task).
+    # sandbox_dirty: an un-verified patch has been written in the sandbox.
+    # verify_state:  one of gates.VerifyState values ("none"/"running"/
+    #                "failed"/"passed").
+    sandbox_dirty: bool = False
+    verify_state: str = "none"
     # Counters used by the retry discipline (budget.py).
     diagnosis_rethink_count: int = 0
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -108,6 +114,17 @@ class DevTask(BaseModel):
         """Move to dst, raising if the transition is not allowed."""
         if not can_transition(self.status, dst):
             raise ValueError(f"illegal transition {self.status.value} -> {dst.value}")
+        self.status = dst
+        self.updated_at = datetime.now(timezone.utc)
+
+    def set_status(self, dst: TaskStatus) -> None:
+        """Set the milestone status directly.
+
+        Unlike :meth:`transition`, this bypasses the linear transition table.
+        It is used by the gated ReAct loop, whose *capability* gates (red seen,
+        sandbox verified) are the real authority and can move work backwards
+        (e.g. a failed verification sends the task back to diagnosing).
+        """
         self.status = dst
         self.updated_at = datetime.now(timezone.utc)
 
