@@ -31,6 +31,7 @@ import { CashAccountsModule } from './modules/cash-accounts/cash-accounts.module
 import { QuoteModule } from './modules/quote/quote.module';
 import { FxModule } from './modules/fx/fx.module';
 import { MultiAgentModule } from './modules/multi-agent/multi-agent.module';
+import { DevAgentModule } from './modules/dev-agent/dev-agent.module';
 
 /**
  * Root NestJS module. Aggregates all feature modules and installs the global
@@ -64,6 +65,7 @@ import { MultiAgentModule } from './modules/multi-agent/multi-agent.module';
     QuoteModule,
     FxModule,
     MultiAgentModule,
+    DevAgentModule,
     // ====== @route-section: business-modules END ======
 
     // ⚠️ @route-order: last

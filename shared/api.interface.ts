@@ -917,3 +917,152 @@ export interface PortfolioContext {
   }>;
   companyExposures: Record<string, number>;
 }
+
+/** Execution observed by the current Nest process, independent of saved task state. */
+export interface DevAgentModelSettings {
+  model: string;
+  baseUrl: string;
+  apiKeyConfigured: boolean;
+  supportsImages: boolean;
+  contextWindow: number;
+  maxOutputTokens: number;
+}
+
+export interface DevAgentModelSettingsInput {
+  model?: string;
+  baseUrl?: string;
+  apiKey?: string;
+  clearApiKey?: boolean;
+  supportsImages?: boolean;
+  contextWindow?: number;
+  maxOutputTokens?: number;
+}
+
+export interface DevAgentMcpSettingsInput {
+  name: string;
+  url: string;
+  headersEnv: Record<string, string>;
+  allowedTools: string[] | null;
+  readOnlyTools: string[];
+  timeoutSeconds: number;
+  maxResultChars: number;
+}
+
+export interface DevAgentMcpSettings extends DevAgentMcpSettingsInput {
+  credentialStatus: Record<string, boolean>;
+}
+
+export interface DevAgentSettings {
+  ok: true;
+  settingsPath: string;
+  applyMode: 'next_run';
+  models: { primary: DevAgentModelSettings; vision: DevAgentModelSettings };
+  mcp: { configPath: string; servers: DevAgentMcpSettings[] };
+}
+
+export interface DevAgentSettingsInput {
+  models?: { primary?: DevAgentModelSettingsInput; vision?: DevAgentModelSettingsInput };
+  mcp?: { servers: DevAgentMcpSettingsInput[]; credentials?: Record<string, string> };
+}
+
+export interface DevAgentSettingsTestInput {
+  target: 'primary' | 'vision' | 'mcp';
+  server?: string;
+}
+
+export interface DevAgentSettingsTestResult {
+  ok: boolean;
+  message: string;
+  tools?: { name: string; description: string }[];
+}
+
+export interface DevAgentExecution {
+  state: 'idle' | 'running' | 'failed' | 'stopped';
+  command: 'run' | 'approve' | null;
+  error: string | null;
+}
+
+/** Derived local runtime fields; never persisted into Python task artifacts. */
+export interface DevAgentRuntimeFields {
+  execution?: DevAgentExecution;
+  /** Legacy budget blocks and v2 blocked tasks can resume from saved evidence. */
+  canResume?: boolean;
+}
+
+/** Persisted Python gate fields; older task artifacts may omit them. */
+export interface DevAgentGateFields {
+  runtime_version?: 1 | 2;
+  sandbox_dirty?: boolean;
+  verify_state?: 'none' | 'running' | 'failed' | 'passed';
+}
+
+/** General agent source history; identifiers are opaque and revision-checked. */
+export interface DevAgentChange {
+  id: string;
+  before: string;
+  after: string;
+  status: string;
+  reason: string;
+  tool: string;
+  files: string[];
+}
+
+export interface DevAgentToolEvent {
+  index: number;
+  action: string;
+  summary: string;
+  createdAt: string;
+  payload: Record<string, unknown>;
+}
+
+export interface DevAgentRuntimeSnapshot {
+  modelActivity?: { status: 'running' | 'idle' | 'failed'; startedAt: string; finishedAt?: string; error?: string };
+  version: number | null;
+  revision: string | null;
+  changes: DevAgentChange[];
+  events: DevAgentToolEvent[];
+  cursor: number;
+  pending: Record<string, unknown> | null;
+  verification: Array<Record<string, unknown>>;
+  plan?: Array<{ step: string; status: 'pending' | 'in_progress' | 'completed' }>;
+  memory?: { facts: string[]; next_actions: string[] };
+  capabilities?: Record<string, unknown>;
+  workers?: DevAgentWorker[];
+  approvals?: DevAgentExternalApproval[];
+  messages?: DevAgentUserMessage[];
+  waitingFor?: string | null;
+  unreadMessageCount?: number;
+}
+
+export interface DevAgentWorker {
+  worker_id: string;
+  prompt: string;
+  status: string;
+  summary?: string;
+  error?: string;
+  owned_paths?: string[];
+}
+
+export interface DevAgentExternalApproval {
+  id: string;
+  summary: string;
+  arguments: Record<string, unknown>;
+  status: 'pending' | 'approved' | 'denied' | 'consumed';
+  createdAt: string;
+}
+
+export interface DevAgentUserMessage {
+  id: string;
+  text: string;
+  createdAt: string;
+}
+
+export interface DevAgentUndoInput {
+  changeId: string;
+  expectedRevision: string;
+}
+
+export interface DevAgentRestoreInput {
+  revision: string;
+  expectedRevision: string;
+}

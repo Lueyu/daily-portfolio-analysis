@@ -28,10 +28,14 @@ function getBinName(name) {
 
 function runCommand(command, args) {
   return new Promise((resolve) => {
+    // Windows resolves npm/npx as npm.cmd / npx.cmd. Node 18.20+/20.12+/22
+    // (CVE-2024-27980) refuses to spawn .cmd/.bat without a shell and throws
+    // EINVAL, so route through cmd.exe on win32. The arguments here are fixed
+    // npm scripts or normalized in-project file paths (no free-form input).
     const child = spawn(command, args, {
       cwd,
       stdio: 'inherit',
-      shell: false,
+      shell: process.platform === 'win32',
     });
 
     child.on('close', (code) => resolve(code || 0));

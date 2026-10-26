@@ -40,8 +40,9 @@ import { agentRuns } from '@server/database/schema';
 import { LlmService } from './llm.service';
 import { EvidenceService, type EvidenceInput } from './evidence.service';
 import { PortfolioContextService } from './portfolio-context.service';
-import type { AgentRunDetail, AgentRunStatus, StrategyRule, AgentRating, AgentConfidence, AgentRunMode } from '@shared/api.interface';
+import type { AgentRunDetail, AgentRunStatus, StrategyRule, AgentRunMode } from '@shared/api.interface';
 import { MultiAgentService } from './multi-agent.service';
+import { finalizeRatingDecision } from './rating-rules';
 
 @Injectable()
 export class PipelineService {
@@ -555,30 +556,30 @@ ${riskSummary}
 
     const data = result.data as Record<string, unknown>;
 
-    let rating = String(data.rating ?? 'Watch').trim() as AgentRating;
-    const confidence = String(data.confidence ?? 'low').trim().toLowerCase() as AgentConfidence;
+    // Apply the hard-gate / low-confidence / unknown-rating guards and keep the
+    // saved action consistent with the final rating. The rules are centralized
+    // in the pure finalizeRatingDecision helper, which is covered by unit tests.
+    const decision = finalizeRatingDecision({
+      rating: data.rating as string | null | undefined,
+      confidence: data.confidence as string | null | undefined,
+      action: data.action as string | null | undefined,
+      hasHardFailure,
+    });
 
-    // Clamp unknown ratings to Watch as a safe default.
-    const validRatings: AgentRating[] = ['Strong Buy', 'Buy', 'Hold', 'Sell', 'Strong Sell', 'Watch'];
-    if (!validRatings.includes(rating)) {
-      rating = 'Watch';
-    }
-
-    // Hard override #1: hard risk-gate failure caps rating at Hold.
-    if (hasHardFailure && (rating === 'Buy' || rating === 'Strong Buy')) {
-      rating = 'Hold';
-    }
-    // Hard override #2: low confidence forbids directional calls.
-    if (confidence === 'low' && (rating === 'Buy' || rating === 'Sell' || rating === 'Strong Buy' || rating === 'Strong Sell')) {
-      rating = 'Watch';
+    if (decision.changed) {
+      this.logger.warn(
+        `[rating-guard] run=${runId} ${ticker} ${decision.originalRating ?? '?'}->${decision.rating} ` +
+          `confidence=${decision.confidence} reasons=[${decision.overrideReasons.join(',')}] ` +
+          `action="${decision.originalAction}" -> "${decision.action}"`,
+      );
     }
 
     await this.multiAgentService.saveRating(userId, runId, {
       ticker,
-      rating,
-      confidence: confidence as 'high' | 'medium' | 'low',
+      rating: decision.rating,
+      confidence: decision.confidence,
       targetPrice: data.target_price !== null && data.target_price !== undefined ? Number(data.target_price) : undefined,
-      action: String(data.action ?? ''),
+      action: decision.action,
       aggregationLogic: data.aggregation_logic ? String(data.aggregation_logic) : undefined,
       keyUncertainty: data.key_uncertainty ? String(data.key_uncertainty) : undefined,
       bullSummary: data.bull_summary ? String(data.bull_summary) : undefined,

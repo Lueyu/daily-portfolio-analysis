@@ -22,6 +22,7 @@ import DeepReportPage from './pages/Analysis/DeepReportPage';
 import JournalPage from './pages/Journal/JournalPage';
 import TransactionsPage from './pages/Transactions/TransactionsPage';
 import StrategyRulesPage from './pages/StrategyRules/StrategyRulesPage';
+import DevTasksPage from './pages/Dev/DevTasksPage';
 import NotFound from './pages/NotFound/NotFound';
 
 /**
@@ -50,6 +51,7 @@ const RoutesComponent = () => {
         <Route path="journal" element={<JournalPage />} />
         <Route path="transactions" element={<TransactionsPage />} />
         <Route path="settings/rules" element={<StrategyRulesPage />} />
+        <Route path="dev" element={<DevTasksPage />} />
       </Route>
       <Route path="*" element={<NotFound />} />
     </Routes>

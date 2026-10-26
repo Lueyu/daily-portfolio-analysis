@@ -110,21 +110,31 @@ if (process.env.SUDA_WEBUSER) {
 
 // 4. 并发起前后端 dev server
 console.log('[dev-local] (4/4) 并发起 dev:server + dev:client');
-const child = spawn(
-  'npx',
-  [
-    '--no-install',
-    'concurrently',
-    '--names',
-    'server,client',
-    '--prefix-colors',
-    'blue,green',
-    '--kill-others-on-fail',
-    'npm run dev:server',
-    'npm run dev:client',
-  ],
-  { stdio: 'inherit', env: process.env },
-);
+const isWin = process.platform === 'win32';
+const tasks = ['npm run dev:server', 'npm run dev:client'];
+const spawnArgs = [
+  '--no-install',
+  'concurrently',
+  '--names',
+  'server,client',
+  '--prefix-colors',
+  'blue,green',
+  '--kill-others-on-fail',
+  ...tasks,
+];
+// Windows 下 npx 实际是 npx.cmd，必须经 shell 才能解析（Node 18.20+/20.12+/22
+// 对 shell:false 直接 spawn .cmd 会抛 ENOENT/EINVAL）。但 shell 模式下参数被
+// 拼成命令字符串，含空格的任务命令（"npm run dev:server"）若不加引号，会被
+// 拆成 npm / run / dev:server 三个 token，concurrently 就会把 `run` 当命令。
+// 因此 win32 下给含空格的参数手动补双引号。
+const preparedArgs = isWin
+  ? spawnArgs.map((a) => (/\s/.test(a) ? `"${a}"` : a))
+  : spawnArgs;
+const child = spawn('npx', preparedArgs, {
+  stdio: 'inherit',
+  env: process.env,
+  shell: isWin,
+});
 child.on('exit', (code) => process.exit(code ?? 0));
 child.on('error', (err) => {
   console.error(err);

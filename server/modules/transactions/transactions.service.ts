@@ -14,13 +14,11 @@ import {
   BadRequestException,
   Inject,
   Injectable,
-  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '@lark-apaas/fullstack-nestjs-core';
 import { eq, and, desc, asc, inArray, sql } from 'drizzle-orm';
 import { transactions, holdings, closed, cashAccounts } from '@server/database/schema';
-import { QuoteService } from './../quote/quote.service';
 import type {
   Transaction,
   CreateTransactionDto,
@@ -54,11 +52,8 @@ interface TxCursor {
  */
 @Injectable()
 export class TransactionsService {
-  private readonly logger = new Logger(TransactionsService.name);
-
   constructor(
     @Inject(DRIZZLE_DATABASE) private readonly db: PostgresJsDatabase,
-    private readonly quoteService: QuoteService,
   ) {}
 
   /**
@@ -526,208 +521,6 @@ export class TransactionsService {
         await this.rebuildTickersFromTransactions(tx, userId, [oldRow.ticker]);
       }
     });
-  }
-
-  /**
-   * Applies a Buy directly to a holdings row (creates or averages up).
-   * NOTE: legacy helper; the live rebuild path uses `rebuildTickersFromTransactions`.
-   *
-   * @param tx        Active transaction.
-   * @param userId    Owner id.
-   * @param ticker    Ticker to update.
-   * @param sharesNum Shares bought.
-   * @param priceNum  Price per share.
-   * @param feesNum   Fees paid.
-   */
-  private async applyBuyToHoldings(
-    tx: PostgresJsDatabase,
-    userId: string,
-    ticker: string,
-    sharesNum: number,
-    priceNum: number,
-    feesNum: number,
-  ): Promise<void> {
-    const existing = await tx
-      .select()
-      .from(holdings)
-      .where(and(eq(holdings.owner, userId), eq(holdings.ticker, ticker)));
-
-    if (existing.length === 0) {
-      const marketInfo = this.quoteService.detectMarket(ticker);
-      await tx.insert(holdings).values({
-        ticker,
-        company: ticker,
-        shares: String(sharesNum),
-        // Average buy price including fees spread over shares.
-        buyPrice: String((sharesNum * priceNum + feesNum) / sharesNum),
-        buyDate: new Date().toISOString().slice(0, 10),
-        market: marketInfo.market,
-        currency: marketInfo.currency,
-        symbolNative: marketInfo.symbolNative,
-        displaySymbol: marketInfo.displaySymbol,
-        owner: userId,
-        createdBy: userId,
-        updatedBy: userId,
-      });
-      return;
-    }
-
-    const h = existing[0];
-    const curShares = Number(h.shares);
-    const curCost = curShares * Number(h.buyPrice);
-    const newShares = curShares + sharesNum;
-    const newCost = curCost + sharesNum * priceNum + feesNum;
-    const newAvg = newCost / newShares;
-
-    await tx
-      .update(holdings)
-      .set({
-        shares: String(newShares),
-        buyPrice: String(newAvg),
-        updatedAt: new Date(),
-        updatedBy: userId,
-      })
-      .where(eq(holdings.id, h.id));
-  }
-
-  /**
-   * Reduces a holdings row by a sold amount (clamped to current shares).
-   * NOTE: legacy helper; the live rebuild path uses `rebuildTickersFromTransactions`.
-   *
-   * @param tx        Active transaction.
-   * @param userId    Owner id.
-   * @param ticker    Ticker to update.
-   * @param sharesNum Shares sold.
-   * @param _priceNum Unused (kept for signature symmetry).
-   * @param _feesNum  Unused (kept for signature symmetry).
-   */
-  private async applySellToHoldings(
-    tx: PostgresJsDatabase,
-    userId: string,
-    ticker: string,
-    sharesNum: number,
-    _priceNum: number,
-    _feesNum: number,
-  ): Promise<void> {
-    const existing = await tx
-      .select()
-      .from(holdings)
-      .where(and(eq(holdings.owner, userId), eq(holdings.ticker, ticker)));
-
-    if (existing.length === 0) return;
-
-    const h = existing[0];
-    const curShares = Number(h.shares);
-    // Never sell more than currently held.
-    const sellShares = Math.min(sharesNum, curShares);
-    const newShares = curShares - sellShares;
-
-    if (newShares <= 1e-9) {
-      return;
-    }
-
-    await tx
-      .update(holdings)
-      .set({
-        shares: String(newShares),
-        updatedAt: new Date(),
-        updatedBy: userId,
-      })
-      .where(eq(holdings.id, h.id));
-  }
-
-  /**
-   * Reverses a prior Buy from a holdings row (used on delete/update).
-   * NOTE: legacy helper; the live rebuild path uses `rebuildTickersFromTransactions`.
-   *
-   * @param tx        Active transaction.
-   * @param userId    Owner id.
-   * @param ticker    Ticker to update.
-   * @param sharesNum Shares of the reversed buy.
-   * @param priceNum  Price per share.
-   * @param feesNum   Fees paid.
-   */
-  private async revertBuyFromHoldings(
-    tx: PostgresJsDatabase,
-    userId: string,
-    ticker: string,
-    sharesNum: number,
-    priceNum: number,
-    feesNum: number,
-  ): Promise<void> {
-    const existing = await tx
-      .select()
-      .from(holdings)
-      .where(and(eq(holdings.owner, userId), eq(holdings.ticker, ticker)));
-
-    if (existing.length === 0) return;
-
-    const h = existing[0];
-    const curShares = Number(h.shares);
-    const curCost = curShares * Number(h.buyPrice);
-    const newShares = Math.max(0, curShares - sharesNum);
-    const newCost = Math.max(0, curCost - (sharesNum * priceNum + feesNum));
-
-    if (newShares <= 1e-9) {
-      return;
-    }
-
-    const newAvg = newCost / newShares;
-    await tx
-      .update(holdings)
-      .set({
-        shares: String(newShares),
-        buyPrice: String(newAvg),
-        updatedAt: new Date(),
-        updatedBy: userId,
-      })
-      .where(eq(holdings.id, h.id));
-  }
-
-  /**
-   * Reverses a prior Sell from a holdings row (re-adds shares and cost).
-   * NOTE: legacy helper; the live rebuild path uses `rebuildTickersFromTransactions`.
-   *
-   * @param tx        Active transaction.
-   * @param userId    Owner id.
-   * @param ticker    Ticker to update.
-   * @param sharesNum Shares of the reversed sell.
-   * @param priceNum  Price per share.
-   * @param feesNum   Fees paid.
-   */
-  private async revertSellFromHoldings(
-    tx: PostgresJsDatabase,
-    userId: string,
-    ticker: string,
-    sharesNum: number,
-    priceNum: number,
-    feesNum: number,
-  ): Promise<void> {
-    const existing = await tx
-      .select()
-      .from(holdings)
-      .where(and(eq(holdings.owner, userId), eq(holdings.ticker, ticker)));
-
-    if (existing.length === 0) return;
-
-    const h = existing[0];
-    const curShares = Number(h.shares);
-    const curCost = curShares * Number(h.buyPrice);
-    const addShares = sharesNum;
-    const addCost = sharesNum * priceNum + feesNum;
-    const newShares = curShares + addShares;
-    const newCost = curCost + addCost;
-    const newAvg = newShares > 0 ? newCost / newShares : 0;
-
-    await tx
-      .update(holdings)
-      .set({
-        shares: String(newShares),
-        buyPrice: String(newAvg),
-        updatedAt: new Date(),
-        updatedBy: userId,
-      })
-      .where(eq(holdings.id, h.id));
   }
 
   /**

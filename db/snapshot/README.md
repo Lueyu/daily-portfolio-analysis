@@ -4,8 +4,7 @@
 由 [`scripts/db/rebuild-local.ps1`](../../scripts/db/rebuild-local.ps1)
 导入本地 PostgreSQL，让本地全栈离线运行时能看到真实持仓。
 
-> ⚠️ 这些 `*.sql` 包含个人持仓与账户数据，已在 `.gitignore` 中忽略，
-> 不会提交到 GitHub。本目录只保留这份说明文件。
+> ⚠️ 这些 `*.sql` 含个人持仓与账户数据，仅保存在本地并由 `.gitignore` 忽略；这份说明文件纳入版本管理。
 
 ## 快照文件（按外键顺序导入）
 
@@ -19,7 +18,7 @@
 | `journal.sql` | journal | 投资日志 |
 | `snapshots.sql` | snapshots | 组合快照 |
 
-文件名形如 `*.before-recovery.sql` 以及 `backups/` 下的历史备份不参与导入。
+`archive/` 下的 `*.before-recovery.sql` 以及 `backups/` 下的历史备份不参与导入。
 
 ## 如何导出
 

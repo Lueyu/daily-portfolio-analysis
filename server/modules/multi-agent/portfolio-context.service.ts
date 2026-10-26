@@ -12,7 +12,7 @@
  *  3. applyRatingToHoldings: when a human approves a run, optionally write the
  *     resulting rating/action/targetPrice back onto the holdings row.
  */
-import { Injectable, Inject, Logger } from '@nestjs/common';
+import { Injectable, Inject } from '@nestjs/common';
 import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '@lark-apaas/fullstack-nestjs-core';
 import { eq, and } from 'drizzle-orm';
 import { holdings, cashAccounts, agentRuns, agentRatings } from '@server/database/schema';
@@ -46,8 +46,6 @@ function getCompanyGroup(ticker: string): string {
 
 @Injectable()
 export class PortfolioContextService {
-  private readonly logger = new Logger(PortfolioContextService.name);
-
   constructor(@Inject(DRIZZLE_DATABASE) private readonly db: PostgresJsDatabase) {}
 
   /**

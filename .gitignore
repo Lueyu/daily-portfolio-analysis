@@ -12,6 +12,7 @@ build/
 .env
 .env.*
 !.env.example
+!.env.local.example
 .env.local
 
 # Personal data dumps and backups
@@ -41,6 +42,14 @@ pids
 # Coverage directory used by tools like istanbul
 coverage/
 *.lcov
+
+# Playwright / E2E artifacts (browsers themselves live in the global cache)
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+# Local screenshots and model-evaluation evidence (retained on disk).
+/output/
 
 # IDE files
 .vscode/
@@ -102,6 +111,9 @@ agent/.env.local
 # Agent 运行时数据（保留目录与 .gitkeep，忽略内容）
 agent/data/checkpoints/*
 !agent/data/checkpoints/.gitkeep
+agent/data/evolution/
+# Coding-agent dev tasks (file artifacts produced at runtime; never committed)
+agent/data/coder/
 
 # 本地真实数据快照（从妙搭导出的个人持仓 *.sql，仅本地，不公开）；
 # 保留目录里的 README.md，而 scripts/db/ 的建表 SQL 与启动脚本正常入库。

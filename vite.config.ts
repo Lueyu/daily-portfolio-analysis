@@ -10,6 +10,13 @@ import path from 'path';
 import { defineConfig } from '@lark-apaas/coding-preset-vite-react';
 
 export default defineConfig({
+  server: {
+    strictPort: true,
+    watch: {
+      // Sandboxes contain tsconfig.json; their creation/removal must not reload this app.
+      ignored: ['**/agent/data/**', '**/logs/**', '**/node_modules/**', '**/dist/**'],
+    },
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, 'client/src'),
