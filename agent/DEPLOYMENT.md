@@ -48,7 +48,15 @@ uv run python -m pytest -q
 - [官方本地开发与发布流程](https://github.com/larksuite/cli/blob/main/skills/lark-apps/references/lark-apps-local-dev.md)
 - [官方 release-create 契约](https://github.com/larksuite/cli/blob/main/skills/lark-apps/references/lark-apps-release-create.md)
 
-本次检查时，本地 `.spark/meta.json` 没有 `app_id`，也没有已核验的妙搭发布目标。本文件不代表已经创建线上 release。
+用户指定的发布目标是 `app_17en1wnqecc`，访问地址为 [股票投资管理终端](https://4m3ksb6knp0wc.doubaoapps.com/app/app_17en1wnqecc/signals)。这是运行页面地址，不代表本机已经具备编辑或发布权限。本地 `.spark/meta.json` 尚未绑定应用，Git remote 只有 GitHub。
+
+2026-10-26 的实际发布入口核验结果：
+
+- 本机豆包定制版 `lark-cli`（`v1.0.102+f7f71da`）对该应用执行 `apps +get --app-id app_17en1wnqecc --as user` 和 `apps +release-list` 均返回 `not_configured`。该构建没有 `auth`、`config`、`+git-credential-init` 或 `+release-create`，不能直接套用上面完整版 CLI 的命令。
+- 缓存的 `@lark-apaas/miaoda-cli`（`0.1.48`）声明只供妙搭沙箱使用。仅传入用户提供的应用 ID 后，`app get --json` 仍报告缺少平台域名环境，说明本机没有完整的沙箱会话；不能猜测内部域名补齐配置。
+- [`sync-from-miaoda.ps1`](../scripts/sync-from-miaoda.ps1) 的方向是云端导出后覆盖本地并同步 GitHub，不是把本地源码发布到妙搭。不能用它代替发布步骤。
+
+下一步需要拥有该应用编辑权限的妙搭管理会话，或已经完成用户认证且具备源码发布能力的官方 CLI。取得入口后，先读取云端当前源码与版本、比较本地改动，再创建发布候选并验证。当前没有上传本地环境文件、覆盖云端源码或创建线上 release。
 
 ## 完整 Agent 的云端部署方案（待实现）
 
