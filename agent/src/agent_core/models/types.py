@@ -15,6 +15,49 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import Literal, NotRequired, TypeAlias, TypedDict
+
+
+class TextContent(TypedDict):
+    type: Literal["text"]
+    text: str
+
+
+class ImageURL(TypedDict):
+    url: str
+    detail: NotRequired[Literal["auto", "low", "high"]]
+
+
+class ImageContent(TypedDict):
+    type: Literal["image_url"]
+    image_url: ImageURL
+
+
+MessageContent: TypeAlias = str | list[TextContent | ImageContent]
+
+
+class ChatMessage(TypedDict):
+    role: str
+    content: MessageContent
+    tool_calls: NotRequired[list[dict]]
+    tool_call_id: NotRequired[str]
+    name: NotRequired[str]
+
+
+def message_text(message: ChatMessage) -> str:
+    """Extract text without accidentally including image data in prompts/logs."""
+    content = message.get("content", "")
+    if isinstance(content, str):
+        return content
+    return "\n".join(part.get("text", "") for part in content or [] if part.get("type") == "text")
+
+
+def messages_have_images(messages: list[ChatMessage]) -> bool:
+    return any(
+        isinstance(message.get("content"), list)
+        and any(part.get("type") == "image_url" for part in message["content"])
+        for message in messages
+    )
 
 
 class ModelTier(str, Enum):
@@ -40,7 +83,8 @@ class ModelTask(str, Enum):
     EXTRACT = "extract"       # structured extraction (JSON facts)
     TRANSLATE = "translate"
     DEBATE = "debate"         # one bull/bear argument (many calls per run)
-    CODE = "code"             # coder ReAct loop: high-volume tool calls -> flash
+    CODE = "code"             # Settings-based router selects the independent coding profile
+    VISION = "vision"         # explicit screenshot inspection via configured vision profile
     # --- high-stakes, worth the stronger model -> pro ---
     RATING = "rating"         # final rating / sizing decision
     PLAN = "plan"             # planning / reflection
@@ -78,6 +122,9 @@ class ModelSpec:
     is_reasoning: bool = False
     cost_per_mtok_input: float = 0.0
     cost_per_mtok_output: float = 0.0
+    # Opt in explicitly; text-only model names must never imply vision support.
+    supports_images: bool = False
+    max_output_tokens: int = 8192
 
     def cost_usd(self, prompt_tokens: int, completion_tokens: int) -> float:
         """Return the billed cost for this usage, or 0.0 if prices are unset."""
@@ -117,7 +164,7 @@ class PingResult:
 class ChatRequest:
     """One chat completion request, independent of the vendor schema."""
 
-    messages: list[dict[str, str]]
+    messages: list[ChatMessage]
     temperature: float = 0.0
     max_tokens: int | None = None
     stop: list[str] | None = None
@@ -132,7 +179,8 @@ class ChatRequest:
     task: ModelTask | None = None
     # Hard cap on context length the router should tolerate; set from the spec.
     estimated_prompt_tokens: int = 0
-    timeout: float = 60.0
+    # None inherits the configured provider timeout; a caller may narrow it.
+    timeout: float | None = None
 
 
 @dataclass(frozen=True)
@@ -163,6 +211,9 @@ class ChatResponse:
     attempts: int = 1
     # Parsed native tool calls (None when the model replied with plain text).
     tool_calls: list[ToolCall] | None = None
+    # Private transport state, never public reasoning/progress. The provider
+    # binds it to its endpoint/model/account; Scratchpad persists it verbatim.
+    private_continuation: dict | None = field(default=None, repr=False)
 
     def json(self) -> dict | list:
         """Parse JSON content, tolerating a ```json code fence and prose.
@@ -259,10 +310,16 @@ def parse_json(text: str) -> dict | list:
     raise ValueError(f"unbalanced JSON in response: {text[:200]!r}")
 
 
-def estimate_prompt_tokens(messages: list[dict[str, str]]) -> int:
+def estimate_prompt_tokens(messages: list[ChatMessage]) -> int:
     """Rough token estimate without a tokenizer (4 chars/token is a safe-ish
     upper bound for English+Chinese mix). Only used for pre-routing checks;
     the vendor's usage field is the source of truth after a call.
     """
-    chars = sum(len(m.get("content", "")) for m in messages)
-    return max(1, int(chars / 3.5))
+    chars = sum(len(message_text(message)) for message in messages)
+    images = sum(
+        sum(part.get("type") == "image_url" for part in message["content"])
+        for message in messages if isinstance(message.get("content"), list)
+    )
+    # Base64 length is not a model token count. Charge a bounded image estimate;
+    # actual provider usage remains authoritative (resolution/vendor dependent).
+    return max(1, int(chars / 3.5) + images * 1024)

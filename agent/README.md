@@ -1,65 +1,74 @@
-# Stock Agent
+# Python Agent
 
-A model-agnostic AI agent service for equity research, used by the Daily Portfolio Analysis terminal. It runs the reasoning side of the workflow — market queries, research, and later portfolio analysis — while the trading webapp ([../](../)) remains the system of record.
+This package contains the current local Coding Agent, a shared model layer, a portfolio HTTP client, and the evaluated-evolution CLI. It does not connect directly to the business database.
 
-The agent does **not** connect to PostgreSQL. It reads and writes business data only through the webapp's HTTP API, authenticated with an `x-agent-token`; the backend injects the user context and enforces ownership. Keeping the agent outside the database boundary means models, prompts and reasoning logic can be changed — or the agent run on its own — without touching accounts or data.
+## Current Coding Agent flow
 
-## Capabilities
-
-- A Typer CLI: `agent init`, `agent health`, `agent quote`
-- A resilient HTTP client to the webapp (`httpx` + `tenacity`), with a mocked transport in tests
-- A model/provider abstraction (Volcengine Ark / DeepSeek / any OpenAI-compatible endpoint)
-- The runtime, tools and model layers, with structured logging and JSONL checkpoints
-
-## Quick start
-
-Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/) (developed on 3.12).
-
-```bash
-uv sync                       # create .venv and install dependencies
-cp .env.example .env          # fill in API keys and webapp settings
-uv run agent health           # check the webapp client
-uv run agent quote AAPL       # fetch a real quote through the webapp
-uv run pytest -q              # run the offline test suite (no real network)
+```text
+/dev React UI
+  → server/modules/dev-agent (Nest process orchestration)
+  → agent dev new / run
+  → coder/cli.py::build_harness
+  → coder/general_harness.py::GeneralHarness
+  → coder/react_loop.py::ReactLoop
+  → model request → validated tool call → real observation → next turn
+  → current-revision target + regression evidence
+  → user review → isolated revalidation → source landing
 ```
 
-## Layout
+| Module | Responsibility |
+| --- | --- |
+| `coder/general_harness.py` | Current v2 source workspace, execution and completion rules |
+| `coder/react_loop.py` | Model turns, tool validation and feedback |
+| `coder/general_tools.py`, `extension_tools.py` | Tool schemas and registration |
+| `coder/read_tools.py` | Shared read-only dispatch, independent of either harness |
+| `coder/extensions.py` | Plans, memory, live messages, approvals and integration dispatch |
+| `coder/runtime/` | Container terminals, preview services, browser and network policy |
+| `coder/checkpoints/`, `general_landing.py` | Reversible source changes and reviewed landing |
+| `coder/workers.py` | Isolated child agents, conflict checks and merge transactions |
+| `coder/integrations/` | Operator-configured HTTP MCP and trusted project Skills |
+| `coder/session_control.py`, `scratchpad.py` | Durable input/approvals and bounded conversation history |
+| `models/` | Coding/vision profiles, provider requests, retries and usage |
 
+New tasks explicitly select runtime v2. The files `coder/harness.py`, `sandbox.py`, `checks.py` and the legacy registry/probe paths still support existing v1 tasks. `cli.py` chooses the appropriate harness from saved task metadata. Do not delete that compatibility path without migrating the old tasks.
+
+Use `agent dev capabilities --json` or the `/dev` settings dialog for the current tools and effective capabilities. Source changes stay in a task copy until reviewed. Each mutation has a checkpoint; edits invalidate old verification. The model requests completion, while the harness checks the actual source revision, test evidence, unread instructions and running workers.
+
+## Setup and commands
+
+Requires Python 3.11+ and uv. Run these commands from `agent/`:
+
+```powershell
+uv sync
+# Populate .env from .env.example only if no local .env already exists.
+uv run agent --help
+uv run agent dev --help
+uv run agent dev capabilities --json
 ```
-agent/
-├── src/agent_core/
-│   ├── cli.py                # Typer CLI: init / health / quote
-│   ├── config.py             # pydantic-settings, loaded from .env
-│   ├── logging_conf.py       # structured logging
-│   ├── models/               # model/provider abstraction
-│   ├── runtime/
-│   │   └── webapp_client.py  # HTTP client to the NestJS webapp
-│   └── tools/                # tool layer (market, web, finance, workflow)
-├── tests/test_smoke.py       # pytest + pytest-httpx, fully offline
-├── data/checkpoints/         # JSONL run/event logs (runtime, kept empty in git)
-├── .env.example              # environment template (committed)
-└── pyproject.toml
+
+The CLI reads this package's `.env` regardless of the invoking working directory. See [.env.example](.env.example) for coding/vision models, credentials, MCP, network policy and worker limits. The default coding tier is pro; coding fallback is disabled unless explicitly enabled.
+
+For `/dev`, enable `AGENT_DEV_ENABLED=true` in the webapp's root `.env.local`, configure the Python environment and prepare the Docker image. Start the webapp from its root with `npm run dev:local`. See [the script index](../scripts/README.md).
+
+The complete Coding Agent currently runs locally. Publishing the webapp does not deploy its Python/Docker execution environment. See [deployment boundaries and the remote-worker design](DEPLOYMENT.md) before deploying to Miaoda.
+
+`agent dev new/run/approve/reject` manages tasks; `message/decide` provides live input and external-operation decisions. Use `changes` through the agent or the UI to review source history; CLI `undo/restore` requires explicit revision checks. `runtime-inspect/runtime-stop` inspects and cleans up owned runtime resources. Run `agent dev --help` for current command options.
+
+## Data and validation
+
+Runtime artifacts live in `agent/data/coder/tasks/<task-id>/`, outside the editable task source. Conversation history, verification evidence, approvals, workers and checkpoints persist there. A task-wide iteration or duration cap is not enabled by default.
+
+```powershell
+uv run python -m pytest -q
 ```
 
-## Design principles
+The default suite uses controlled model/runtime adapters. Docker integration cases are opt-in; model connectivity and real task evaluations are separate from unit checks. Local learning documents are indexed in `../docs/README.md` (intentionally not committed).
 
-- **Model-agnostic** — every provider sits behind one interface; switch Ark / DeepSeek / any OpenAI-compatible endpoint via `.env`, without changing agent code.
-- **Explicit control flow** — the agent loop (tool selection, observation, termination) is implemented directly in this repository rather than hidden inside a heavyweight framework, so the control flow stays easy to debug and reason about.
-- **Database isolation** — the agent reads and writes business data only through the webapp's HTTP API with an `x-agent-token`; the server injects the user context and enforces ownership.
-- **Deterministic tests** — external HTTP is mocked, so the test suite runs fully offline and is CI-safe.
+## Other package areas
 
-## Configuration
-
-Set values in `agent/.env` (copied from `.env.example`; secrets are git-ignored):
-
-| Variable | Purpose |
-|---|---|
-| `ARK_API_KEY` | Volcengine Ark API key |
-| `DEEPSEEK_API_KEY` | DeepSeek API key |
-| `ARK_MODEL` | model id used for the Ark provider |
-| `WEBAPP_BASE_URL` | base URL of the NestJS webapp, e.g. `http://127.0.0.1:3000` |
-| `WEBAPP_AGENT_TOKEN` | shared secret sent as the `x-agent-token` header |
-| `WEBAPP_DEFAULT_USER_ID` | user id used in local development |
+- `runtime/webapp_client.py`: authenticated backend HTTP access for portfolio tools.
+- `tools/`: market and portfolio client tools; CLI examples include `agent quote AAPL` and `agent holdings`.
+- `evolution/`: evidence validation and proposal records. The E0 scope and limitations follow below.
 
 ## Evaluated evolution foundation (E0)
 

@@ -8,7 +8,7 @@
  * per ticker and per currency (currency is looked up from the transactions table,
  * since closed rows themselves store no currency).
  */
-import { Injectable, Inject, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, Inject, NotFoundException, BadRequestException } from '@nestjs/common';
 import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '@lark-apaas/fullstack-nestjs-core';
 import { eq, and, desc, inArray } from 'drizzle-orm';
 import { closed, transactions } from '@server/database/schema';
@@ -23,8 +23,6 @@ type UpdateClosedDto = Partial<CreateClosedDto>;
  */
 @Injectable()
 export class ClosedService {
-  private readonly logger = new Logger(ClosedService.name);
-
   constructor(@Inject(DRIZZLE_DATABASE) private readonly db: PostgresJsDatabase) {}
 
   /**

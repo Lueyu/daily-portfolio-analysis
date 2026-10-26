@@ -75,7 +75,6 @@ import {
 import { getAgentRun, submitHumanDecision, logger } from '@/api';
 import RatingBadge from './RatingBadge';
 import ConfidenceBadge from './ConfidenceBadge';
-import RunProgressBar from './RunProgressBar';
 import RiskAlertBadge from './RiskAlertBadge';
 import type {
   AgentRunDetail,

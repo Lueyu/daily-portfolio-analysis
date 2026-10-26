@@ -19,7 +19,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
-from .models import DevTask, TaskStatus
+from .models import DevTask
 from .registry import GateKind
 
 
@@ -96,20 +96,3 @@ def visible_tools(specs, gate: GateState) -> list[str]:
     if hasattr(specs, "names"):
         specs = [specs.get(n) for n in specs.names()]
     return sorted(s.name for s in specs if gate.is_visible(s.gate))
-
-
-def derive_milestone(gate: GateState) -> TaskStatus:
-    """Derive the externally-visible 8-state machine status from the gate.
-
-    The gate state is finer-grained than the original milestones; this maps it
-    back so persistence and the web UI keep their existing meaning.
-    """
-    if gate.verify_state == VerifyState.PASSED:
-        return TaskStatus.AWAITING_APPROVAL
-    if gate.verify_state == VerifyState.RUNNING:
-        return TaskStatus.VERIFYING
-    if gate.sandbox_dirty:
-        return TaskStatus.PATCHED
-    if gate.red_seen:
-        return TaskStatus.REPRODUCED
-    return TaskStatus.NEW

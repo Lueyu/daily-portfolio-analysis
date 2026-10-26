@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from agent_core.coder.models import CheckKind
@@ -17,6 +19,25 @@ def test_parse_read_file():
     assert step.path == "server/x.ts"
 
 
+def test_read_file_pagination_contract():
+    step = parse_agent_step(json.dumps({
+        "action": "read_file", "path": "long.ts", "start_line": 150,
+        "max_lines": 20, "start_column": 4001,
+    }))
+    assert (step.start_line, step.max_lines, step.start_column) == (150, 20, 4001)
+    defaults = ReadFileStep(path="long.ts")
+    assert (defaults.start_line, defaults.max_lines, defaults.start_column) == (1, 80, 1)
+
+
+@pytest.mark.parametrize("field,value", [
+    ("start_line", 0), ("start_column", 0), ("max_lines", 0),
+    ("max_lines", 201), ("start_line", 1.5),
+])
+def test_read_file_rejects_invalid_page(field, value):
+    with pytest.raises(ValueError):
+        ReadFileStep(path="long.ts", **{field: value})
+
+
 def test_parse_run_check():
     step = parse_agent_step('{"action": "run_check", "check": "unit"}')
     assert isinstance(step, RunCheckStep)
@@ -30,6 +51,18 @@ def test_parse_apply_patch():
     assert isinstance(step, ApplyPatchStep)
     assert step.hypothesis == "h1"
     assert step.diff.startswith("--- a/x")
+
+
+def test_patch_parsing_preserves_diff_whitespace_and_final_newline():
+    diff = "--- a/x\n+++ b/x\n@@ -1 +1 @@\n-old\n+fixed \n"
+    step = parse_agent_step(json.dumps({"action": "apply_patch", "diff": diff}))
+    assert step.diff == diff
+
+
+@pytest.mark.parametrize("diff", ["", "  \n\t"])
+def test_whitespace_only_patch_is_rejected(diff):
+    with pytest.raises(ValueError):
+        parse_agent_step(json.dumps({"action": "apply_patch", "diff": diff}))
 
 
 def test_parse_finish():

@@ -26,21 +26,24 @@ from .parser import (
     ApplyPatchStep,
     BlockedStep,
     FinishStep,
-    GlobStep,
-    GrepStep,
-    ListDirStep,
-    ProbeEnvStep,
-    ReadFileStep,
     ReadOnlyStep,
     RunCheckStep,
     build_default_registry,
 )
 from .prompts import reproduce_prompt
 from .react_loop import LoopSignal, ReactLoop, StepResult
+from .read_tools import dispatch_readonly
 from .safety import SafetyViolation, scan_test_cheating
 from .sandbox import SandboxPort
 from .task_store import TaskStore
 from .tools import ControlledTools
+
+_RESUMABLE_BUDGET_REASONS = {
+    "iteration budget reached",
+    "model call budget reached",
+    "wall-clock time budget reached",
+    "too many read-only probes without progress",
+}
 
 
 class ChatPort(Protocol):
@@ -81,7 +84,7 @@ class CoderHarness:
         verify_cwd=None,
         sandbox: SandboxPort | None = None,
         budget: BudgetGuard | None = None,
-        max_probes: int = 10,
+        max_probes: int | None = None,
         supports_tools: bool = True,
     ):
         self.task = task
@@ -92,7 +95,6 @@ class CoderHarness:
         self.sandbox = sandbox
         self.budget = budget or BudgetGuard(BudgetConfig())
         self.max_probes = max_probes
-        self.probe_warning = max(1, max_probes - 2)
         self.registry = build_default_registry()
         self.supports_tools = supports_tools
         self._latest_patch: Patch | None = None
@@ -100,6 +102,7 @@ class CoderHarness:
         self._probes = 0
         self._already_green = 0
         self._cheat_strikes = 0
+        self._resume_evidence = ""
 
     def _work_cwd(self) -> Path:
         if self.sandbox is None:
@@ -107,7 +110,9 @@ class CoderHarness:
         self.sandbox.ensure()
         return self.sandbox.path
 
-    def run(self, *, auto_approve: bool) -> DevTask:
+    def run(self, *, auto_approve: bool, resume_budget: bool = False) -> DevTask:
+        if resume_budget:
+            self._resume_budget_block()
         try:
             # An approval can be resumed in a new process. A completed or
             # blocked task is terminal and must never call the model again.
@@ -123,6 +128,8 @@ class CoderHarness:
                     self._apply_and_verify_legacy(self._load_required_patch())
             else:
                 gate = GateState.from_task(self.task)
+                if gate.verify_state == VerifyState.RUNNING:
+                    self._resume_interrupted_verification(gate)
                 loop = ReactLoop(
                     task=self.task,
                     chat=self.chat,
@@ -152,11 +159,71 @@ class CoderHarness:
             self._teardown_sandbox()
         return self._save()
 
+    def _resume_budget_block(self) -> None:
+        """Explicitly reopen only an automatic cap stop, preserving its audit trail."""
+        history = self.store.read_iterations(self.task.id)
+        last = history[-1] if history else None
+        if self.task.status != TaskStatus.BLOCKED or last is None \
+                or last.phase != "block" or last.decision not in _RESUMABLE_BUDGET_REASONS:
+            raise ValueError("--resume-budget requires a task blocked by an automatic budget")
+        # The old sandbox was torn down. Require fresh evidence before reopening
+        # either write or finish capabilities on the current checkout.
+        self.task.red_seen = False
+        self.task.sandbox_dirty = False
+        self.task.verify_state = VerifyState.NONE.value
+        self._latest_patch = None
+        self._last_failure = ""
+        self._probes = 0
+        self._already_green = 0
+        self._cheat_strikes = 0
+        self.task.set_status(TaskStatus.NEW)
+        self._iter("resume", action="resume_budget",
+                   decision="resumed automatic budget stop; revalidate current checkout",
+                   observations=[last.decision])
+        self._save()
+
     def _load_required_patch(self) -> Patch:
         patch = self._latest_patch or self._load_latest_patch()
         if patch is None:
             raise _Stop("no patch to apply")
         return patch
+
+    def _resume_interrupted_verification(self, gate: GateState) -> None:
+        """Revalidate a persisted candidate after its previous process stopped."""
+        patch = self._load_required_patch()
+        self._latest_patch = patch
+        self._iter("resume", action="resume_verification",
+                   decision="resuming interrupted verification",
+                   observations=[f"saved candidate: {patch.patch_id}"])
+        if self.sandbox is None:
+            # Legacy runs have not applied anything before approval. Reopen
+            # diagnosis; do not manufacture successful verification evidence.
+            gate.reset_change()
+            gate.apply_to(self.task)
+            self.task.set_status(TaskStatus.DIAGNOSED if gate.red_seen else TaskStatus.NEW)
+            self._resume_evidence = "上次候选处理被中断，尚无完整验证结果。请重新检查并提交候选补丁。"
+            self._save()
+            return
+
+        self.sandbox.ensure()
+        if not self.sandbox.is_clean():
+            reverted = self.sandbox.revert(patch.diff)
+            clean = self.sandbox.is_clean()
+            if not reverted.ok or not clean:
+                self._iter("resume", action="resume_verification",
+                           decision="interrupted verification recovery could not restore baseline",
+                           observations=[reverted.stderr[:1500],
+                                         f"sandbox preserved for inspection: {self.sandbox.path}"])
+                # Keep RUNNING as evidence of incomplete verification. The
+                # teardown guard preserves unknown changes for inspection.
+                raise _Stop("interrupted verification requires inspection: sandbox is not safely restored")
+
+        result = self._sandbox_verify_once(patch, gate)
+        self._resume_evidence = result.observation
+        gate.apply_to(self.task)
+        self._save()
+        if result.signal == LoopSignal.BLOCKED:
+            raise _Stop(result.reason)
 
     def _await_approval(self) -> None:
         """Park a green candidate for a human review before landing."""
@@ -168,7 +235,10 @@ class CoderHarness:
 
     # -- ToolExecutor implementation --------------------------------------
     def initial_prompt(self) -> str:
-        return reproduce_prompt(self.task.problem, self.task.acceptance)
+        prompt = reproduce_prompt(self.task.problem, self.task.acceptance)
+        if self._resume_evidence:
+            prompt += "\n\n进程恢复后的真实检查结果：\n" + self._resume_evidence
+        return prompt
 
     def execute(self, step, gate: GateState) -> StepResult:
         if isinstance(step, ReadOnlyStep):
@@ -194,13 +264,7 @@ class CoderHarness:
 
     def _exec_readonly(self, step: ReadOnlyStep) -> StepResult:
         self._probes += 1
-        if self._probes > self.max_probes:
-            return StepResult(
-                observation="只读探针过多且没有进展。",
-                signal=LoopSignal.BLOCKED,
-                reason="too many read-only probes without progress",
-            )
-        label, target, fn = self._dispatch_readonly(step, self._work_cwd())
+        label, target, fn = dispatch_readonly(step, self.tools, self._work_cwd())
         try:
             body = fn()
             status = "ok"
@@ -210,36 +274,36 @@ class CoderHarness:
         self._iter(
             "react",
             action=label,
-            decision=f"probe {self._probes}/{self.max_probes}: {target} ({status})",
+            decision=f"probe {self._probes}: {target} ({status})",
             observations=[f"{target}: {status}", body[:300]],
         )
         return StepResult(observation=f"\n{body}\n", action=label)
 
     def _exec_run_check(self, step: RunCheckStep, gate: GateState) -> StepResult:
+        self._iter("check", action="run_check",
+                   decision=f"run_check {step.kind.value}: started")
         outcome = self.tools.run_check(
             step.kind,
             cwd=self._work_cwd(),
             sandboxed=self.sandbox is not None,
         )
+        verdict = "PASS" if outcome.passed else "FAIL"
+        self._iter("check", action="run_check",
+                   decision=f"run_check {step.kind.value}: {verdict}",
+                   observations=["command: " + " ".join(outcome.argv), outcome.raw_tail])
         if not gate.red_seen:
             if outcome.passed:
                 self._already_green += 1
-                if self._already_green >= 2:
-                    return StepResult(
-                        observation="连续两次检查都已通过，无法复现失败。",
-                        signal=LoopSignal.BLOCKED,
-                        reason="could not reproduce the failure",
-                    )
                 return StepResult(
-                    observation="检查已经通过；红灯复现是必须的，请运行一个真正失败的测试。"
+                    observation=(f"run_check {step.kind.value}: PASS\n{outcome.raw_tail[:3000]}\n"
+                                 "当前检查没有复现失败，问题可能已修复或现有测试未覆盖。"
+                                 "不要制造失败来解锁写入；若没有可运行的失败用例，"
+                                 "调用 blocked 报告已通过的检查与缺少的复现条件。")
                 )
             self._last_failure = outcome.raw_tail
             gate.record_red()
             gate.apply_to(self.task)
             self.task.set_status(TaskStatus.REPRODUCED)
-            self._iter("react", action="run_check",
-                       decision="red reproduction confirmed",
-                       observations=[outcome.raw_tail[:500]])
             self._save()
             return StepResult(
                 observation=f"复现成功（红灯）：\n{outcome.raw_tail[:3000]}",
@@ -362,12 +426,10 @@ class CoderHarness:
         self._iter("verify", hypothesis=patch.hypothesis,
                    decision="sandbox checks failed; reverted", observations=labels)
         escalate = self.budget.note_hypothesis_failure(patch.hypothesis)
-        if escalate and self.budget.note_rethink():
-            return StepResult(
-                observation=evidence,
-                signal=LoopSignal.BLOCKED,
-                reason="repeated unsuccessful diagnosis; escalated to human",
-            )
+        if escalate:
+            self.budget.note_rethink()
+            self.task.diagnosis_rethink_count = self.budget.rethink_count
+            evidence += "\n同一假设反复失败，请重新诊断并尝试不同方法；确认真实阻碍才 blocked。"
 
         # Verification has finished and the sandbox is clean. Persist the
         # diagnosed state before the next model turn so apply_patch reopens.
@@ -414,9 +476,10 @@ class CoderHarness:
         self.task.verify_state = VerifyState.NONE.value
         self.task.set_status(TaskStatus.DIAGNOSED)
         self._save()
-        if self.budget.note_hypothesis_failure(patch.hypothesis) \
-                and self.budget.note_rethink():
-            raise _Stop("approved patch repeatedly failed on main; human")
+        if self.budget.note_hypothesis_failure(patch.hypothesis):
+            self.budget.note_rethink()
+            self.task.diagnosis_rethink_count = self.budget.rethink_count
+            self._save()
 
     def _apply_and_verify_legacy(self, patch: Patch) -> None:
         applied = self.tools.git_apply(patch.diff, cwd=self.main_cwd)
@@ -460,47 +523,24 @@ class CoderHarness:
     def _teardown_sandbox(self) -> None:
         if self.sandbox is None:
             return
+        if self.task.status == TaskStatus.BLOCKED and self.task.verify_state == VerifyState.RUNNING.value:
+            return  # Interrupted recovery retains unknown changes for inspection.
         try:
             self.sandbox.teardown()
         except OSError as exc:
             self._iter("landing", decision="sandbox teardown warning",
                        observations=[str(exc)[:300]])
 
-    def _dispatch_readonly(
-        self, step: ReadOnlyStep, cwd: Path
-    ) -> tuple[str, str, object]:
-        """Map a read-only step to (action label, target desc, result thunk)."""
-        if isinstance(step, ReadFileStep):
-            return ("read_file", step.path,
-                    lambda: f"FILE {step.path}:\n"
-                            + self.tools.read_file(step.path, cwd=cwd)[:4000])
-        if isinstance(step, ListDirStep):
-            return ("list_dir", step.path,
-                    lambda: f"LIST {step.path}:\n"
-                            + self.tools.list_dir(step.path, cwd=cwd))
-        if isinstance(step, GlobStep):
-            return ("glob", step.pattern,
-                    lambda: f"GLOB {step.pattern}:\n"
-                            + self.tools.glob(step.pattern, step.path, cwd=cwd))
-        if isinstance(step, GrepStep):
-            return ("grep", step.pattern,
-                    lambda: f"GREP {step.pattern}:\n"
-                            + self.tools.grep(step.pattern, step.path,
-                                              step.glob_include, step.max_results,
-                                              cwd=cwd))
-        if isinstance(step, ProbeEnvStep):
-            return ("probe_env", "env",
-                    lambda: "ENVIRONMENT:\n"
-                            + self.tools.probe_env(step.targets, cwd=cwd))
-        raise ValueError(f"unsupported read-only step: {type(step).__name__}")
-
     def _iter(self, phase, *, hypothesis="", action="", decision="",
               observations=None) -> None:
         n = len(self.store.read_iterations(self.task.id)) + 1
-        self.store.append_iteration(self.task.id, Iteration(
+        record = Iteration(
             index=n, phase=phase, hypothesis=hypothesis, action=action,
             model_calls=self.budget.model_calls,
-            observations=observations or [], decision=decision))
+            observations=observations or [], decision=decision)
+        self.store.append_iteration(self.task.id, record)
+        self.task.updated_at = record.created_at
+        self.store.save(self.task)
 
     def _block(self, reason: str) -> DevTask:
         self._iter("block", decision=reason)

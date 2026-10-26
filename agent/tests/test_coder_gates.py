@@ -3,14 +3,12 @@ from agent_core.coder.gates import (
     GateKind,
     GateState,
     VerifyState,
-    derive_milestone,
     visible_tools,
 )
 from agent_core.coder.models import (
     AcceptanceCriterion,
     CheckKind,
     DevTask,
-    TaskStatus,
 )
 from agent_core.coder.parser import build_default_registry
 
@@ -82,16 +80,6 @@ def test_gate_round_trips_through_task():
     g2 = GateState.from_task(t)
     assert g2.verify_state == VerifyState.PASSED
     assert "finish" in visible_tools(build_default_registry(), g2)
-
-
-def test_derive_milestone_matches_existing_machine():
-    assert derive_milestone(GateState.from_task(_task())) == TaskStatus.NEW
-    g = GateState.from_task(_task()); g.record_red()
-    assert derive_milestone(g) == TaskStatus.REPRODUCED
-    g.record_write(); g.begin_verify()
-    assert derive_milestone(g) == TaskStatus.VERIFYING
-    g.record_verify(True)
-    assert derive_milestone(g) == TaskStatus.AWAITING_APPROVAL
 
 
 def test_visible_tools_accepts_specs_directly():

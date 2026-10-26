@@ -7,7 +7,7 @@
  * same CLI surface and on-disk work-product contract without any model calls:
  *
  *   dev new   --title T --problem P --acceptance id:kind:desc[:target] ... [--workdir W]
- *   dev run       <id>
+ *   dev run       <id> [--resume-budget]
  *   dev approve   <id>
  *   dev reject    <id> --reason R
  *
@@ -111,13 +111,14 @@ function appendIteration(id, it) {
   fs.appendFileSync(file, JSON.stringify(it) + '\n', 'utf8');
 }
 
-function baseIteration(index, phase, hypothesis, action, observations, decision) {
+function baseIteration(index, phase, hypothesis, action, observations, decision, modelCalls = 0) {
   return {
     index,
     phase,
     hypothesis,
     action,
-    model_calls: 1,
+    // Python records the cumulative calls of this process, not per-row calls.
+    model_calls: modelCalls,
     observations,
     decision,
     created_at: now(),
@@ -141,45 +142,93 @@ function cmdNew(flags) {
     created_at: ts,
     updated_at: ts,
   };
+  // Only explicitly named test fixtures emulate pre-P1a artifacts.
+  if (!task.title.includes('legacy')) {
+    task.sandbox_dirty = false;
+    task.verify_state = 'none';
+  }
   saveTask(task);
   emit({ ok: true, id });
 }
 
-function cmdRun(id) {
+function cmdRun(id, flags) {
   const task = loadTask(id);
-  appendIteration(
-    id,
-    baseIteration(
-      0,
-      'reproduce',
-      'The failure can be reproduced by the acceptance check.',
-      'Run the targeted check and capture the red output.',
-      ['check failed as expected (RED)', 'exit code 1'],
-      'Move to diagnosis.',
-    ),
-  );
-  appendIteration(
-    id,
-    baseIteration(
-      1,
-      'diagnose',
-      'The guard overwrites the rating but not the saved action.',
-      'Trace the rating/action mapping in the pipeline.',
-      ['rating is capped to Hold', "action still reads the model's original Buy"],
-      'Patch the action together with the rating.',
-    ),
-  );
-  appendIteration(
-    id,
-    baseIteration(
-      2,
-      'patch',
-      'Deriving the action from the final rating removes the contradiction.',
-      'Apply a minimal change and write the diff.',
-      ['wrote patches/0001.diff', 'changed file: server/modules/multi-agent/pipeline.service.ts'],
-      'Request approval after the fix is staged.',
-    ),
-  );
+  let index = iterationCount(id);
+  let modelCalls = 0;
+  const record = (phase, hypothesis, action, observations, decision) => {
+    if (phase === 'react') modelCalls++;
+    appendIteration(id, baseIteration(index++, phase, hypothesis, action, observations, decision, modelCalls));
+  };
+  if (flags.has('resume-budget')) {
+    const file = path.join(taskDir(id), 'iterations', 'iterations.jsonl');
+    const last = fs.readFileSync(file, 'utf8').trim().split('\n').map((line) => JSON.parse(line)).at(-1);
+    if (task.status !== 'blocked' || last?.phase !== 'block' || last.decision !== 'iteration budget reached') {
+      throw new Error('resume-budget requires an automatic budget stop');
+    }
+    record('resume', '', 'resume_budget', ['old budget evidence retained'], 'resumed automatic budget stop');
+    task.status = 'new';
+    task.red_seen = false;
+    task.sandbox_dirty = false;
+    task.verify_state = 'none';
+    saveTask(task);
+  } else if (task.title.includes('budget')) {
+    record('block', '', '', [], 'iteration budget reached');
+    task.status = 'blocked';
+    saveTask(task);
+    emit({ ok: true, status: task.status });
+    return;
+  }
+  if (task.title.includes('hold')) {
+    record('react', 'Inspecting the task before proceeding.', 'read_file',
+      ['HOLD_PROGRESS_PRESERVED'], 'waiting for the test to stop this process');
+    task.status = 'diagnosed';
+    saveTask(task);
+    // Keep the child alive until the real backend stop endpoint terminates it.
+    setInterval(() => {}, 1000);
+    return;
+  }
+  record('react', 'Inspect the final rating and action mapping.', 'read_file',
+    ['rating is capped to Hold', "action still reads the model's original Buy"], 'tool observed');
+  const longLog = Array.from({ length: 80 }, (_, line) =>
+    `saved check line ${line + 1}: the rating and action disagree`).join('\n');
+  record('react', 'The failure can be reproduced by the acceptance check.', 'run_check',
+    [`check failed as expected (RED)\n${longLog}\nSAVED_OUTPUT_END_MARKER`, 'exit code 1'], 'red observed');
+
+  const history = task.title.includes('history');
+  if (history) {
+    record('react', 'FIRST_PATCH_HYPOTHESIS: align the initial action.', 'apply_patch',
+      ['wrote patches/0001.diff'], 'patch proposed');
+    writePatch(id, '0001', 'actionForInitialRating(rating)');
+    record('verify', 'The initial mapping may miss hard guards.', 'run_check',
+      ['unit: failed; guarded Hold still carries Buy'], 'verification failed');
+    record('react', 'The failed check points to the final guarded rating.', 'read_file',
+      ['hard guard runs after the initial rating'], 'tool observed');
+  }
+  const patchId = history ? '0002' : '0001';
+  record('react', 'FINAL_PATCH_HYPOTHESIS: derive the action from the final rating.', 'apply_patch',
+    [`wrote patches/${patchId}.diff`, 'changed file: server/modules/multi-agent/pipeline.service.ts'],
+    'patch proposed');
+  writePatch(id, patchId, 'actionForRating(finalRating)');
+  record('verify', 'Check the candidate patch in the sandbox.', 'run_check',
+    ['targeted check passes (GREEN)', 'no adjacent regressions'], 'verification passed');
+  record('react', 'The verified candidate is ready for human review.', 'finish',
+    ['candidate saved; sandbox changes rolled back'], 'awaiting approval');
+
+  const legacy = task.title.includes('legacy');
+  if (legacy) {
+    record('future_phase_v2', 'Retain an unfamiliar saved phase.', 'future_tool_v2',
+      ['UNKNOWN_PHASE_OBSERVATION'], 'legacy artifact stopped');
+  } else {
+    task.sandbox_dirty = true;
+    task.verify_state = 'passed';
+  }
+  task.red_seen = true;
+  task.status = legacy ? 'diagnosed' : 'awaiting_approval';
+  saveTask(task);
+  emit({ ok: true, status: task.status });
+}
+
+function writePatch(id, patchId, expression) {
   const diff = [
     'diff --git a/server/modules/multi-agent/pipeline.service.ts b/server/modules/multi-agent/pipeline.service.ts',
     '--- a/server/modules/multi-agent/pipeline.service.ts',
@@ -187,15 +236,16 @@ function cmdRun(id) {
     '@@ -42,7 +42,7 @@',
     '   const finalRating = applyHardGuards(rating, guards);',
     '-  const action = modelAction;',
-    '+  const action = actionForRating(finalRating);',
+    `+  const action = ${expression};`,
     '   return { rating: finalRating, action };',
     '',
   ].join('\n');
-  fs.writeFileSync(path.join(taskDir(id), 'patches', '0001.diff'), diff, 'utf8');
-  task.red_seen = true;
-  task.status = 'awaiting_approval';
-  saveTask(task);
-  emit({ ok: true, status: task.status });
+  fs.writeFileSync(path.join(taskDir(id), 'patches', `${patchId}.diff`), diff, 'utf8');
+}
+
+function iterationCount(id) {
+  const file = path.join(taskDir(id), 'iterations', 'iterations.jsonl');
+  return fs.existsSync(file) ? fs.readFileSync(file, 'utf8').split('\n').filter(Boolean).length : 0;
 }
 
 function cmdApprove(id) {
@@ -203,12 +253,12 @@ function cmdApprove(id) {
   appendIteration(
     id,
     baseIteration(
-      3,
-      'verify',
-      'The staged patch satisfies the acceptance criteria.',
-      'Run the full targeted check plus adjacent cases.',
-      ['targeted check passes (GREEN)', 'no adjacent regressions'],
-      'Mark the task verified.',
+      iterationCount(id),
+      'landing',
+      'The reviewer approved the verified candidate.',
+      'apply_patch',
+      ['patch applied to the main workspace', 'unit checks pass (GREEN)'],
+      'verified',
     ),
   );
   task.status = 'verified';
@@ -221,12 +271,12 @@ function cmdReject(id, reason) {
   appendIteration(
     id,
     baseIteration(
-      task.diagnosis_rethink_count,
-      'reject',
+      iterationCount(id),
+      'approval',
       'The reviewer rejected the proposed patch.',
       'Record the rejection reason and stop without applying.',
       [`reason: ${reason}`],
-      'Block the task pending a new diagnosis.',
+      'rejected; task stopped',
     ),
   );
   task.status = 'blocked';
@@ -248,7 +298,7 @@ function main() {
       case 'new':
         return cmdNew(flags);
       case 'run':
-        return cmdRun(positional[0]);
+        return cmdRun(positional[0], flags);
       case 'approve':
         return cmdApprove(positional[0]);
       case 'reject':

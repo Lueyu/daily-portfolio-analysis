@@ -67,11 +67,11 @@ def can_transition(src: TaskStatus, dst: TaskStatus) -> bool:
 
 
 class BudgetConfig(BaseModel):
-    """Hard caps for one dev-task (defaults from the design spec, section 5.3)."""
+    """Optional per-run caps; None lets work continue until a real stop signal."""
 
-    max_iterations: int = 8
-    max_model_calls: int = 40
-    wallclock_seconds: int = 1800
+    max_iterations: int | None = Field(default=None, gt=0)
+    max_model_calls: int | None = Field(default=None, gt=0)
+    wallclock_seconds: int | None = Field(default=None, gt=0)
 
 
 class AcceptanceCriterion(BaseModel):
@@ -97,6 +97,8 @@ class DevTask(BaseModel):
     acceptance: list[AcceptanceCriterion] = Field(min_length=1)
     workdir: Text
     branch: str = ""
+    # Old artifacts omit this field; new CLI tasks explicitly use container v2.
+    runtime_version: int = Field(default=1, ge=1, le=2)
     status: TaskStatus = TaskStatus.NEW
     red_seen: bool = False
     # Live gate state (mirrored from gates.GateState so it persists per task).

@@ -64,29 +64,6 @@ export class DashboardService {
   ) {}
 
   /**
-   * Converts an amount between currencies, returning the amount unchanged (and
-   * logging) if the rate lookup fails.
-   *
-   * @param amount Amount to convert.
-   * @param from   Source currency.
-   * @param to     Target currency.
-   * @param date   Optional rate date.
-   */
-  private async safeConvert(amount: number, from: string, to: string, date?: string): Promise<number> {
-    if (from.toUpperCase() === to.toUpperCase()) return amount;
-    try {
-      return await this.fxService.convert(amount, from, to, date);
-    } catch (err) {
-      this.logger.warn(
-        `fx convert failed ${from}->${to}${date ? ` @${date}` : ''}, fallback to 1: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
-      );
-      return amount;
-    }
-  }
-
-  /**
    * Builds the portfolio overview. Refreshes quotes, aggregates holdings and cash
    * per currency and market, converts to the base currency, and computes totals and
    * P&L.

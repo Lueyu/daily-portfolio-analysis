@@ -14,6 +14,8 @@ import json
 import os
 import re
 import tempfile
+import time
+import uuid
 from pathlib import Path
 
 from .models import DevTask, Iteration, Patch
@@ -59,20 +61,38 @@ class TaskStore:
         return sorted(p.name for p in self.root.iterdir() if p.is_dir())
 
     # -- iterations --------------------------------------------------------
+    @staticmethod
+    def _jsonl_prefix(path: Path, *, preserve_incomplete: bool = False) -> str:
+        """Read committed rows; only an incomplete final row may be ignored."""
+        raw = path.read_bytes() if path.exists() else b""
+        prefix, _, tail = raw.rpartition(b"\n")
+        prefix = prefix + b"\n" if b"\n" in raw else b""
+        if tail:
+            try:
+                json.loads(tail)
+                prefix += tail + b"\n"
+            except (ValueError, UnicodeDecodeError):
+                if preserve_incomplete:
+                    path.with_name(path.name + ".incomplete-" + uuid.uuid4().hex).write_bytes(tail)
+        lines = [line for line in prefix.decode("utf-8").splitlines() if line.strip()]
+        return "\n".join(lines) + "\n" if lines else ""
+
+    @staticmethod
+    def _append_jsonl_atomic(path: Path, value: dict) -> Path:
+        prefix = TaskStore._jsonl_prefix(path, preserve_incomplete=True)
+        return TaskStore._atomic_write(path, prefix + json.dumps(value, ensure_ascii=False) + "\n")
+
     def append_iteration(self, task_id: str, iteration: Iteration) -> Path:
         path = self._iter_file(task_id)
         path.parent.mkdir(parents=True, exist_ok=True)
-        line = json.dumps(iteration.model_dump(mode="json"), ensure_ascii=False) + "\n"
-        with path.open("a", encoding="utf-8") as fh:
-            fh.write(line)
-        return path
+        return self._append_jsonl_atomic(path, iteration.model_dump(mode="json"))
 
     def read_iterations(self, task_id: str) -> list[Iteration]:
         path = self._iter_file(task_id)
         if not path.exists():
             return []
         rows = []
-        for line in path.read_text(encoding="utf-8").splitlines():
+        for line in self._jsonl_prefix(path).splitlines():
             if line.strip():
                 rows.append(Iteration.model_validate_json(line))
         return rows
@@ -104,11 +124,20 @@ class TaskStore:
         path.parent.mkdir(parents=True, exist_ok=True)
         fd, tmp = tempfile.mkstemp(prefix=".task-", suffix=".tmp", dir=path.parent)
         try:
-            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as fh:
                 fh.write(content)
                 fh.flush()
                 os.fsync(fh.fileno())
-            os.replace(tmp, path)  # atomic on Windows + POSIX
+            # Windows readers/antivirus can briefly deny replacing an open file.
+            # Keep the old file intact; retry only sharing/access errors, finitely.
+            for attempt in range(7):
+                try:
+                    os.replace(tmp, path)  # atomic on Windows + POSIX
+                    break
+                except OSError as exc:
+                    if getattr(exc, "winerror", None) not in {5, 32, 33} or attempt == 6:
+                        raise
+                    time.sleep(min(0.02 * 2 ** attempt, 0.2))
         finally:
             if os.path.exists(tmp):
                 os.unlink(tmp)

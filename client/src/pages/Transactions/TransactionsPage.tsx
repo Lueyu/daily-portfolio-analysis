@@ -25,10 +25,9 @@ import {
   ArrowUpFromLine,
 } from 'lucide-react';
 import { axiosForBackend } from '@lark-apaas/client-toolkit/utils/getAxiosForBackend';
-import type { Transaction, ClosedPosition, RealizedPlSummary } from '@shared/api.interface';
+import type { Transaction, RealizedPlSummary } from '@shared/api.interface';
 import {
   fetchTransactions,
-  fetchClosed,
   fetchRealizedPlSummary,
   reconcileTransactions,
 } from '@/api';
@@ -89,13 +88,10 @@ import TransactionList from './TransactionList';
  */
 export default function TransactionsPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [closed, setClosed] = useState<ClosedPosition[]>([]);
   const [realizedPl, setRealizedPl] = useState<RealizedPlSummary | null>(null);
   const [txLoading, setTxLoading] = useState(true);
-  const [closedLoading, setClosedLoading] = useState(true);
   const [realizedPlLoading, setRealizedPlLoading] = useState(true);
   const [txError, setTxError] = useState<string | null>(null);
-  const [closedError, setClosedError] = useState<string | null>(null);
   const [realizedPlError, setRealizedPlError] = useState<string | null>(null);
   const [tickerFilter, setTickerFilter] = useState('');
   const [addTxOpen, setAddTxOpen] = useState(false);
@@ -130,21 +126,6 @@ export default function TransactionsPage() {
     }
   };
 
-  /** Load closed positions (realized trades). */
-  const loadClosed = async () => {
-    setClosedLoading(true);
-    setClosedError(null);
-    try {
-      const data = await fetchClosed();
-      setClosed(data as ClosedPosition[]);
-    } catch (err) {
-      setClosedError('加载已平仓记录失败');
-      toast.error('加载已平仓记录失败');
-    } finally {
-      setClosedLoading(false);
-    }
-  };
-
   /** Load the realized P/L aggregate summary. */
   const loadRealizedPl = async () => {
     setRealizedPlLoading(true);
@@ -162,7 +143,6 @@ export default function TransactionsPage() {
 
   useEffect(() => {
     loadTransactions();
-    loadClosed();
     loadRealizedPl();
   }, []);
 
@@ -173,7 +153,7 @@ export default function TransactionsPage() {
     return () => clearTimeout(timer);
   }, [tickerFilter]);
 
-  /** Delete the selected transaction, then refresh closed/realized and notify. */
+  /** Delete the selected transaction, then refresh realized P/L and notify. */
   const handleDelete = async () => {
     if (!deleteTarget) return;
     setDeleting(true);
@@ -185,7 +165,6 @@ export default function TransactionsPage() {
       toast.success('已删除，持仓已同步更新');
       setTransactions((prev) => prev.filter((t) => t.id !== deleteTarget));
       setDeleteTarget(null);
-      loadClosed();
       loadRealizedPl();
       notifyPortfolioUpdate();
     } catch (err) {
@@ -207,7 +186,6 @@ export default function TransactionsPage() {
         `对账完成：${result.holdingsCount} 只持仓 / ${result.closedCount} 笔已平仓 / ${result.processedTxCount} 笔交易`
       );
       loadTransactions();
-      loadClosed();
       loadRealizedPl();
       notifyPortfolioUpdate();
     } catch (err) {
@@ -260,7 +238,6 @@ export default function TransactionsPage() {
             size="sm"
             onClick={() => {
               loadTransactions();
-              loadClosed();
               loadRealizedPl();
             }}
           >
@@ -542,7 +519,7 @@ export default function TransactionsPage() {
         onOpenChange={setAddTxOpen}
         onCreated={() => {
           loadTransactions();
-          loadClosed();
+          loadRealizedPl();
           notifyPortfolioUpdate();
         }}
       />
@@ -551,7 +528,6 @@ export default function TransactionsPage() {
         open={addClosedOpen}
         onOpenChange={setAddClosedOpen}
         onCreated={() => {
-          loadClosed();
           loadRealizedPl();
         }}
       />

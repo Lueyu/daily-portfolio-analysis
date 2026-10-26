@@ -12,8 +12,9 @@ provider construction is identical for both.
 
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
-from pydantic import field_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Agent package root. config.py lives at agent/src/agent_core/config.py, so
@@ -39,18 +40,62 @@ class Settings(BaseSettings):
 
     # Volcengine Ark, OpenAI-compatible root, shared by both tiers.
     model_base_url: str = "https://ark.cn-beijing.volces.com/api/v3"
+    # Connection tests and live model calls use the same transport policy.
+    # Opt in explicitly for environment/system proxies and custom CA env vars.
+    model_trust_env: bool = False
+    # Per-attempt HTTP timeout, independent of the unbounded task loop.
+    model_request_timeout_seconds: float = Field(default=180.0, ge=5, le=600)
     # Default tier for model calls: "flash" (cheap/fast) or "pro" (stronger).
     default_tier: str = "flash"
 
     # Flash tier: routine, cheap, fast.
     flash_api_key: str | None = None
     flash_model: str = "deepseek-v4-1-flash-260910"
+    flash_supports_images: bool = False
 
     # Pro tier: high-stakes decisions. Use the GA (general availability)
     # snapshot; dated non-GA snapshots like *-260425 are not directly callable
     # (they require an ep-* endpoint) and return InvalidEndpointOrModel.
     pro_api_key: str | None = None
     pro_model: str = "deepseek-v4-pro-ga-260813"
+    pro_supports_images: bool = False
+
+    # Coding is a separate profile. Inherit the stronger existing tier unless
+    # an operator selects another model; an outage must not silently downgrade.
+    coder_model_tier: Literal["flash", "pro"] = "pro"
+    coder_model: str | None = None
+    coder_base_url: str | None = None
+    coder_api_key: str | None = Field(default=None, repr=False)
+    coder_api_key_env: str | None = None
+    coder_context_window: int | None = Field(default=None, ge=4096)
+    coder_max_output_tokens: int = Field(default=8192, ge=256, le=65536)
+    coder_supports_images: bool | None = None
+    coder_allow_fallback: bool = False
+    coder_vision_model: str | None = None
+    coder_vision_base_url: str | None = None
+    coder_vision_api_key: str | None = Field(default=None, repr=False)
+    coder_vision_api_key_env: str | None = None
+    coder_vision_context_window: int = Field(default=128_000, ge=4096)
+    coder_vision_max_output_tokens: int = Field(default=2048, ge=256, le=65536)
+    coder_vision_supports_images: bool = False
+
+    # Operator-owned integrations. These files never live inside a task copy.
+    coder_mcp_config: str | None = None
+    coder_settings_path: str = str(Path.home() / '.coding-agent' / 'operator-settings.json')
+    coder_mcp_credentials: dict[str, str] = Field(default_factory=dict, repr=False, exclude=True)
+    coder_mcp_servers: dict | None = Field(default=None, repr=False, exclude=True)
+    coder_skills_dir: str | None = None
+    coder_network_mode: Literal["offline", "allowlist"] = "allowlist"
+    coder_network_allowed_hosts: list[str] = Field(default_factory=lambda: [
+        "registry.npmjs.org", "pypi.org", "files.pythonhosted.org",
+        "github.com", "api.github.com", "raw.githubusercontent.com", "objects.githubusercontent.com",
+        "release-assets.githubusercontent.com", "nodejs.org", "docs.python.org", "developer.mozilla.org",
+        "react.dev", "vite.dev", "typescriptlang.org", "www.typescriptlang.org", "docs.npmjs.com",
+        "developer.chrome.com", "playwright.dev",
+    ])
+    coder_max_workers: int = Field(default=3, ge=1, le=8)
+    coder_max_worker_depth: int = Field(default=1, ge=0, le=3)
+    coder_context_bytes: int = Field(default=192_000, ge=16_000, le=2_000_000)
 
     # Pricing per 1,000,000 tokens. Left at 0.0 on purpose: fill in the real
     # Ark prices via .env so the cost report reflects your account. A cost of
@@ -74,6 +119,12 @@ class Settings(BaseSettings):
     # launched from (the Nest console spawns the agent with the webapp root as
     # cwd so it can edit webapp files).
     coder_data_dir: str = str(AGENT_ROOT / "data" / "coder")
+    # Unset means continuous work. Set a positive value only when a caller
+    # explicitly wants a finite run; per-tool timeouts remain independent.
+    coder_max_iterations: int | None = Field(default=None, gt=0)
+    coder_max_model_calls: int | None = Field(default=None, gt=0)
+    coder_wallclock_seconds: int | None = Field(default=None, gt=0)
+    coder_max_probes: int | None = Field(default=None, gt=0)
     # Webapp root the coding agent operates on = the monorepo root, one level
     # above the agent package.
     webapp_workdir: str = str(AGENT_ROOT.parent)
@@ -96,6 +147,9 @@ class Settings(BaseSettings):
     coder_worktree_dir: str = str(AGENT_ROOT / "data" / "coder" / "worktrees")
     coder_link_dependencies: bool = True
     coder_copy_env_files: bool = True
+    # New tasks use the actual container runtime; legacy task artifacts stay readable.
+    coder_runtime_image: str = "coding-agent-runtime:local"
+    coder_docker_command: list[str] | None = None
 
     @field_validator("checkpoint_dir", "coder_data_dir", "coder_worktree_dir")
     @classmethod
@@ -114,7 +168,8 @@ class Settings(BaseSettings):
 
 @lru_cache(maxsize=None)
 def get_settings() -> Settings:
-    return Settings()
+    from .operator_settings import apply_operator_settings
+    return apply_operator_settings(Settings())
 
 
 def ensure_dirs(s: Settings) -> None:

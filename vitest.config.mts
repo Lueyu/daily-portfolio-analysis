@@ -26,7 +26,7 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
-    include: ['server/**/*.spec.ts', 'shared/**/*.spec.ts'],
+    include: ['server/**/*.spec.ts', 'shared/**/*.spec.ts', 'client/src/pages/Dev/**/*.spec.ts'],
     watchExclude: ['**/node_modules/**', '**/dist/**'],
     coverage: {
       provider: 'v8',

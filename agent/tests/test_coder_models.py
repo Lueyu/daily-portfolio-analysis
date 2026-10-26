@@ -78,11 +78,18 @@ def test_acceptance_requires_description():
         AcceptanceCriterion(id="ac1", description="  ", check=CheckKind.UNIT)
 
 
-def test_budget_defaults_match_spec():
+def test_budget_defaults_allow_continuous_work():
     b = BudgetConfig()
-    assert b.max_iterations == 8
-    assert b.max_model_calls == 40
-    assert b.wallclock_seconds == 1800
+    assert b.max_iterations is None
+    assert b.max_model_calls is None
+    assert b.wallclock_seconds is None
+
+
+@pytest.mark.parametrize("field", ["max_iterations", "max_model_calls", "wallclock_seconds"])
+@pytest.mark.parametrize("value", [0, -1])
+def test_explicit_budget_caps_must_be_positive(field, value):
+    with pytest.raises(ValidationError):
+        BudgetConfig(**{field: value})
 
 
 def test_task_records_red_flag_and_timestamps():

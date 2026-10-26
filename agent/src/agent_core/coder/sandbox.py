@@ -7,7 +7,9 @@ main checkout is untouched until a human approves.
 
 Construction
 ------------
-* ``git worktree add --detach <path> HEAD``  (a clean HEAD checkout)
+* ``git worktree add --detach <path> HEAD``
+* copy current tracked changes and nonignored untracked sources, then save a
+  local detached baseline commit (the main index and branch stay untouched)
 * junction/symlink the root ``node_modules`` (no slow reinstall)
 * copy the gitignored ``.env`` / ``.env.local`` so checks can read config
 
@@ -25,6 +27,7 @@ from typing import Protocol
 
 from .linker import Linker
 from .models import CommandResult
+from .safety import is_sensitive_entry
 from .tools import ControlledTools
 
 # Local env files that are gitignored in the main checkout but needed to run
@@ -56,6 +59,7 @@ class WorktreeSandbox:
         self.task_id = task_id
         self.main_workdir = Path(main_workdir)
         self.path = Path(root) / task_id
+        self._initializing = Path(root) / f".{task_id}.initializing"
         self.tools = tools
         self.linker = linker or Linker()
         self.link_dependencies = link_dependencies
@@ -73,21 +77,100 @@ class WorktreeSandbox:
         """
         if self._ready:
             return self.path
+        if self._initializing.exists():
+            # Only new-version initializations carry this marker. A completed
+            # or legacy sandbox may contain a candidate and must be preserved.
+            self.teardown()
+            if self.path.exists():
+                raise SandboxError("cannot remove interrupted sandbox initialization")
         if self.path.exists():
             self._link_deps()
             self._copy_env()
             self._ready = True
             return self.path
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        res = self.tools.git_worktree_add(self.path, cwd=self.main_workdir)
-        if not res.ok:
-            raise SandboxError(
-                f"git worktree add failed for {self.task_id}: "
-                f"{res.stderr.strip()[-800:]}")
-        self._link_deps()
-        self._copy_env()
+        # Lives outside the checkout, so it never dirties/stages source files.
+        # Create it before Git can leave a partial worktree and remove it only
+        # once every preparation step finishes, before callers can add a patch.
+        self._initializing.touch(exist_ok=False)
+        try:
+            res = self.tools.git_worktree_add(self.path, cwd=self.main_workdir)
+            if not res.ok:
+                raise SandboxError(
+                    f"git worktree add failed for {self.task_id}: "
+                    f"{res.stderr.strip()[-800:]}")
+            self._snapshot_workspace()
+            self._link_deps()
+            self._copy_env()
+            self._initializing.unlink()
+        except Exception as exc:
+            # A partial baseline must never be reused as a ready sandbox.
+            self.teardown()
+            raise SandboxError(f"workspace snapshot failed: {exc}") from exc
         self._ready = True
         return self.path
+
+    def _has_link(self, base: Path, rel: Path) -> bool:
+        current = base
+        for part in rel.parts:
+            current = current / part
+            if current.is_symlink() or self.linker.is_junction(current):
+                return True
+        return False
+
+    def _snapshot_workspace(self) -> None:
+        """Overlay regular source files without traversing links or secrets."""
+        result = self.tools.git_snapshot_paths(cwd=self.main_workdir)
+        if not result.ok:
+            raise SandboxError(result.stderr.strip()[-800:])
+        paths: list[Path] = []
+        for name in dict.fromkeys(result.stdout.split("\0")):
+            if not name:
+                continue
+            rel = Path(name)
+            if rel.is_absolute() or rel.drive or ".." in rel.parts:
+                raise SandboxError("snapshot path escapes the workspace")
+            if any(is_sensitive_entry(part) for part in rel.parts):
+                continue
+            if not self._has_link(self.main_workdir, rel):
+                paths.append(rel)
+        if not paths:
+            return
+
+        # Remove deleted files first, including staged deletions and files
+        # replaced with directories. Never recurse through a destination link.
+        for rel in sorted(paths, key=lambda p: len(p.parts), reverse=True):
+            source = self.main_workdir / rel
+            target = self.path / rel
+            if self._has_link(self.path, rel.parent):
+                raise SandboxError("snapshot destination contains a link")
+            if not source.is_file() and (target.is_file() or target.is_symlink()):
+                target.unlink()
+                for parent in target.parents:
+                    if parent == self.path:
+                        break
+                    try:
+                        parent.rmdir()
+                    except OSError:
+                        break  # stop at the first directory still containing files
+
+        for rel in paths:
+            source = self.main_workdir / rel
+            if not source.is_file():
+                continue
+            target = self.path / rel
+            if self._has_link(self.path, rel.parent):
+                raise SandboxError("snapshot destination contains a link")
+            if target.is_symlink():
+                target.unlink()
+            elif target.is_dir():
+                target.rmdir()  # only an empty directory may become a file
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, target, follow_symlinks=False)
+        # This runs before dependency links and local env are materialized.
+        saved = self.tools.git_snapshot_commit(cwd=self.path)
+        if not saved.ok:
+            raise SandboxError(saved.stderr.strip()[-800:])
 
     def _link_deps(self) -> None:
         if not self.link_dependencies:
@@ -133,12 +216,20 @@ class WorktreeSandbox:
         self._links.clear()
 
     def teardown(self) -> None:
+        if self._initializing.exists():
+            # Git locks a new worktree while checking out its files. A killed
+            # checkout can leave this lock behind, which plain prune skips.
+            # Already-ready and legacy worktrees never enter this path.
+            self.tools.git_worktree_unlock_initialization(
+                self.path, cwd=self.main_workdir)
         if self.path.exists():
             # CRITICAL: strip every link/symlink before rmtree so we never
             # descend into the real dependency folder through a junction.
             self._remove_all_links()
             shutil.rmtree(self.path, ignore_errors=True)
         self.tools.git_worktree_prune(cwd=self.main_workdir)
+        if not self.path.exists():
+            self._initializing.unlink(missing_ok=True)
         self._ready = False
 
 

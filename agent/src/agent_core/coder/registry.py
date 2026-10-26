@@ -28,7 +28,9 @@ class ToolKind(str, Enum):
     READ_ONLY = "read_only"  # explores the repo / environment; no side effects
     VERIFY = "verify"        # runs an allow-listed check
     PATCH = "patch"          # proposes a change (applied only after approval)
-    TERMINAL = "terminal"    # finishes or blocks the run
+    CONTROL = "terminal"     # finishes or blocks the run (legacy wire value)
+    TERMINAL = "terminal"    # backwards-compatible alias, not a shell
+    EXECUTE = "execute"      # managed sessions / browser actions
 
 
 class GateKind(str, Enum):

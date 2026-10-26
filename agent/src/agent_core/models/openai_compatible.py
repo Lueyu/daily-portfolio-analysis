@@ -22,7 +22,7 @@ import time
 from typing import Callable
 
 import openai
-from openai import OpenAI
+from openai import DefaultHttpxClient, OpenAI
 from tenacity import (
     Retrying,
     retry_if_exception,
@@ -30,15 +30,20 @@ from tenacity import (
 )
 
 from ..config import Settings
+from .continuation import capture_continuation, prepare_messages, provider_binding
 from .types import (
     ChatChunk,
+    ChatMessage,
     ChatRequest,
     ChatResponse,
     ModelSpec,
     ModelTier,
+    ModelTask,
     PingResult,
     ToolCall,
     Usage,
+    message_text,
+    messages_have_images,
 )
 
 
@@ -63,9 +68,9 @@ def is_transient_error(exc: BaseException) -> bool:
     return False
 
 
-def _json_hint_messages(messages: list[dict[str, str]]) -> list[dict[str, str]]:
+def _json_hint_messages(messages: list[ChatMessage]) -> list[ChatMessage]:
     """OpenAI JSON mode requires the word 'json' in the prompt. Ensure it."""
-    blob = " ".join(m.get("content", "") for m in messages)
+    blob = " ".join(message_text(message) for message in messages)
     if "json" in blob.lower():
         return messages
     return [
@@ -90,6 +95,7 @@ class OpenAICompatibleProvider:
         spec: ModelSpec | None = None,
         max_attempts: int = 3,
         sleep: Callable[[float], None] = time.sleep,
+        trust_env: bool = False,
     ) -> None:
         if not api_key:
             raise ValueError(
@@ -100,10 +106,15 @@ class OpenAICompatibleProvider:
         self.spec = spec or ModelSpec(tier=tier, model=model, context_window=128_000)
         self.max_attempts = max_attempts
         self._sleep = sleep
+        self._continuation_binding = provider_binding(base_url, model, api_key)
         self._client = OpenAI(
             base_url=base_url,
             api_key=api_key,
             timeout=timeout,
+            http_client=DefaultHttpxClient(timeout=timeout, trust_env=trust_env),
+            # The explicit tenacity policy owns retries. SDK retries would
+            # multiply max_attempts (3 configured attempts could become 9).
+            max_retries=0,
         )
 
     def _retryer(self) -> Retrying:
@@ -131,13 +142,30 @@ class OpenAICompatibleProvider:
         return min(20.0, 2.0**attempt) + random.uniform(0.0, 0.5)
 
     def _build_kwargs(self, req: ChatRequest) -> dict:
+        if messages_have_images(req.messages) and not self.spec.supports_images:
+            raise ValueError(f"model '{self.model}' does not support image input; configure an image-capable tier")
+        messages, private_reserve = prepare_messages(
+            req.messages, self._continuation_binding if req.task == ModelTask.CODE else None)
         kwargs: dict = {
             "model": self.model,
-            "messages": req.messages,
+            "messages": messages,
             "temperature": req.temperature,
         }
-        if req.max_tokens is not None:
-            kwargs["max_tokens"] = req.max_tokens
+        if req.timeout is not None:
+            kwargs['timeout'] = req.timeout
+        output_tokens = req.max_tokens
+        if req.task == ModelTask.CODE:
+            from .context import request_tokens
+            output_tokens = min(output_tokens or self.spec.max_output_tokens, self.spec.max_output_tokens)
+            estimate = request_tokens(messages, req.tools) + private_reserve
+            if estimate + output_tokens > self.spec.context_window:
+                raise ValueError(
+                    f"Coding request exceeds declared model context window: estimated {estimate} prompt + "
+                    f"{output_tokens} output tokens > {self.spec.context_window}. Reduce saved context/task "
+                    "or configure a larger model; no provider call was made."
+                )
+        if output_tokens is not None:
+            kwargs["max_tokens"] = output_tokens
         if req.stop:
             kwargs["stop"] = req.stop
         if req.tools and self.spec.supports_tools:
@@ -146,10 +174,10 @@ class OpenAICompatibleProvider:
         if req.json_mode:
             if self.spec.supports_json:
                 kwargs["response_format"] = {"type": "json_object"}
-                kwargs["messages"] = _json_hint_messages(req.messages)
+                kwargs["messages"] = _json_hint_messages(messages)
             else:
                 # Model declared without native JSON mode: ask for JSON in text.
-                kwargs["messages"] = _json_hint_messages(req.messages)
+                kwargs["messages"] = _json_hint_messages(messages)
         return kwargs
 
     def chat(self, req: ChatRequest) -> ChatResponse:
@@ -157,11 +185,16 @@ class OpenAICompatibleProvider:
         kwargs = self._build_kwargs(req)
         started = time.perf_counter()
         retryer = self._retryer()
-        resp = retryer(lambda: self._client.chat.completions.create(**kwargs))
+        coding_stream = req.task == ModelTask.CODE and bool(kwargs.get('tools')) and self.spec.supports_streaming
+        if coding_stream:
+            from .coding_stream import collect_code_completion
+            resp = retryer(lambda: collect_code_completion(self._client, kwargs))
+        else:
+            resp = retryer(lambda: self._client.chat.completions.create(**kwargs))
         latency_ms = int((time.perf_counter() - started) * 1000)
 
         message = resp.choices[0].message
-        reasoning = getattr(message, "reasoning_content", None) or ""
+        reasoning = "" if req.task == ModelTask.CODE else (getattr(message, "reasoning_content", None) or "")
         raw_calls = getattr(message, "tool_calls", None) or []
         tool_calls: list[ToolCall] = []
         for rc in raw_calls:
@@ -199,6 +232,8 @@ class OpenAICompatibleProvider:
             finish_reason=getattr(resp.choices[0], "finish_reason", None) or "stop",
             attempts=getattr(retryer, "statistics", {}).get("attempt_number", 1) or 1,
             tool_calls=tool_calls or None,
+            private_continuation=(capture_continuation(message, usage, self._continuation_binding)
+                                  if req.task == ModelTask.CODE else None),
         )
 
     def stream_chat(self, req: ChatRequest):
@@ -242,7 +277,9 @@ class OpenAICompatibleProvider:
                 continue  # terminal usage-only event handled below
             choice = choices[0]
             delta = getattr(choice, "delta", None)
-            reasoning = getattr(delta, "reasoning_content", None) or ""
+            # CODE uses chat()'s atomic collection for executable calls and
+            # private continuation. A token-stream consumer gets public text.
+            reasoning = "" if req.task == ModelTask.CODE else (getattr(delta, "reasoning_content", None) or "")
             content = getattr(delta, "content", None) or ""
             if getattr(choice, "finish_reason", None):
                 finish_reason = choice.finish_reason
@@ -306,6 +343,19 @@ def build_provider(
         sleep: Injected sleep for tests (defaults to real time).
     """
     chosen = (tier or settings.default_tier).strip().lower()
+    if chosen in ("coder", "vision"):
+        from .profiles import profile_connection
+        from .specs import build_specs
+        resolved_spec = spec or build_specs(settings).get(chosen)
+        if resolved_spec is None:
+            raise ValueError(f"model profile '{chosen}' is not configured")
+        base_url, key = profile_connection(settings, chosen)
+        return OpenAICompatibleProvider(
+            chosen, base_url, key, resolved_spec.model, spec=resolved_spec,
+            max_attempts=settings.max_retries, sleep=sleep,
+            trust_env=getattr(settings, 'model_trust_env', False),
+            timeout=getattr(settings, 'model_request_timeout_seconds', 180.0),
+        )
     if chosen == ModelTier.FLASH.value:
         return OpenAICompatibleProvider(
             ModelTier.FLASH.value,
@@ -315,6 +365,8 @@ def build_provider(
             spec=spec,
             max_attempts=settings.max_retries,
             sleep=sleep,
+            trust_env=getattr(settings, 'model_trust_env', False),
+            timeout=getattr(settings, 'model_request_timeout_seconds', 180.0),
         )
     if chosen == ModelTier.PRO.value:
         return OpenAICompatibleProvider(
@@ -325,5 +377,7 @@ def build_provider(
             spec=spec,
             max_attempts=settings.max_retries,
             sleep=sleep,
+            trust_env=getattr(settings, 'model_trust_env', False),
+            timeout=getattr(settings, 'model_request_timeout_seconds', 180.0),
         )
     raise ValueError(f"unknown model tier '{chosen}' (expected 'flash' or 'pro')")

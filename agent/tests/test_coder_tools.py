@@ -40,6 +40,50 @@ def test_read_file_rejects_escape(tmp_path):
         tools.read_file("../outside.txt")
 
 
+def test_read_file_page_reaches_code_beyond_old_prefix(tmp_path):
+    lines = [f"line {number}: " + "x" * 60 for number in range(1, 151)]
+    lines[139] = "const importantFix = true;"
+    (tmp_path / "long.ts").write_text("\n".join(lines), encoding="utf-8")
+    tools = ControlledTools(tmp_path)
+    first = tools.read_file_page("long.ts")
+    assert "total_lines=150" in first and "NEXT start_line=" in first
+    assert "lines=1-80" in first and "NEXT start_line=81 start_column=1" in first
+    later = tools.read_file_page("long.ts", start_line=138, max_lines=5)
+    assert "140: const importantFix = true;" in later
+    assert "NEXT start_line=143 start_column=1" in later
+
+
+def test_read_file_page_long_line_continuation_loses_no_characters(tmp_path):
+    import re
+
+    original = "甲" * 14300 + "UNIQUE_TAIL" + "乙" * 13000
+    (tmp_path / "long.ts").write_text(original + "\nlast line", encoding="utf-8")
+    tools = ControlledTools(tmp_path)
+    column = 1
+    collected = ""
+    for _ in range(4):
+        page = tools.read_file_page("long.ts", start_line=1,
+                                    start_column=column, max_lines=1)
+        assert len(page) < 14000
+        row = next(line for line in page.splitlines() if line.startswith("1"))
+        collected += row.split(": ", 1)[1]
+        continuation = re.search(r"NEXT start_line=1 start_column=(\d+)", page)
+        if not continuation:
+            assert "NEXT start_line=2 start_column=1" in page
+            break
+        column = int(continuation.group(1))
+        assert "columns=" in row and "truncated" in page
+    assert collected == original
+
+
+def test_read_file_page_empty_eof_and_security(tmp_path):
+    (tmp_path / "empty.ts").write_text("", encoding="utf-8")
+    tools = ControlledTools(tmp_path)
+    assert "EOF" in tools.read_file_page("empty.ts")
+    with pytest.raises(SafetyViolation):
+        tools.read_file_page("../outside.txt")
+
+
 def test_run_check_uses_whitelisted_argv_and_parses(tmp_path):
     ok = CommandResult(
         argv=["npm", "run", "test:unit"], returncode=0,
@@ -165,6 +209,14 @@ def test_glob_no_matches_message(tmp_path):
     assert ControlledTools(tmp_path).glob("**/*.zzz") == "(no matches)"
 
 
+def test_glob_result_limit_is_explicit(tmp_path):
+    for number in range(101):
+        (tmp_path / f"source{number}.ts").write_text("", encoding="utf-8")
+    result = ControlledTools(tmp_path).glob("*.ts")
+    assert len([line for line in result.splitlines() if line.endswith(".ts")]) == 100
+    assert "truncated" in result and "narrow" in result
+
+
 def test_grep_matches_content_with_line_numbers(tmp_path):
     (tmp_path / "server").mkdir(parents=True)
     (tmp_path / "server" / "a.ts").write_text(
@@ -188,6 +240,35 @@ def test_grep_bad_regex_is_value_error(tmp_path):
 def test_grep_no_matches_message(tmp_path):
     (tmp_path / "a.txt").write_text("hello\n", encoding="utf-8")
     assert ControlledTools(tmp_path).grep("zzzz") == "(no matches)"
+
+
+def test_grep_accepts_file_path_and_relative_include(tmp_path):
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "select.tsx").write_text("const target = true;", encoding="utf-8")
+    tools = ControlledTools(tmp_path)
+    assert "select.tsx:1:" in tools.grep("target", "src/select.tsx")
+    assert "src/select.tsx:1:" in tools.grep("target", glob_include="**/select.tsx")
+    with pytest.raises(SafetyViolation):
+        tools.grep("target", "../outside.tsx")
+
+
+def test_grep_long_line_reports_matching_columns_and_read_hint(tmp_path):
+    (tmp_path / "long.ts").write_text("x" * 500 + "importantMatch" + "y" * 500,
+                                      encoding="utf-8")
+    result = ControlledTools(tmp_path).grep("importantMatch", "long.ts")
+    assert "importantMatch" in result
+    assert "columns=" in result and "truncated" in result
+    assert "read_file" in result and "start_line=1" in result
+
+
+def test_grep_output_and_result_caps_are_explicit(tmp_path):
+    (tmp_path / "many.ts").write_text("\n".join(f"target {i} " + "x" * 190
+                                               for i in range(120)), encoding="utf-8")
+    tools = ControlledTools(tmp_path)
+    limited = tools.grep("target", max_results=2)
+    assert "truncated" in limited and "narrow" in limited
+    assert "many.ts:3:" not in limited
+    assert len(tools.grep("target")) < 5000
 
 
 # --- environment probe (localhost whitelist only) ----------------------
@@ -297,6 +378,43 @@ def test_git_worktree_list_and_prune_argv(tmp_path):
     assert any(c[0] == ["git", "worktree", "list", "--porcelain"]
                for c in runner.calls)
     assert runner.calls[-1][0] == ["git", "worktree", "prune"]
+
+
+def test_snapshot_commit_refuses_main_workdir_before_any_git_write(tmp_path):
+    runner = script_runner([])
+    (tmp_path / ".git").write_text("gitdir: ignored")
+    tools = ControlledTools(tmp_path, runner=runner)
+    with pytest.raises(SafetyViolation):
+        tools.git_snapshot_commit(tmp_path)
+    assert runner.calls == []
+
+
+def test_snapshot_commit_refuses_attached_worktree(tmp_path):
+    worktree = tmp_path / "worktree"
+    worktree.mkdir()
+    (worktree / ".git").write_text("gitdir: ignored")
+    runner = script_runner([
+        ("symbolic-ref", CommandResult(argv=[], returncode=0, stdout="refs/heads/main")),
+    ])
+    tools = ControlledTools(tmp_path, runner=runner)
+    with pytest.raises(SafetyViolation):
+        tools.git_snapshot_commit(worktree)
+    assert len(runner.calls) == 1
+    assert "symbolic-ref" in runner.calls[0][0]
+
+
+def test_initialization_unlock_refuses_unmarked_or_main_worktree(tmp_path):
+    runner = script_runner([])
+    tools = ControlledTools(tmp_path, runner=runner)
+    with pytest.raises(SafetyViolation):
+        tools.git_worktree_unlock_initialization(tmp_path / "sandbox", cwd=tmp_path)
+    (tmp_path.parent / f".{tmp_path.name}.initializing").touch()
+    try:
+        with pytest.raises(SafetyViolation):
+            tools.git_worktree_unlock_initialization(tmp_path, cwd=tmp_path)
+    finally:
+        (tmp_path.parent / f".{tmp_path.name}.initializing").unlink()
+    assert runner.calls == []
 
 
 def test_sandbox_e2e_uses_fullstack_script(tmp_path):

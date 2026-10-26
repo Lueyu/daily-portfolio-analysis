@@ -66,35 +66,12 @@ def reproduce_prompt(problem: str, acceptance: list[AcceptanceCriterion]) -> str
         "凡是现象像“页面为空、本地无数据、连不上、服务无响应”，先调用 probe_env："
         "若有服务 DOWN，直接输出 blocked，reason 写明哪个服务没起、如何启动"
         "（例如 PostgreSQL 未运行就执行 scripts/db/start-db.ps1）。\n"
-        "若 run_check 无法复现，或你判断问题属于本地环境/数据库/数据迁移/seed/配置 "
+        "若配置的相关 run_check 均通过且无法复现，可能当前代码已修复；"
+        "不要为获得红灯制造失败，不要重复搜索相同内容，"
+        "应 blocked 说明缺少能够复现的用例或步骤，不能据此宣称修复成功。\n"
+        "若你判断问题属于本地环境/数据库/数据迁移/seed/配置 "
         "（而非代码缺陷），立即输出 blocked；reason 中给出可执行的人工排查清单，"
         "例如：相关服务是否启动、数据库是否可连接、迁移与 seed 是否执行、应用实际指向哪个配置。\n"
-        f"{_ACTION_CONTRACT}\n{_GUARDRAILS}"
-    )
-
-
-def diagnose_prompt(red_evidence: str, observations: list[str]) -> str:
-    obs = "\n".join(f"- {o}" for o in observations) or "- （暂无）"
-    return (
-        "已经复现失败（红灯）。现在基于证据定位根因，给出最小修复假设，再输出补丁。\n"
-        f"失败证据：\n{red_evidence}\n\n"
-        f"已知观察：\n{obs}\n\n"
-        "只允许修改业务代码；补丁必须最小且针对性修复。若同一根因已连续失败两次，"
-        "必须重新诊断而不是重复同类修改。\n"
-        f"{_ACTION_CONTRACT}\n{_GUARDRAILS}"
-    )
-
-
-def verify_prompt(acceptance: list[AcceptanceCriterion]) -> str:
-    return (
-        "补丁已生成（尚未落地）。现在严格按验收标准验证，顺序为：\n"
-        "1) 先运行相关单测确认目标用例由红转绿；\n"
-        "2) 运行相邻/回归用例，防止修一处坏一处；\n"
-        "3) 运行 npm run type:check 与 npm run lint；\n"
-        "4) 涉及页面流程时运行 npm run test:e2e。\n"
-        "全部通过才允许 finish；任何一项失败，带着失败证据 apply_patch 修复或回到诊断。\n"
-        "验收标准：\n"
-        f"{_fmt_acceptance(acceptance)}\n\n"
         f"{_ACTION_CONTRACT}\n{_GUARDRAILS}"
     )
 
@@ -107,6 +84,9 @@ _REACT_RULES = (
     "3. 补丁会在隔离沙箱里自动跑验收检查；只有全部通过后你才会看到 finish 工具。\n"
     "4. 不要连续盲读：若现象像本地环境/数据/连不上，先 probe_env，服务 DOWN 就 blocked。\n"
     "5. 一轮最多提交一个写操作（apply_patch）。\n"
+    "6. 同一文件/搜索返回相同内容不算进展，程序会对重复探查主动运行复现检查。"
+    "若配置的检查均通过而问题无法复现，用 blocked 说明需补充用例；"
+    "不要为了开放补丁工具而制造失败，也不要把检查全绿当作已完成用户需求。\n"
 )
 
 

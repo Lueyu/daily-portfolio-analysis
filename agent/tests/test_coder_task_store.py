@@ -72,3 +72,53 @@ def test_create_duplicate_task_raises(tmp_path):
     store.create(task())
     with pytest.raises(FileExistsError):
         store.create(task())
+
+
+@pytest.mark.parametrize("winerror", [5, 32, 33])
+def test_atomic_replace_retries_transient_windows_reader_contention(tmp_path, monkeypatch, winerror):
+    import os
+    import time
+    path = tmp_path / "task.json"
+    path.write_text('"old"', encoding="utf-8")
+    replace = os.replace
+    attempts = []
+
+    def busy_reader(source, destination):
+        attempts.append(destination)
+        assert path.read_text(encoding="utf-8") == '"old"'
+        if len(attempts) < 3:
+            error = PermissionError("busy reader")
+            error.winerror = winerror
+            raise error
+        return replace(source, destination)
+
+    monkeypatch.setattr(os, "replace", busy_reader)
+    monkeypatch.setattr(time, "sleep", lambda _: None)
+    TaskStore._atomic_write(path, '"new"')
+    assert len(attempts) == 3
+    assert path.read_text(encoding="utf-8") == '"new"'
+    assert not list(tmp_path.glob(".task-*.tmp"))
+
+
+@pytest.mark.parametrize("winerror,expected_retries", [(5, True), (None, False)])
+def test_atomic_replace_failure_is_bounded_and_preserves_old_file(tmp_path, monkeypatch, winerror, expected_retries):
+    import os
+    import time
+    path = tmp_path / "task.json"
+    path.write_text('"old"', encoding="utf-8")
+    attempts = []
+
+    def refused(source, destination):
+        attempts.append(destination)
+        error = PermissionError("permanently denied")
+        if winerror is not None:
+            error.winerror = winerror
+        raise error
+
+    monkeypatch.setattr(os, "replace", refused)
+    monkeypatch.setattr(time, "sleep", lambda _: None)
+    with pytest.raises(PermissionError, match="permanently denied"):
+        TaskStore._atomic_write(path, '"new"')
+    assert (1 < len(attempts) <= 8) if expected_retries else len(attempts) == 1
+    assert path.read_text(encoding="utf-8") == '"old"'
+    assert not list(tmp_path.glob(".task-*.tmp"))

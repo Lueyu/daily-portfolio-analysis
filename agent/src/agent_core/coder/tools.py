@@ -29,6 +29,7 @@ from .models import (
     TestOutcome,
 )
 from .safety import (
+    SafetyViolation,
     guard_git_args,
     guard_worktree_args,
     is_sensitive_entry,
@@ -44,6 +45,8 @@ _TAIL_CHARS = 4000
 _MAX_LIST_ENTRIES = 200
 _MAX_MATCHES = 100
 _MAX_GREP_LINE_CHARS = 200
+_READ_PAGE_CONTENT_CHARS = 12000
+_MAX_SEARCH_OUTPUT_CHARS = 4500
 _BINARY_SAMPLE_BYTES = 2048
 _CHECK_TIMEOUTS = {
     CheckKind.UNIT: 300.0,
@@ -62,21 +65,30 @@ def _is_probably_binary(path: Path) -> bool:
         return True
 
 
+def _matches_include(path: Path, root: Path, pattern: str | None) -> bool:
+    if not pattern:
+        return True
+    pattern = pattern.replace("\\", "/")
+    relative = path.relative_to(root).as_posix()
+    return fnmatch.fnmatch(path.name, pattern) or fnmatch.fnmatch(relative, pattern)
+
+
 def _walk_files(root: Path, glob_include: str | None = None):
     """Yield files under root, pruning sensitive dirs in place for speed.
 
     Pruning ``dirnames`` in place keeps os.walk from descending into
     node_modules/.venv/.git at all, which is what makes grep fast on a real
-    project. An optional fnmatch filter applies to the file name.
+    project. An optional fnmatch filter applies to the basename or relative path.
     """
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = [d for d in dirnames if not is_sensitive_entry(d)]
         for name in filenames:
             if is_sensitive_entry(name):
                 continue
-            if glob_include and not fnmatch.fnmatch(name, glob_include):
+            path = Path(dirpath) / name
+            if not _matches_include(path, root, glob_include):
                 continue
-            yield Path(dirpath) / name
+            yield path
 
 
 def _rel_posix(path: Path, root: Path) -> str:
@@ -246,6 +258,53 @@ class ControlledTools:
             raise ValueError(f"file too large ({size} bytes): {rel}")
         return path.read_text(encoding="utf-8", errors="replace")
 
+    def read_file_page(self, rel: str, start_line: int = 1, max_lines: int = 80,
+                       start_column: int = 1, cwd: Path | str | None = None) -> str:
+        """Bounded source view with a lossless continuation for long lines.
+
+        Columns count Unicode characters, not UTF-8 bytes. A continuation always
+        names the next unread character; no source tail is silently discarded.
+        ``read_file`` remains the unformatted internal API.
+        """
+        if start_line < 1 or start_column < 1 or not 1 <= max_lines <= 200:
+            raise ValueError("start_line/start_column must be positive; max_lines must be 1..200")
+        lines = self.read_file(rel, cwd=cwd).splitlines()
+        total = len(lines)
+        if start_line > total:
+            return f"FILE {rel} total_lines={total}; EOF (start_line={start_line})"
+        if start_column > len(lines[start_line - 1]) + 1:
+            raise ValueError("start_column is beyond this line; use the reported NEXT position")
+        rows: list[str] = []
+        remaining = _READ_PAGE_CONTENT_CHARS
+        next_line, next_column = start_line, start_column
+        last_line = min(total, start_line + max_lines - 1)
+        for number in range(start_line, last_line + 1):
+            line = lines[number - 1]
+            offset = start_column - 1 if number == start_line else 0
+            # Leave enough room for the column annotation on a split line.
+            room = remaining - len(str(number)) - 90
+            if room <= 0:
+                break
+            part = line[offset:offset + room]
+            end_column = offset + len(part)
+            split = offset > 0 or end_column < len(line)
+            label = f"{number}"
+            if split:
+                label += f" [columns={offset + 1}-{end_column}/{len(line)}]"
+            row = f"{label}: {part}"
+            rows.append(row)
+            remaining -= len(row) + 1
+            if end_column < len(line):
+                next_line, next_column = number, end_column + 1
+                break
+            next_line, next_column = number + 1, 1
+        header = f"FILE {rel} total_lines={total}; lines={start_line}-{start_line + len(rows) - 1}"
+        footer = "EOF"
+        if next_line <= total:
+            footer = (f"[page truncated; NEXT start_line={next_line} "
+                      f"start_column={next_column}; use read_file with the same path]")
+        return "\n".join([header, *rows, footer])
+
     # -- read-only exploration ---------------------------------------------
     def list_dir(self, rel: str = ".", cwd: Path | str | None = None) -> str:
         """List one directory level; directories end with '/'. Sensitive
@@ -279,6 +338,7 @@ class ControlledTools:
             raise FileNotFoundError(f"not a directory: {rel}")
         root_resolved = root.resolve()
         found: list[str] = []
+        truncated = False
         for p in root.glob(pattern):
             if not p.is_file():
                 continue
@@ -288,10 +348,14 @@ class ControlledTools:
                 continue  # a pattern with '..' must never leak outside the root
             if any(is_sensitive_entry(part) for part in rel_path.parts):
                 continue
-            found.append(rel_path.as_posix())
             if len(found) >= _MAX_MATCHES:
+                truncated = True
                 break
-        return "\n".join(sorted(found)) or "(no matches)"
+            found.append(rel_path.as_posix())
+        result = "\n".join(sorted(found)) or "(no matches)"
+        if truncated:
+            result += "\n[results truncated; narrow the path or pattern]"
+        return result
 
     def grep(self, pattern: str, rel: str = ".", glob_include: str | None = None,
              max_results: int = _MAX_MATCHES, cwd: Path | str | None = None) -> str:
@@ -305,11 +369,16 @@ class ControlledTools:
             raise ValueError(f"invalid regex {pattern!r}: {exc}") from exc
         base = Path(cwd) if cwd else self.workdir
         root = safe_join(base, rel)
-        if not root.is_dir():
-            raise FileNotFoundError(f"not a directory: {rel}")
+        if not root.is_dir() and not root.is_file():
+            raise FileNotFoundError(f"not a file or directory: {rel}")
         limit = max(1, min(int(max_results or _MAX_MATCHES), _MAX_MATCHES))
         hits: list[str] = []
-        for path in _walk_files(root, glob_include):
+        search_root = root.parent if root.is_file() else root
+        paths = [root] if root.is_file() else _walk_files(root, glob_include)
+        output_chars = 0
+        for path in paths:
+            if not _matches_include(path, search_root, glob_include):
+                continue
             try:
                 if path.stat().st_size > _MAX_READ_BYTES or _is_probably_binary(path):
                     continue
@@ -317,13 +386,24 @@ class ControlledTools:
                     encoding="utf-8", errors="replace").splitlines()
             except OSError:
                 continue
-            rel_name = _rel_posix(path, root)
+            rel_name = _rel_posix(path, search_root)
             for lineno, line in enumerate(lines, 1):
-                if regex.search(line):
-                    snippet = line.strip()[:_MAX_GREP_LINE_CHARS]
-                    hits.append(f"{rel_name}:{lineno}: {snippet}")
-                    if len(hits) >= limit:
-                        return "\n".join(hits)
+                match = regex.search(line)
+                if match:
+                    start = max(0, match.start() - 60) if len(line) > _MAX_GREP_LINE_CHARS else 0
+                    end = min(len(line), start + _MAX_GREP_LINE_CHARS)
+                    snippet = line[start:end]
+                    note = ""
+                    if start > 0 or end < len(line):
+                        note = (f" [columns={start + 1}-{end}/{len(line)}; truncated; "
+                                f"read_file start_line={lineno} start_column={start + 1}]")
+                    hit = f"{rel_name}:{lineno}: {snippet}{note}"
+                    if len(hits) >= limit or output_chars + len(hit) > _MAX_SEARCH_OUTPUT_CHARS:
+                        return "\n".join(hits + [
+                            "[results truncated; narrow path/pattern or use read_file at a matching line]",
+                        ])
+                    hits.append(hit)
+                    output_chars += len(hit) + 1
         return "\n".join(hits) or "(no matches)"
 
     # -- environment probe (read-only, localhost whitelist) ----------------
@@ -395,6 +475,59 @@ class ControlledTools:
         return self._run(["git", "status", "--short"], base, 120.0, None).stdout
 
     # -- git worktree (harness-internal sandbox management; never a model action)
+    def git_snapshot_paths(self, cwd: Path | str) -> CommandResult:
+        """Enumerate current tracked changes and nonignored untracked paths.
+
+        NUL separators preserve spaces and Unicode; optional locks are disabled
+        so even Git's opportunistic index refresh cannot write the main index.
+        """
+        base = Path(cwd)
+        tracked = self._run([
+            "git", "--no-optional-locks", "diff", "--name-only", "--no-renames",
+            "-z", "HEAD", "--",
+        ], base, 120.0, None)
+        if not tracked.ok:
+            return tracked
+        untracked = self._run([
+            "git", "--no-optional-locks", "ls-files", "--others",
+            "--exclude-standard", "-z", "--",
+        ], base, 120.0, None)
+        if untracked.ok:
+            untracked.stdout = tracked.stdout + untracked.stdout
+        return untracked
+
+    def git_snapshot_commit(self, cwd: Path | str) -> CommandResult:
+        """Save the copied source baseline in a detached worktree only.
+
+        This fixed lifecycle operation is never a model action and deliberately
+        does not expand guard_git_args (which still forbids commit and push).
+        """
+        base = Path(cwd).resolve()
+        git_file = base / ".git"
+        if (base == self.workdir.resolve() or not git_file.is_file()
+                or git_file.is_symlink()):
+            raise SafetyViolation("snapshot requires a separate Git worktree")
+        detached = self._run(
+            ["git", "symbolic-ref", "--quiet", "HEAD"], base, 120.0, None)
+        if detached.returncode != 1:
+            raise SafetyViolation("snapshot requires a detached worktree HEAD")
+        staged = self._run(["git", "add", "--all", "--"], base, 120.0, None)
+        if not staged.ok:
+            return staged
+        changed = self._run(
+            ["git", "diff", "--cached", "--quiet"], base, 120.0, None)
+        if changed.returncode != 1:
+            return changed
+        # .git is a regular file in a worktree, so no hooks can exist below it.
+        # Identity, hooks and signing overrides are process-local only.
+        return self._run([
+            "git", "-c", f"core.hooksPath={git_file}",
+            "-c", "user.name=Coder Sandbox",
+            "-c", "user.email=coder-sandbox@localhost",
+            "-c", "commit.gpgsign=false", "commit", "--no-verify",
+            "-m", "Snapshot current workspace for isolated verification",
+        ], base, 120.0, None)
+
     def git_worktree_add(self, path: Path | str,
                          cwd: Path | str | None = None) -> CommandResult:
         args = ["worktree", "add", "--detach", str(Path(path)), "HEAD"]
@@ -407,6 +540,17 @@ class ControlledTools:
         guard_worktree_args(args[1:])
         base = Path(cwd) if cwd else self.workdir
         return self._run(["git", *args], base, 120.0, None).stdout
+
+    def git_worktree_unlock_initialization(
+            self, path: Path | str, cwd: Path | str) -> CommandResult:
+        """Release only a sandbox's interrupted creation lock before pruning."""
+        target = Path(path).resolve()
+        base = Path(cwd).resolve()
+        marker = target.parent / f".{target.name}.initializing"
+        if target == base or not marker.is_file():
+            raise SafetyViolation("unlock requires an interrupted sandbox marker")
+        return self._run(
+            ["git", "worktree", "unlock", str(target)], base, 60.0, None)
 
     def git_worktree_prune(self, cwd: Path | str | None = None) -> CommandResult:
         args = ["worktree", "prune"]

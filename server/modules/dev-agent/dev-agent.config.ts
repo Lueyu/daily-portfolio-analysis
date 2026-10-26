@@ -8,7 +8,8 @@
  */
 import path from 'node:path';
 
-export const DEFAULT_RUN_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+export const DEFAULT_RUN_TIMEOUT_MS = 0; // Long-running work has no default total time limit.
+export const SHORT_COMMAND_TIMEOUT_MS = 30_000;
 
 export interface DevAgentConfig {
   enabled: boolean;
@@ -24,8 +25,8 @@ export interface DevAgentConfig {
   tasksDir: string;
   /** Working directory the agent is allowed to operate in. */
   workdir: string;
-  /** Wall-clock cap for a single run/approve subprocess. */
-  runTimeoutMs: number;
+  /** Optional wall-clock cap for run/approve; zero/null disables it. */
+  runTimeoutMs: number | null;
 }
 
 /** Default executable path, selected per platform. */
@@ -38,7 +39,7 @@ function defaultBinPath(root: string): string {
 function parseTimeout(raw: string | undefined): number {
   if (raw === undefined) return DEFAULT_RUN_TIMEOUT_MS;
   const n = Number(raw);
-  return Number.isFinite(n) && n > 0 ? n : DEFAULT_RUN_TIMEOUT_MS;
+  return Number.isFinite(n) && n >= 0 ? n : DEFAULT_RUN_TIMEOUT_MS;
 }
 
 /** Parse the optional AGENT_DEV_BIN_ARGS JSON array; never throw on bad input. */

@@ -4,6 +4,7 @@ apply/revert delegated to ControlledTools with the sandbox cwd, and teardown
 that removes links BEFORE rmtree and then prunes the worktree registry."""
 import os
 import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -17,6 +18,268 @@ from agent_core.coder.models import (
 )
 from agent_core.coder.sandbox import WorktreeSandbox, SandboxError, prune_stale
 from agent_core.coder.tools import ControlledTools
+
+
+def _git(repo, *args):
+    result = subprocess.run(
+        ["git", *args], cwd=repo, capture_output=True, check=True)
+    return result.stdout.decode("utf-8").strip()
+
+
+@pytest.fixture
+def dirty_repo(tmp_path):
+    main = tmp_path / "main"
+    main.mkdir()
+    _git(main, "init")
+    _git(main, "config", "user.name", "Sandbox Test")
+    _git(main, "config", "user.email", "sandbox@example.invalid")
+    _git(main, "config", "core.autocrlf", "false")
+    (main / ".gitignore").write_text(
+        ".env*\nnode_modules/\nignored.ts\n", encoding="utf-8")
+    for name in ("tracked.ts", "removed.ts", "staged-removed.ts"):
+        (main / name).write_text("old\n", encoding="utf-8")
+    _git(main, "add", ".")
+    _git(main, "commit", "-m", "initial")
+    (main / "tracked.ts").write_text("staged\n", encoding="utf-8")
+    _git(main, "add", "tracked.ts")
+    (main / "tracked.ts").write_bytes(b"working\r\n")
+    (main / "removed.ts").unlink()
+    _git(main, "rm", "staged-removed.ts")
+    (main / "new UI.tsx").write_bytes(b"new UI\n")
+    (main / "ignored.ts").write_text("ignored\n", encoding="utf-8")
+    (main / ".env").write_text("TEST_PLACEHOLDER=not-a-secret\n", encoding="utf-8")
+    return main
+
+
+def _real_sandbox(main, tmp_path, **kwargs):
+    return WorktreeSandbox(
+        "dev_snapshot", main, tmp_path / "worktrees", ControlledTools(main),
+        link_dependencies=False, **kwargs)
+
+
+def test_snapshot_includes_working_sources_and_deletions(dirty_repo, tmp_path):
+    sb = _real_sandbox(dirty_repo, tmp_path, copy_env=False)
+    try:
+        sb.ensure()
+        assert (sb.path / "tracked.ts").read_bytes() == b"working\r\n"
+        assert (sb.path / "new UI.tsx").read_text() == "new UI\n"
+        assert not (sb.path / "removed.ts").exists()
+        assert not (sb.path / "staged-removed.ts").exists()
+        assert not (sb.path / "ignored.ts").exists()
+        assert not (sb.path / ".env").exists()
+        assert sb.is_clean()
+    finally:
+        sb.teardown()
+
+
+def test_snapshot_preserves_main_branch_index_and_working_files(dirty_repo, tmp_path):
+    main = dirty_repo
+    before_head = _git(main, "rev-parse", "HEAD")
+    before_branch = _git(main, "symbolic-ref", "HEAD")
+    before_index = (main / ".git" / "index").read_bytes()
+    before_diff = _git(main, "diff", "HEAD")
+    sb = _real_sandbox(main, tmp_path)
+    try:
+        sb.ensure()
+        assert _git(sb.path, "rev-parse", "HEAD") != before_head
+        assert "new UI.tsx" in _git(sb.path, "ls-tree", "--name-only", "HEAD")
+        assert ".env" not in _git(sb.path, "ls-tree", "--name-only", "HEAD")
+        assert (sb.path / ".env").exists()
+    finally:
+        sb.teardown()
+    assert _git(main, "rev-parse", "HEAD") == before_head
+    assert _git(main, "symbolic-ref", "HEAD") == before_branch
+    assert (main / ".git" / "index").read_bytes() == before_index
+    assert _git(main, "diff", "HEAD") == before_diff
+    assert (main / "new UI.tsx").read_text() == "new UI\n"
+    assert not sb.path.exists()
+    assert str(sb.path).replace("\\", "/") not in _git(main, "worktree", "list")
+
+
+def test_candidate_apply_revert_is_relative_to_snapshot(dirty_repo, tmp_path):
+    sb = _real_sandbox(dirty_repo, tmp_path, copy_env=False)
+    diff = (
+        "diff --git a/new UI.tsx b/new UI.tsx\n"
+        "--- a/new UI.tsx\n+++ b/new UI.tsx\n"
+        "@@ -1 +1 @@\n-new UI\n+fixed UI\n")
+    try:
+        sb.ensure()
+        assert sb.apply(diff).ok
+        assert not sb.is_clean()
+        assert sb.revert(diff).ok
+        assert sb.is_clean()
+        assert (sb.path / "new UI.tsx").read_text() == "new UI\n"
+    finally:
+        sb.teardown()
+
+
+def test_snapshot_does_not_follow_directory_links(dirty_repo, tmp_path):
+    external = tmp_path / "external"
+    external.mkdir()
+    (external / "outside.ts").write_text("keep\n", encoding="utf-8")
+    link = dirty_repo / "linked-source"
+    Linker().make_link(link, external)
+    (dirty_repo / "regular.ts").write_text("include\n", encoding="utf-8")
+    sb = _real_sandbox(dirty_repo, tmp_path, copy_env=False)
+    try:
+        sb.ensure()
+        assert (sb.path / "regular.ts").exists()
+        assert not (sb.path / "linked-source").exists()
+        sb.teardown()
+        assert (external / "outside.ts").read_text() == "keep\n"
+    finally:
+        sb.teardown()
+        Linker().remove_link(link)
+
+
+def test_snapshot_handles_nested_directory_replaced_with_file(dirty_repo, tmp_path):
+    main = dirty_repo
+    folder = main / "folder"
+    (folder / "nested").mkdir(parents=True)
+    (folder / "nested" / "source.ts").write_text("old", encoding="utf-8")
+    _git(main, "add", "folder")
+    _git(main, "commit", "-m", "tracked directory")
+    (folder / "nested" / "source.ts").unlink()
+    (folder / "nested").rmdir()
+    folder.rmdir()
+    folder.write_text("replacement", encoding="utf-8")
+    sb = _real_sandbox(main, tmp_path, copy_env=False)
+    try:
+        sb.ensure()
+        assert (sb.path / "folder").read_text() == "replacement"
+        assert sb.is_clean()
+    finally:
+        sb.teardown()
+
+
+def test_snapshot_skips_unignored_secrets_but_keeps_tracked_ignored_source(
+        dirty_repo, tmp_path):
+    main = dirty_repo
+    (main / ".gitignore").write_text(
+        ".env\nignored.ts\ntracked.ts\nnode_modules/\n", encoding="utf-8")
+    (main / ".env.unignored").write_text("TEST_PLACEHOLDER=1", encoding="utf-8")
+    sb = _real_sandbox(main, tmp_path, copy_env=False)
+    try:
+        sb.ensure()
+        assert (sb.path / "tracked.ts").read_bytes() == b"working\r\n"
+        assert not (sb.path / ".env.unignored").exists()
+        assert ".env" not in _git(sb.path, "ls-tree", "--name-only", "HEAD")
+        assert sb.is_clean()
+    finally:
+        sb.teardown()
+
+
+def test_existing_sandbox_keeps_its_snapshot_and_candidate(dirty_repo, tmp_path):
+    sb = _real_sandbox(dirty_repo, tmp_path, copy_env=False)
+    try:
+        sb.ensure()
+        baseline = _git(sb.path, "rev-parse", "HEAD")
+        (sb.path / "new UI.tsx").write_text("candidate", encoding="utf-8")
+        (dirty_repo / "new UI.tsx").write_text("new main edit", encoding="utf-8")
+        resumed = _real_sandbox(dirty_repo, tmp_path, copy_env=False)
+        resumed.ensure()
+        assert _git(resumed.path, "rev-parse", "HEAD") == baseline
+        assert (resumed.path / "new UI.tsx").read_text() == "candidate"
+        assert not resumed.is_clean()
+    finally:
+        sb.teardown()
+
+
+def test_failed_snapshot_is_removed_instead_of_reused(dirty_repo, tmp_path, monkeypatch):
+    sb = _real_sandbox(dirty_repo, tmp_path, copy_env=False)
+    monkeypatch.setattr(
+        sb.tools, "git_snapshot_commit",
+        lambda cwd: CommandResult(argv=[], returncode=1, stderr="snapshot failed"))
+    with pytest.raises(SandboxError, match="snapshot failed"):
+        sb.ensure()
+    assert not sb.path.exists()
+    assert "dev_snapshot" not in _git(dirty_repo, "worktree", "list")
+    assert (dirty_repo / "new UI.tsx").read_text() == "new UI\n"
+
+
+def test_interrupted_initialization_rebuilds_partial_snapshot(dirty_repo, tmp_path, monkeypatch):
+    sb = _real_sandbox(dirty_repo, tmp_path, copy_env=False)
+
+    def interrupt_snapshot():
+        (sb.path / "tracked.ts").write_text("partial snapshot", encoding="utf-8")
+        raise KeyboardInterrupt  # simulate process termination outside exception cleanup
+
+    monkeypatch.setattr(sb, "_snapshot_workspace", interrupt_snapshot)
+    with pytest.raises(KeyboardInterrupt):
+        sb.ensure()
+    resumed = _real_sandbox(dirty_repo, tmp_path, copy_env=False)
+    try:
+        resumed.ensure()
+        assert (resumed.path / "tracked.ts").read_bytes() == b"working\r\n"
+        assert (resumed.path / "new UI.tsx").read_text() == "new UI\n"
+        assert resumed.is_clean()
+    finally:
+        resumed.teardown()
+    assert list((tmp_path / "worktrees").iterdir()) == []
+
+
+def test_interrupted_env_preparation_rebuilds_incomplete_sandbox(dirty_repo, tmp_path, monkeypatch):
+    sb = _real_sandbox(dirty_repo, tmp_path)
+
+    def interrupt_env():
+        (sb.path / "unfinished.ts").write_text("partial", encoding="utf-8")
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(sb, "_copy_env", interrupt_env)
+    with pytest.raises(KeyboardInterrupt):
+        sb.ensure()
+    resumed = _real_sandbox(dirty_repo, tmp_path)
+    try:
+        resumed.ensure()
+        assert not (resumed.path / "unfinished.ts").exists()
+        assert (resumed.path / ".env").exists()
+        assert resumed.is_clean()
+    finally:
+        resumed.teardown()
+    assert list((tmp_path / "worktrees").iterdir()) == []
+
+
+def test_interrupted_worktree_registration_lock_is_recovered(dirty_repo, tmp_path, monkeypatch):
+    sb = _real_sandbox(dirty_repo, tmp_path, copy_env=False)
+
+    def interrupt_locked_creation():
+        _git(dirty_repo, "worktree", "lock", "--reason", "initializing", str(sb.path))
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(sb, "_snapshot_workspace", interrupt_locked_creation)
+    with pytest.raises(KeyboardInterrupt):
+        sb.ensure()
+    resumed = _real_sandbox(dirty_repo, tmp_path, copy_env=False)
+    try:
+        resumed.ensure()
+        assert (resumed.path / "new UI.tsx").read_text() == "new UI\n"
+        assert resumed.is_clean()
+    finally:
+        # Also clean the simulated creation lock when demonstrating the RED.
+        subprocess.run(["git", "worktree", "unlock", str(sb.path)],
+                       cwd=dirty_repo, capture_output=True)
+        resumed.teardown()
+    assert "dev_snapshot" not in _git(dirty_repo, "worktree", "list")
+
+
+def test_interruption_before_worktree_creation_can_retry(dirty_repo, tmp_path, monkeypatch):
+    sb = _real_sandbox(dirty_repo, tmp_path, copy_env=False)
+
+    def interrupt_add(*args, **kwargs):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(sb.tools, "git_worktree_add", interrupt_add)
+    with pytest.raises(KeyboardInterrupt):
+        sb.ensure()
+    assert not sb.path.exists()
+    resumed = _real_sandbox(dirty_repo, tmp_path, copy_env=False)
+    try:
+        resumed.ensure()
+        assert (resumed.path / "new UI.tsx").read_text() == "new UI\n"
+        assert resumed.is_clean()
+    finally:
+        resumed.teardown()
+    assert list((tmp_path / "worktrees").iterdir()) == []
 
 
 class FakeWorktreeRunner:

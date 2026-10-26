@@ -25,7 +25,6 @@
 import {
   Injectable,
   Inject,
-  Logger,
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
@@ -85,8 +84,6 @@ interface EvidenceInsert {
 
 @Injectable()
 export class MultiAgentService {
-  private readonly logger = new Logger(MultiAgentService.name);
-
   constructor(@Inject(DRIZZLE_DATABASE) private readonly db: PostgresJsDatabase) {}
 
   /** Create a new run row in `pending` status. Does not start the pipeline. */

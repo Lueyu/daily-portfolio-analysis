@@ -11,14 +11,20 @@ import {
   Body,
   Controller,
   Get,
+  Header,
   Param,
   Post,
+  Query,
+  StreamableFile,
   UsePipes,
   ValidationPipe,
 } from '@nestjs/common';
 import { NeedLogin } from '@lark-apaas/fullstack-nestjs-core';
 import { DevAgentService } from './dev-agent.service';
-import { CreateDevTaskDto, RejectDevTaskDto } from './dev-agent.types';
+import {
+  CreateDevTaskDto, RejectDevTaskDto, UndoDevChangeDto, RestoreDevCheckpointDto,
+  DevAgentMessageDto, DevAgentExternalDecisionDto,
+} from './dev-agent.types';
 
 @Controller('api/dev')
 @NeedLogin()
@@ -35,6 +41,22 @@ export class DevAgentController {
   @Get('health')
   health() {
     return this.dev.health();
+  }
+
+  @Get('capabilities')
+  capabilities() {
+    return this.dev.capabilities();
+  }
+
+  @Post('tasks/:id/messages')
+  message(@Param('id') id: string, @Body() dto: DevAgentMessageDto) {
+    return this.dev.sendMessage(id, dto.text);
+  }
+
+  @Post('tasks/:id/approvals/:requestId')
+  decideExternal(@Param('id') id: string, @Param('requestId') requestId: string,
+                 @Body() dto: DevAgentExternalDecisionDto) {
+    return this.dev.decideExternal(id, requestId, dto.approve);
   }
 
   @Get('tasks')
@@ -72,6 +94,28 @@ export class DevAgentController {
     return this.dev.getPatch(id, patchId);
   }
 
+  @Get('tasks/:id/runtime')
+  getRuntime(@Param('id') id: string, @Query('cursor') cursor?: string) {
+    return this.dev.getRuntime(id, cursor === undefined ? 0 : Number(cursor));
+  }
+
+  @Get('tasks/:id/artifacts/:artifactId')
+  @Header('Cache-Control', 'private, no-store')
+  @Header('X-Content-Type-Options', 'nosniff')
+  async getArtifact(@Param('id') id: string, @Param('artifactId') artifactId: string) {
+    return new StreamableFile(await this.dev.getArtifact(id, artifactId), { type: 'image/png' });
+  }
+
+  @Post('tasks/:id/changes/undo')
+  undoChange(@Param('id') id: string, @Body() dto: UndoDevChangeDto) {
+    return this.dev.undoChange(id, dto);
+  }
+
+  @Post('tasks/:id/checkpoints/restore')
+  restoreCheckpoint(@Param('id') id: string, @Body() dto: RestoreDevCheckpointDto) {
+    return this.dev.restoreCheckpoint(id, dto);
+  }
+
   @Post('tasks/:id/run')
   runTask(@Param('id') id: string) {
     return this.dev.startRun(id);
@@ -80,6 +124,11 @@ export class DevAgentController {
   @Post('tasks/:id/approve')
   approveTask(@Param('id') id: string) {
     return this.dev.approve(id);
+  }
+
+  @Post('tasks/:id/stop')
+  stopTask(@Param('id') id: string) {
+    return this.dev.stop(id);
   }
 
   @Post('tasks/:id/reject')

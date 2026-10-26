@@ -8,6 +8,10 @@
  * sync with `server/modules/dev-agent/dev-agent.types.ts`.
  */
 
+import type { DevAgentGateFields, DevAgentRuntimeFields } from '@shared/api.interface';
+
+export type VerifyState = 'none' | 'running' | 'failed' | 'passed';
+
 export type DevStatus =
   | 'new'
   | 'reproduced'
@@ -24,7 +28,7 @@ export interface DevAcceptance {
   id: string;
   description: string;
   check: CheckKind;
-  /** Optional target for the check: a test file or URL to verify. */
+  /** Context hint for the model; does not filter the executed check command. */
   target?: string | null;
 }
 
@@ -46,7 +50,7 @@ export interface DevPatchMeta {
   createdAt: string | null;
 }
 
-export interface DevTaskDetail {
+export interface DevTaskDetail extends DevAgentGateFields, DevAgentRuntimeFields {
   id: string;
   title: string;
   problem: string;
@@ -63,7 +67,7 @@ export interface DevTaskDetail {
   patchCount: number;
 }
 
-export interface DevTaskSummary {
+export interface DevTaskSummary extends DevAgentRuntimeFields {
   id: string;
   title: string;
   status: DevStatus;
@@ -99,13 +103,13 @@ export interface CreateDevTaskPayload {
   workdir?: string | null;
 }
 
-/** Terminal statuses: once reached the loop stops and no run is accepted. */
+/** Terminal statuses stop polling; a saved budget block may explicitly resume. */
 export const TERMINAL_STATUSES: DevStatus[] = ['verified', 'blocked'];
 
 /** Status that pauses the loop for a human to review the patch. */
 export const AWAITING_STATUS: DevStatus = 'awaiting_approval';
 
-/** Ordered list of the eight task states, used to draw the step indicator. */
+/** Display order for the status filter, not the order of a ReAct execution. */
 export const STATUS_ORDER: DevStatus[] = [
   'new',
   'reproduced',

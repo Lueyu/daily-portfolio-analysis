@@ -1,7 +1,10 @@
 # tests/test_coder_harness.py
 import json
 import os
+import subprocess
 from pathlib import Path
+
+import pytest
 
 from agent_core.coder.budget import BudgetGuard
 from agent_core.coder.harness import CoderHarness
@@ -16,7 +19,7 @@ from agent_core.coder.models import (
     TaskStatus,
 )
 from agent_core.coder.task_store import TaskStore
-from agent_core.coder.tools import ControlledTools
+from agent_core.coder.tools import ControlledTools, default_runner
 from agent_core.models import ChatResponse, ToolCall, Usage
 
 
@@ -203,10 +206,63 @@ def test_cheating_patch_rejected_then_clean_patch_accepted(tmp_path):
 
 def test_cannot_reproduce_blocks(tmp_path):
     runner = FakeRunner([0, 0])          # already green: cannot reproduce
-    chat = ScriptedChat([RED, RED])
+    chat = ScriptedChat([RED, RED, step("blocked", reason="no matching reproduction test")])
     h, _ = harness_for(tmp_path, chat, runner)
     out = h.run(auto_approve=True)
     assert out.status == TaskStatus.BLOCKED
+    assert chat.calls == 3
+
+
+def test_green_checks_do_not_prevent_later_reproduction(tmp_path):
+    runner = FakeRunner([0, 0, 1, 0])
+    chat = ScriptedChat([RED, RED, RED, PATCH1, FINISH])
+    h, _ = harness_for(tmp_path, chat, runner)
+    assert h.run(auto_approve=False).status == TaskStatus.AWAITING_APPROVAL
+
+
+def test_every_check_persists_start_and_result_even_when_already_green(tmp_path):
+    from agent_core.coder.gates import GateState
+    from agent_core.coder.parser import RunCheckStep
+
+    h, store = harness_for(tmp_path, ScriptedChat([]), FakeRunner([0, 1, 0]))
+    gate = GateState()
+    request = RunCheckStep(kind=CheckKind.UNIT)
+    first = h.execute(request, gate)
+    h.execute(request, gate)
+    h.execute(request, gate)
+    records = store.read_iterations(h.task.id)
+    checks = [r for r in records if r.action == "run_check"]
+    assert [r.decision for r in checks] == [
+        "run_check unit: started", "run_check unit: PASS",
+        "run_check unit: started", "run_check unit: FAIL",
+        "run_check unit: started", "run_check unit: PASS",
+    ]
+    assert "15 passed" in first.observation
+    assert "已修复" in first.observation
+    assert "15 passed" in " ".join(checks[1].observations)
+    assert gate.red_seen
+
+
+def test_read_progress_updates_persisted_activity_time(tmp_path):
+    from datetime import datetime, timezone
+    from agent_core.coder.gates import GateState
+    from agent_core.coder.parser import ReadFileStep
+
+    h, store = harness_for(tmp_path, ScriptedChat([]), FakeRunner([]))
+    seed_sb(tmp_path, "server/x.ts", "const x = 1;")
+    h.task.updated_at = datetime(2020, 1, 1, tzinfo=timezone.utc)
+    store.save(h.task)
+    h.execute(ReadFileStep(path="server/x.ts"), GateState())
+    record = store.read_iterations(h.task.id)[-1]
+    assert store.load(h.task.id).updated_at == record.created_at
+
+
+def test_repeated_diagnosis_failures_can_continue_to_a_verified_patch(tmp_path):
+    runner = FakeRunner([1, 1, 1, 1, 0])
+    chat = ScriptedChat([RED, PATCH1, PATCH1, PATCH1, PATCH2, FINISH])
+    h, _ = harness_for(tmp_path, chat, runner)
+    assert h.run(auto_approve=False).status == TaskStatus.AWAITING_APPROVAL
+    assert h.budget.rethink_count == 2
 
 
 def test_manual_gate_pauses_then_approve_continues(tmp_path):
@@ -261,22 +317,138 @@ def test_read_probes_are_recorded(tmp_path):
     assert any("server/x.ts" in o for i in probes for o in i.observations)
 
 
-def test_probe_ultimatum_before_hard_cap(tmp_path):
+def test_probe_reminder_does_not_impose_default_hard_cap(tmp_path):
     runner = FakeRunner([0])
-    seed_sb(tmp_path, "server/x.ts", "x")
-    read = step("read_file", phase="reproduce", path="server/x.ts")
+    reads = []
+    for index in range(8):
+        path = f"server/source-{index}.ts"
+        seed_sb(tmp_path, path, f"const value = {index};")
+        reads.append(step("read_file", phase="reproduce", path=path))
     give_up = step(
         "blocked", phase="reproduce",
         reason="local database/data issue; no test reproduces empty page")
-    chat = CapturingChat([read] * 8 + [give_up])
+    chat = CapturingChat(reads + [give_up])
     h, _ = harness_for(tmp_path, chat, runner)
-    assert h.max_probes >= 10
+    assert h.max_probes is None
     out = h.run(auto_approve=True)
     assert out.status == TaskStatus.BLOCKED
     flat = " ".join(
         " ".join(str(m.get("content", "")) for m in ms) for ms in chat.seen)
     assert "PROBE BUDGET WARNING" in flat
     assert "run_check" in flat and "blocked" in flat
+
+
+def test_default_harness_completes_after_many_readonly_steps(tmp_path):
+    runner = FakeRunner([1, 0])
+    reads = []
+    for index in range(50):
+        path = f"server/source-{index}.ts"
+        seed_sb(tmp_path, path, f"const value = {index};")
+        reads.append(step("read_file", phase="reproduce", path=path))
+    chat = ScriptedChat(reads + [RED, PATCH1, FINISH])
+    h, store = harness_for(tmp_path, chat, runner)
+    out = h.run(auto_approve=False)
+    assert out.status == TaskStatus.AWAITING_APPROVAL
+    assert chat.calls == 53
+    assert len([i for i in store.read_iterations(out.id) if i.action == "read_file"]) == 50
+    assert not any(Path(c) == tmp_path for c, _ in runner.applied)
+
+
+def test_repeated_source_reads_check_green_baseline_and_stop_without_fake_patch(tmp_path):
+    runner = FakeRunner([0])
+    seed_sb(tmp_path, "server/x.ts", "const alreadyFixed = true;")
+    read = step("read_file", path="server/x.ts")
+    chat = ScriptedChat([], loop=read)
+    h, store = harness_for(tmp_path, chat, runner)
+    out = h.run(auto_approve=False)
+    assert out.status == TaskStatus.BLOCKED
+    assert not out.red_seen and out.verify_state == "none"
+    assert chat.calls == 3
+    records = store.read_iterations(out.id)
+    assert any(r.decision == "run_check unit: PASS" for r in records)
+    assert "无法复现" in records[-1].decision
+    assert not list((store.root / out.id / "patches").glob("*.diff"))
+    assert not runner.applied
+
+
+def test_harness_reads_requested_page_beyond_original_4000_characters(tmp_path):
+    from agent_core.coder.gates import GateState
+    from agent_core.coder.parser import ReadFileStep
+
+    seed_sb(tmp_path, "server/large.ts", "// padding " * 500 + "\nconst target = 'visible';\n")
+    h, _ = harness_for(tmp_path, ScriptedChat([]), FakeRunner([]))
+    result = h.execute(ReadFileStep(path="server/large.ts", start_line=2), GateState())
+    assert "2: const target = 'visible';" in result.observation
+
+
+@pytest.mark.parametrize("reason", [
+    "iteration budget reached", "model call budget reached",
+    "wall-clock time budget reached", "too many read-only probes without progress",
+])
+def test_explicit_resume_keeps_budget_block_evidence_and_revalidates(tmp_path, reason):
+    chat = ScriptedChat([RED, PATCH1, FINISH])
+    h, store = harness_for(tmp_path, chat, FakeRunner([1, 0]))
+    h.task.red_seen = True
+    h.task.sandbox_dirty = True
+    h.task.verify_state = "passed"
+    h._block(reason)
+    history = store.read_iterations(h.task.id)
+    out = h.run(auto_approve=False, resume_budget=True)
+    assert out.status == TaskStatus.AWAITING_APPROVAL
+    records = store.read_iterations(out.id)
+    assert records[:len(history)] == history
+    assert records[len(history)].action == "resume_budget"
+    assert reason in records[len(history)].observations
+    assert any(i.action == "run_check" and i.decision == "run_check unit: FAIL"
+               for i in records[len(history):])
+    assert chat.calls == 3
+
+
+@pytest.mark.parametrize("reason", ["human rejected", "postgres unavailable", ""])
+def test_resume_refuses_non_budget_blocks_without_model_or_artifact_changes(tmp_path, reason):
+    chat = ScriptedChat([])
+    h, store = harness_for(tmp_path, chat, FakeRunner())
+    h._block(reason)
+    before_task = store.load(h.task.id)
+    before_history = store.read_iterations(h.task.id)
+    with pytest.raises(ValueError, match="budget"):
+        h.run(auto_approve=False, resume_budget=True)
+    assert chat.calls == 0
+    assert store.load(h.task.id) == before_task
+    assert store.read_iterations(h.task.id) == before_history
+
+
+def test_run_does_not_implicitly_resume_a_budget_block(tmp_path):
+    chat = ScriptedChat([])
+    h, _ = harness_for(tmp_path, chat, FakeRunner())
+    h._block("iteration budget reached")
+    assert h.run(auto_approve=False).status == TaskStatus.BLOCKED
+    assert chat.calls == 0
+
+
+@pytest.mark.parametrize("status", [TaskStatus.NEW, TaskStatus.AWAITING_APPROVAL, TaskStatus.VERIFIED])
+def test_resume_flag_never_reopens_nonblocked_tasks(tmp_path, status):
+    chat = ScriptedChat([])
+    h, store = harness_for(tmp_path, chat, FakeRunner())
+    h._block("iteration budget reached")
+    h.task.set_status(status)
+    store.save(h.task)
+    before = store.load(h.task.id)
+    with pytest.raises(ValueError, match="budget"):
+        h.run(auto_approve=False, resume_budget=True)
+    assert store.load(h.task.id) == before
+    assert chat.calls == 0
+
+
+def test_resume_refuses_missing_block_evidence(tmp_path):
+    chat = ScriptedChat([])
+    h, store = harness_for(tmp_path, chat, FakeRunner())
+    h.task.set_status(TaskStatus.BLOCKED)
+    store.save(h.task)
+    with pytest.raises(ValueError, match="budget"):
+        h.run(auto_approve=False, resume_budget=True)
+    assert store.read_iterations(h.task.id) == []
+    assert chat.calls == 0
 
 
 def test_probe_env_detects_down_db_and_blocks_with_checklist(tmp_path):
@@ -340,8 +512,6 @@ def test_sandbox_e2e_acceptance_runs_fullstack(tmp_path):
 
 def test_main_unit_failure_rolls_back_and_returns_to_diagnosis(tmp_path):
     runner = FakeRunner([1, 0], main_unit=1)   # sandbox green, main unit red
-    # The same patch keeps failing the main-unit smoke; the retry discipline
-    # must eventually block rather than loop forever.
     chat = ScriptedChat([RED, PATCH1, FINISH], loop=PATCH1)
     h, _ = harness_for(tmp_path, chat, runner)
     out = h.run(auto_approve=True)
@@ -386,7 +556,8 @@ def test_approval_in_new_process_loads_patch_from_disk(tmp_path):
     assert any(Path(c) == tmp_path for c, _d in runner.applied)  # landed
 
 
-def test_build_harness_wires_sandbox_when_enabled(monkeypatch, tmp_path):
+@pytest.mark.parametrize("limits", [None, 20])
+def test_build_harness_wires_sandbox_and_budget_settings(monkeypatch, tmp_path, limits):
     from agent_core.coder import cli
     from agent_core import config
     store = TaskStore(tmp_path / "tasks")
@@ -396,10 +567,16 @@ def test_build_harness_wires_sandbox_when_enabled(monkeypatch, tmp_path):
     monkeypatch.setattr(cli, "get_settings", lambda: config.Settings(
         _env_file=None, coder_data_dir=str(tmp_path / "coder"),
         coder_worktree_dir=str(tmp_path / "coder" / "worktrees"),
+        coder_max_iterations=limits, coder_max_model_calls=limits,
+        coder_wallclock_seconds=limits, coder_max_probes=limits,
         webapp_workdir=str(tmp_path)))
     h = cli.build_harness("dev_h1")
     assert h.sandbox is not None
     assert h.sandbox.path == tmp_path / "coder" / "worktrees" / "dev_h1"
+    assert h.budget.config.max_iterations == limits
+    assert h.budget.config.max_model_calls == limits
+    assert h.budget.config.wallclock_seconds == limits
+    assert h.max_probes == limits
 
 
 def tool_reply(*calls):
@@ -459,8 +636,117 @@ def test_function_protocol_happy_path(tmp_path):
 
 def test_function_gate_hides_apply_patch_before_red(tmp_path):
     runner = FakeRunner([1, 0])
-    chat = FunctionChat([tool_reply(("run_check", {"check": "unit"}))])
+    chat = FunctionChat([
+        tool_reply(("run_check", {"check": "unit"})),
+        tool_reply(("blocked", {"reason": "test stops after observing gate"})),
+    ])
     harness, _ = harness_for_function(tmp_path, chat, runner)
     harness.run(auto_approve=True)
     first_tools = {tool["function"]["name"] for tool in chat.requests[0].tools}
     assert "apply_patch" not in first_tools and "finish" not in first_tools
+
+
+@pytest.fixture()
+def interrupted_verification(tmp_path):
+    """Stop a real isolated git checkout after the harness persisted RUNNING."""
+    from agent_core.coder.sandbox import WorktreeSandbox
+
+    main = tmp_path / "main"
+    main.mkdir()
+    (main / "x.ts").write_text("old\n", encoding="utf-8")
+    for args in (
+        ["init"], ["add", "x.ts"],
+        ["-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-m", "baseline"],
+    ):
+        subprocess.run(["git", *args], cwd=main, check=True, capture_output=True)
+    store = TaskStore(tmp_path / "tasks")
+    task = make_task(main)
+    store.create(task)
+    diff = "--- a/x.ts\n+++ b/x.ts\n@@ -1 +1 @@\n-old\n+fixed\n"
+
+    def stop_at(point):
+        checks = []
+
+        def run(argv, cwd, timeout=None, stdin=None):
+            if argv[:2] == ["npm", "run"]:
+                checks.append(argv[2])
+                if len(checks) == 2 and point == "during_check":
+                    raise KeyboardInterrupt("simulated process termination during verification")
+                return CommandResult(argv=argv, returncode=1 if len(checks) == 1 else 0,
+                                     stdout="Tests 1 failed" if len(checks) == 1 else "Tests 1 passed")
+            return default_runner(argv, cwd, timeout, stdin)
+
+        class InterruptibleSandbox(WorktreeSandbox):
+            def apply(self, patch):
+                if point == "before_apply":
+                    raise KeyboardInterrupt("simulated process termination before apply")
+                return super().apply(patch)
+
+            def revert(self, patch):
+                result = super().revert(patch)
+                if point == "after_revert":
+                    raise KeyboardInterrupt("simulated process termination after revert")
+                return result
+
+        tools = ControlledTools(main, runner=run)
+        sandbox = InterruptibleSandbox(task.id, main, tmp_path / "worktrees", tools,
+                                        link_dependencies=False, copy_env=False)
+        chat = ScriptedChat([RED, step("apply_patch", diff=diff, hypothesis="replace old")])
+        harness = CoderHarness(task, chat, tools, store, sandbox=sandbox, supports_tools=False)
+        with pytest.raises(KeyboardInterrupt):
+            harness.run(auto_approve=False)
+        saved = store.load(task.id)
+        assert saved.status == TaskStatus.VERIFYING
+        assert saved.verify_state == "running" and saved.sandbox_dirty
+        return sandbox
+
+    def resume(chat):
+        checks = []
+
+        def run(argv, cwd, timeout=None, stdin=None):
+            if argv[:2] == ["npm", "run"]:
+                checks.append(argv[2])
+                return CommandResult(argv=argv, returncode=0, stdout="Tests 1 passed")
+            return default_runner(argv, cwd, timeout, stdin)
+
+        tools = ControlledTools(main, runner=run)
+        sandbox = WorktreeSandbox(task.id, main, tmp_path / "worktrees", tools,
+                                   link_dependencies=False, copy_env=False)
+        harness = CoderHarness(store.load(task.id), chat, tools, store,
+                               sandbox=sandbox, supports_tools=False)
+        return harness, checks
+
+    return stop_at, resume, store, main
+
+
+@pytest.mark.parametrize("point", ["before_apply", "during_check", "after_revert"])
+def test_run_revalidates_persisted_interrupted_candidate(interrupted_verification, point):
+    stop_at, resume, store, main = interrupted_verification
+    sandbox = stop_at(point)
+    before = store.read_iterations("dev_h1")
+    chat = CapturingChat([FINISH])
+    harness, checks = resume(chat)
+    out = harness.run(auto_approve=False)
+    assert out.status == TaskStatus.AWAITING_APPROVAL
+    assert checks == ["test:unit", "type:check", "lint"]
+    assert (main / "x.ts").read_text() == "old\n"
+    assert (sandbox.path / "x.ts").read_text() == "old\n"
+    records = store.read_iterations("dev_h1")
+    assert records[:len(before)] == before
+    assert any(record.action == "resume_verification" for record in records)
+    assert any(record.decision == "sandbox checks green; reverted; ready to finish" for record in records[len(before):])
+    assert "验收全部通过" in str(chat.seen[0])
+
+
+def test_interrupted_recovery_keeps_unexpected_dirty_files_for_inspection(interrupted_verification):
+    stop_at, resume, store, _ = interrupted_verification
+    sandbox = stop_at("during_check")
+    unexpected = sandbox.path / "unexpected.ts"
+    unexpected.write_text("preserve evidence\n", encoding="utf-8")
+    chat = ScriptedChat([])
+    harness, checks = resume(chat)
+    out = harness.run(auto_approve=False)
+    assert out.status == TaskStatus.BLOCKED
+    assert checks == [] and chat.calls == 0
+    assert unexpected.read_text() == "preserve evidence\n"
+    assert "interrupted verification" in store.read_iterations(out.id)[-1].decision

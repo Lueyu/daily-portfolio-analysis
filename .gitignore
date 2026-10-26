@@ -48,6 +48,8 @@ coverage/
 /playwright-report/
 /blob-report/
 /playwright/.cache/
+# Local screenshots and model-evaluation evidence (retained on disk).
+/output/
 
 # IDE files
 .vscode/

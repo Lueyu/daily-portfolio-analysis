@@ -9,6 +9,7 @@
  */
 import { Module } from '@nestjs/common';
 import { DevAgentController } from './dev-agent.controller';
+import { DevSettingsController } from './dev-settings.controller';
 import { DevAgentService } from './dev-agent.service';
 import { TaskArtifactReader } from './task-artifact.reader';
 import {
@@ -18,7 +19,7 @@ import {
 import { DEV_AGENT_CONFIG, loadDevAgentConfig } from './dev-agent.config';
 
 @Module({
-  controllers: [DevAgentController],
+  controllers: [DevAgentController, DevSettingsController],
   providers: [
     {
       provide: DEV_AGENT_CONFIG,

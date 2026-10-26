@@ -52,8 +52,10 @@ $logFile = Join-Path $pgData "pg-server.log"
 if ($LASTEXITCODE -eq 0) {
   Write-Host "[start-db] PostgreSQL already running (data: $pgData)." -ForegroundColor Green
 } else {
-  # 非正常关闭后可能残留 postmaster.pid：pg_ctl 报告“未运行”，但锁文件仍指向
-  # 一个已不存在的 postmaster。只有当该 PID 已消失且 5432 无监听时，才删除陈旧锁。
+  # After an unclean shutdown a stale postmaster.pid may remain: pg_ctl reports
+  # "no server running" but the lock file still points at a postmaster that is
+  # gone. Remove the stale lock only when that PID is dead and nothing listens
+  # on 5432.
   $lockFilePath = Join-Path $pgData "postmaster.pid"
   if (Test-Path -LiteralPath $lockFilePath) {
     $stalePid = (Get-Content -LiteralPath $lockFilePath -ErrorAction SilentlyContinue | Select-Object -First 1)
@@ -66,11 +68,64 @@ if ($LASTEXITCODE -eq 0) {
     }
   }
 
-  # 非正常关闭后，PG 启动会先做崩溃恢复并 fsync 整个数据目录（Windows 上可能
-  # 30s 以上），叠加偶发的日志文件 sharing violation 重试约 30s，因此等待上限
-  # 给到 120s。pg_ctl -w 偶尔在服务器真正 ready 前就报超时退出，所以这里 start
-  # 后再用 `pg_ctl status` 轮询兜底，只认实际状态，避免“其实已就绪却报失败”。
-  & "$pgBin\pg_ctl.exe" start -D $pgData -l $logFile -w -t 120 | Out-Null
+  # After an unclean shutdown PG first replays crash recovery and fsyncs the
+  # whole data directory (30s+ on Windows), plus occasional log-file sharing
+  # violation retries of ~30s, so allow up to 120s. `pg_ctl -w` can also report
+  # a timeout just before the server is really ready, so after start we poll
+  # `pg_ctl status` and only trust the actual state, avoiding a false "failed"
+  # verdict when it is in fact already ready.
+  # Quote one token for the Windows command line handed to Start-Process. A
+  # token that ends in a backslash must have that backslash doubled inside the
+  # quotes, otherwise it escapes the closing quote and swallows the following
+  # arguments (e.g. PGDATA "C:\data\" would absorb the -l switch). This mirrors
+  # how the CRT / CommandLineToArgvW parse the process command line, so paths
+  # with spaces, trailing separators or a drive root all survive intact. The
+  # token is always wrapped in quotes: pg_ctl is a CRT program that strips them
+  # from argv, so this stays faithful to the previous native per-argument call.
+  function ConvertTo-CmdArg {
+    param([string]$Token)
+    $sb = New-Object System.Text.StringBuilder
+    [void]$sb.Append('"')
+    for ($i = 0; $i -lt $Token.Length; $i++) {
+      $c = $Token[$i]
+      if ($c -eq '\') {
+        $numBackSlash = 1
+        while (($i + 1) -lt $Token.Length -and $Token[$i + 1] -eq '\') {
+          $numBackSlash++
+          $i++
+        }
+        if (($i + 1) -eq $Token.Length) {
+          [void]$sb.Append('\', ($numBackSlash * 2))
+        } elseif ($Token[$i + 1] -eq '"') {
+          [void]$sb.Append('\', ($numBackSlash * 2 + 1))
+          [void]$sb.Append('"')
+          $i++
+        } else {
+          [void]$sb.Append('\', $numBackSlash)
+        }
+      } elseif ($c -eq '"') {
+        [void]$sb.Append('\"')
+      } else {
+        [void]$sb.Append($c)
+      }
+    }
+    [void]$sb.Append('"')
+    return $sb.ToString()
+  }
+
+  # Start pg_ctl in its own hidden console. Piping its output to Out-Null (or
+  # redirecting it to a file) lets the background postgres inherit the write
+  # handle, so the outer capture pipe never reaches EOF and the launch hangs.
+  # Start-Process -PassThru returns only the direct pg_ctl process; we wait on
+  # that process alone with a finite bound, never on the whole process tree or
+  # a background pipe. Build the argv as a list and quote each token instead of
+  # hand-splicing one quoted string, so -w -t 120 stay separate switches and a
+  # trailing backslash in PGDATA cannot absorb -l or the log path.
+  $pgCtlArgs = @('start', '-D', $pgData, '-l', $logFile, '-w', '-t', '120')
+  $pgCtlCmdLine = (($pgCtlArgs | ForEach-Object { ConvertTo-CmdArg $_ }) -join ' ')
+  $pgCtl = Start-Process -FilePath "$pgBin\pg_ctl.exe" -ArgumentList $pgCtlCmdLine -PassThru -WindowStyle Hidden
+  $pgCtlExited = $pgCtl.WaitForExit(130000)
+  $pgCtlExitCode = if ($pgCtlExited) { $pgCtl.ExitCode } else { $null }
   $ready = $false
   for ($i = 0; $i -lt 60; $i++) {
     & "$pgBin\pg_ctl.exe" status -D $pgData 2>$null | Out-Null
@@ -78,7 +133,7 @@ if ($LASTEXITCODE -eq 0) {
     Start-Sleep -Seconds 2
   }
   if (-not $ready) {
-    throw "PostgreSQL failed to become ready within ~120s. Check the log: $logFile"
+    throw "PostgreSQL failed to become ready within ~120s (pg_ctl exit code: $pgCtlExitCode). Check the log: $logFile"
   }
   Write-Host "[start-db] PostgreSQL started (log: $logFile)." -ForegroundColor Green
 }

@@ -1,35 +1,6 @@
-/**
- * @file api/index.ts
- * @description Typed HTTP client for the portfolio backend.
- *
- * Every function here is a thin async wrapper around the aPaaS-provided
- * `axiosForBackend` instance, which already injects base URL, auth headers and
- * error handling. Callers receive `response.data` (or a derived list) and
- * handle errors locally.
- *
- * Backend surface covered:
- *  - Dashboard: overview, daily P/L series
- *  - Holdings / Watchlist / Groups: CRUD + batch price updates
- *  - Transactions: list/create, auto-deposit buy, reconciliation
- *  - Closed positions: list, realized-P&L summary, create
- *  - Journal / Snapshots / Alpha picks
- *  - Multi-agent research: runs lifecycle, human decisions, ratings,
- *    strategy rules, deep reports
- *  - Quote search, cash accounts, portfolio context
- *
- * Note: most create/update payloads are still typed as `unknown`; the server
- * contract is the source of truth and pages shape the objects they send.
- */
+/** Portfolio HTTP client. Local coding-agent requests live in dev-agent.ts. */
 import { axiosForBackend } from '@lark-apaas/client-toolkit/utils/getAxiosForBackend';
 import { logger } from '@lark-apaas/client-toolkit/logger';
-import type {
-  CreateDevTaskPayload,
-  DevHealth,
-  DevIteration,
-  DevPatchDetail,
-  DevTaskDetail,
-  DevTaskSummary,
-} from '@/pages/Dev/types';
 
 /**
  * Fetch the dashboard aggregate overview (totals, allocation, etc.).
@@ -189,32 +160,6 @@ export async function createGroup(data: unknown) {
 }
 
 /**
- * Update an existing group (partial PATCH).
- * @param id - Group primary key.
- * @param data - Fields to update.
- * @returns The updated group record.
- */
-export async function updateGroup(id: string, data: unknown) {
-  const response = await axiosForBackend({
-    url: `/api/portfolio/groups/${id}`,
-    method: 'PATCH',
-    data,
-  });
-  return response.data;
-}
-
-/**
- * Delete a group by id.
- * @param id - Group primary key.
- */
-export async function deleteGroup(id: string) {
-  await axiosForBackend({
-    url: `/api/portfolio/groups/${id}`,
-    method: 'DELETE',
-  });
-}
-
-/**
  * Fetch daily analysis snapshots, optionally filtered to a single date.
  * @param date - Optional `YYYY-MM-DD`; when omitted the latest snapshot is returned.
  * @returns The `items` array of analysis records.
@@ -303,18 +248,6 @@ export async function reconcileTransactions() {
 }
 
 /**
- * Fetch all closed (fully sold) positions.
- * @returns The `items` array of closed-position records.
- */
-export async function fetchClosed() {
-  const response = await axiosForBackend({
-    url: '/api/portfolio/closed',
-    method: 'GET',
-  });
-  return response.data.items;
-}
-
-/**
  * Fetch the realized P&L summary aggregated across all closed positions.
  * @returns The summary payload (total realized gain/loss, win rate, etc.).
  */
@@ -367,18 +300,6 @@ export async function fetchSnapshots(limit?: number) {
 }
 
 /**
- * Fetch the curated "alpha picks" list surfaced on the Analysis page.
- * @returns The `items` array of alpha-pick records.
- */
-export async function fetchAlphaPicks() {
-  const response = await axiosForBackend({
-    url: '/api/portfolio/alpha-picks',
-    method: 'GET',
-  });
-  return response.data.items;
-}
-
-/**
  * Fetch cash accounts and their balances.
  * @returns The `items` array of cash-account records.
  */
@@ -388,59 +309,6 @@ export async function fetchCashAccounts() {
     method: 'GET',
   });
   return response.data.items;
-}
-
-/**
- * Bulk-update latest prices for multiple holdings.
- * Used after a manual quote refresh; the backend recomputes market values and P/L.
- * @param items - Array of `{ ticker, price }` pairs.
- * @returns The update result summary.
- */
-export async function batchUpdatePrices(items: { ticker: string; price: number }[]) {
-  const response = await axiosForBackend({
-    url: '/api/portfolio/holdings/prices',
-    method: 'PATCH',
-    data: { items },
-  });
-  return response.data;
-}
-
-/**
- * Bulk-update latest prices for multiple watchlist tickers.
- * @param items - Array of `{ ticker, price }` pairs.
- * @returns The update result summary.
- */
-export async function batchUpdateWatchPrices(items: { ticker: string; price: number }[]) {
-  const response = await axiosForBackend({
-    url: '/api/portfolio/watchlist/prices',
-    method: 'PATCH',
-    data: { items },
-  });
-  return response.data;
-}
-
-/**
- * Fetch the current multi-agent runtime state (queued/running runs, health).
- * @returns The agent-state payload.
- */
-export async function fetchAgentState() {
-  const response = await axiosForBackend({
-    url: '/api/agent/state',
-    method: 'GET',
-  });
-  return response.data;
-}
-
-/**
- * Fetch the multi-agent run history (recent completed/failed runs).
- * @returns The history payload.
- */
-export async function fetchAgentHistory() {
-  const response = await axiosForBackend({
-    url: '/api/agent/history',
-    method: 'GET',
-  });
-  return response.data;
 }
 
 /**
@@ -494,58 +362,6 @@ export async function getAgentRun(id: string) {
 }
 
 /**
- * Create (enqueue) a new multi-agent research run.
- * The run starts in `queued` state; call `startAgentRun` to actually kick it off.
- * @param data - Run request fields.
- * @param data.ticker - Ticker to research.
- * @param data.tickerName - Optional display name.
- * @param data.market - Optional market/exchange hint.
- * @param data.triggerType - What triggered the run (manual/scheduled/alert).
- * @param data.runMode - Optional run mode (quick/deep).
- * @returns The created run record.
- */
-export async function createAgentRun(data: {
-  ticker: string;
-  tickerName?: string;
-  market?: string;
-  triggerType: string;
-  runMode?: string;
-}) {
-  const response = await axiosForBackend({
-    url: '/api/multi-agent/runs',
-    method: 'POST',
-    data,
-  });
-  return response.data;
-}
-
-/**
- * Transition a queued run into `running` so the worker picks it up.
- * @param id - Run primary key.
- * @returns The updated run record.
- */
-export async function startAgentRun(id: string) {
-  const response = await axiosForBackend({
-    url: `/api/multi-agent/runs/${id}/start`,
-    method: 'POST',
-  });
-  return response.data;
-}
-
-/**
- * Poll the live status of a single run (used while a run is in progress).
- * @param id - Run primary key.
- * @returns The latest status snapshot.
- */
-export async function getAgentRunStatus(id: string) {
-  const response = await axiosForBackend({
-    url: `/api/multi-agent/runs/${id}/status`,
-    method: 'GET',
-  });
-  return response.data;
-}
-
-/**
  * Submit a human reviewer's decision on a pending run.
  * @param id - Run primary key.
  * @param data - Decision payload.
@@ -570,39 +386,6 @@ export async function submitHumanDecision(
     url: `/api/multi-agent/runs/${id}/human-decision`,
     method: 'POST',
     data,
-  });
-  return response.data;
-}
-
-/**
- * Enqueue a batch of research runs (e.g. all holdings, or a tiered subset).
- * @param data - Batch request.
- * @param data.scope - Which tickers to cover (all/watchlist/custom).
- * @param data.tiered - Whether to split work into priority tiers.
- * @param data.tickers - Explicit ticker list when scope is `custom`.
- * @returns The batch enrollment result.
- */
-export async function batchAgentRuns(data: {
-  scope: string;
-  tiered: boolean;
-  tickers?: string[];
-}) {
-  const response = await axiosForBackend({
-    url: '/api/multi-agent/runs/batch',
-    method: 'POST',
-    data,
-  });
-  return response.data;
-}
-
-/**
- * Trigger the scheduled daily batch research run.
- * @returns The batch enrollment result.
- */
-export async function dailyBatchAgentRuns() {
-  const response = await axiosForBackend({
-    url: '/api/multi-agent/daily-batch',
-    method: 'POST',
   });
   return response.data;
 }
@@ -723,19 +506,6 @@ export async function getDeepReport(runId: string) {
 }
 
 /**
- * Generate a sample/mock deep report for a run (used for demos and UI testing).
- * @param runId - Run primary key.
- * @returns The generated sample report.
- */
-export async function generateSampleDeepReport(runId: string) {
-  const response = await axiosForBackend({
-    url: `/api/multi-agent/runs/${runId}/generate-sample-deep-report`,
-    method: 'POST',
-  });
-  return response.data;
-}
-
-/**
  * Search stocks by ticker or name (autocomplete source).
  * @param q - Free-text query; empty/whitespace returns no results immediately.
  * @returns The `items` array of matching instruments, or `[]` on an empty query.
@@ -751,81 +521,5 @@ export async function searchStocks(q: string) {
   return [];
 }
 
-/**
- * Fetch the aggregated portfolio context injected into agent prompts
- * (current holdings, cash, recent trades, risk exposure).
- * @returns The portfolio-context payload.
- */
-export async function getPortfolioContext() {
-  const response = await axiosForBackend({
-    url: '/api/multi-agent/portfolio-context',
-    method: 'GET',
-  });
-  return response.data;
-}
-
-// ===========================================================================
-// Local Coding-Agent console (/api/dev). Dev-only: the backend returns 503
-// when AGENT_DEV_ENABLED is not set (production cloud never enables it).
-// ===========================================================================
-
-export async function getDevHealth() {
-  const response = await axiosForBackend({ url: '/api/dev/health', method: 'GET' });
-  return response.data as DevHealth;
-}
-
-export async function listDevTasks() {
-  const response = await axiosForBackend({ url: '/api/dev/tasks', method: 'GET' });
-  return response.data as DevTaskSummary[];
-}
-
-export async function createDevTask(payload: CreateDevTaskPayload) {
-  const response = await axiosForBackend({
-    url: '/api/dev/tasks',
-    method: 'POST',
-    data: payload,
-  });
-  return response.data as DevTaskDetail;
-}
-
-export async function getDevTask(id: string) {
-  const response = await axiosForBackend({ url: `/api/dev/tasks/${id}`, method: 'GET' });
-  return response.data as DevTaskDetail;
-}
-
-export async function getDevIterations(id: string) {
-  const response = await axiosForBackend({
-    url: `/api/dev/tasks/${id}/iterations`,
-    method: 'GET',
-  });
-  return response.data as DevIteration[];
-}
-
-export async function getDevPatch(id: string, patchId: string) {
-  const response = await axiosForBackend({
-    url: `/api/dev/tasks/${id}/patches/${patchId}`,
-    method: 'GET',
-  });
-  return response.data as DevPatchDetail;
-}
-
-export async function runDevTask(id: string) {
-  const response = await axiosForBackend({ url: `/api/dev/tasks/${id}/run`, method: 'POST' });
-  return response.data;
-}
-
-export async function approveDevTask(id: string) {
-  const response = await axiosForBackend({ url: `/api/dev/tasks/${id}/approve`, method: 'POST' });
-  return response.data;
-}
-
-export async function rejectDevTask(id: string, reason: string) {
-  const response = await axiosForBackend({
-    url: `/api/dev/tasks/${id}/reject`,
-    method: 'POST',
-    data: { reason },
-  });
-  return response.data;
-}
-
 export { logger };
+export * from './dev-agent';

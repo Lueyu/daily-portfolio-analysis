@@ -12,7 +12,7 @@ budgeted observation path.
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .models import CheckKind, Text
 from .registry import GateKind, ToolKind, ToolRegistry, ToolSpec
@@ -26,6 +26,12 @@ class ReadOnlyStep(BaseModel):
 
 class ReadFileStep(ReadOnlyStep):
     path: Text
+    start_line: int = Field(default=1, ge=1, description="First line, 1-based.")
+    max_lines: int = Field(default=80, ge=1, le=200)
+    start_column: int = Field(
+        default=1, ge=1,
+        description="First character column on start_line, 1-based; follow NEXT for long lines.",
+    )
 
 
 class ListDirStep(ReadOnlyStep):
@@ -39,8 +45,11 @@ class GlobStep(ReadOnlyStep):
 
 class GrepStep(ReadOnlyStep):
     pattern: Text
-    path: str = "."
-    glob_include: str | None = None
+    path: str = Field(default=".", description="A file or directory relative to the workspace.")
+    glob_include: str | None = Field(
+        default=None,
+        description="Optional fnmatch pattern for basename or path relative to the search directory.",
+    )
     max_results: int = 100
 
 
@@ -58,8 +67,15 @@ class RunCheckStep(BaseModel):
 
 class ApplyPatchStep(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    diff: Text
+    diff: str = Field(min_length=1)
     hypothesis: str = ""
+
+    @field_validator("diff")
+    @classmethod
+    def preserve_nonempty_diff(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("diff must not be blank")
+        return value
 
 
 class FinishStep(BaseModel):
@@ -89,13 +105,18 @@ def build_default_registry() -> ToolRegistry:
 
     # Read-only exploration: always available.
     reg.register(ToolSpec("read_file", ToolKind.READ_ONLY, ReadFileStep,
-                          GateKind.ALWAYS, description="Read a UTF-8 text file."))
+                          GateKind.ALWAYS, description=(
+                              "Read a numbered UTF-8 file page. Follow NEXT start_line/start_column "
+                              "to read remaining content; max_lines defaults to 80.")))
     reg.register(ToolSpec("list_dir", ToolKind.READ_ONLY, ListDirStep,
                           GateKind.ALWAYS, description="List a directory (non-recursive)."))
     reg.register(ToolSpec("glob", ToolKind.READ_ONLY, GlobStep,
                           GateKind.ALWAYS, description="Find files matching a pattern."))
     reg.register(ToolSpec("grep", ToolKind.READ_ONLY, GrepStep,
-                          GateKind.ALWAYS, description="Search file contents with a regex."))
+                          GateKind.ALWAYS, description=(
+                              "Search one file or a directory with a Python regular expression. "
+                              "Results show matching lines; use read_file with start_line for context. "
+                              "Truncated results require a narrower path/pattern.")))
     reg.register(ToolSpec("probe_env", ToolKind.READ_ONLY, ProbeEnvStep,
                           GateKind.ALWAYS, description="Check configured localhost services."))
     # Verification: always available; the model must run checks before patching.

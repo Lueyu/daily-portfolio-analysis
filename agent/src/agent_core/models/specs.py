@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from ..config import Settings
 from .types import ModelSpec, ModelTier
+from .profiles import coding_profile
 
 
 # Declared capability defaults per family. Both DeepSeek V4 variants on Ark
@@ -35,12 +36,13 @@ _DEEPSEEK_PRO = dict(
 
 def build_specs(settings: Settings) -> dict[str, ModelSpec]:
     """Return the tier -> ModelSpec map for both tiers."""
-    return {
+    specs = {
         ModelTier.FLASH.value: ModelSpec(
             tier=ModelTier.FLASH.value,
             model=settings.flash_model,
             cost_per_mtok_input=settings.flash_cost_per_mtok_input,
             cost_per_mtok_output=settings.flash_cost_per_mtok_output,
+            supports_images=bool(getattr(settings, "flash_supports_images", False)),
             **_DEEPSEEK_FLASH,
         ),
         ModelTier.PRO.value: ModelSpec(
@@ -48,6 +50,17 @@ def build_specs(settings: Settings) -> dict[str, ModelSpec]:
             model=settings.pro_model,
             cost_per_mtok_input=settings.pro_cost_per_mtok_input,
             cost_per_mtok_output=settings.pro_cost_per_mtok_output,
+            supports_images=bool(getattr(settings, "pro_supports_images", False)),
             **_DEEPSEEK_PRO,
         ),
     }
+    if hasattr(settings, "coder_model_tier"):
+        specs["coder"] = coding_profile(settings, specs)
+        if settings.coder_vision_model:
+            specs["vision"] = ModelSpec(
+                tier="vision", model=settings.coder_vision_model,
+                context_window=settings.coder_vision_context_window,
+                max_output_tokens=settings.coder_vision_max_output_tokens,
+                supports_images=settings.coder_vision_supports_images,
+            )
+    return specs

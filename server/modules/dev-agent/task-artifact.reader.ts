@@ -23,9 +23,25 @@ import type {
   PatchDetail,
   PatchMeta,
 } from './dev-agent.types';
+import type {
+  DevAgentChange, DevAgentRuntimeSnapshot, DevAgentToolEvent,
+  DevAgentExternalApproval, DevAgentUserMessage, DevAgentWorker,
+} from '@shared/api.interface';
 
 const TASK_ID_RE = /^dev_[a-z0-9]+$/;
 const PATCH_ID_RE = /^\d{4}$/;
+const RESUMABLE_BLOCKS: ReadonlySet<string> = new Set([
+  'iteration budget reached',
+  'model call budget reached',
+  'wall-clock time budget reached',
+  'too many read-only probes without progress',
+]);
+
+function canResume(task: DevTask, iterations: Iteration[]): boolean {
+  if (task.runtime_version === 2) return task.status === 'blocked';
+  const last: Iteration | undefined = iterations.at(-1);
+  return task.status === 'blocked' && last?.phase === 'block' && RESUMABLE_BLOCKS.has(last.decision);
+}
 
 /** Parse changed file paths from a unified diff (`+++ b/path`). */
 export function parseDiffFiles(diff: string): string[] {
@@ -70,6 +86,131 @@ export class TaskArtifactReader {
     return file;
   }
 
+  /** Resolve every existing component before reading, including optional files. */
+  private async runtimePath(id: string, parts: string[]): Promise<string> {
+    const requested: string = this.taskDir(id);
+    let root: string;
+    let dir: string;
+    try {
+      root = await fs.realpath(this.tasksDir);
+      dir = await fs.realpath(requested);
+    } catch (cause: unknown) {
+      if ((cause as NodeJS.ErrnoException).code === 'ENOENT') {
+        throw new NotFoundException(`task not found: ${id}`);
+      }
+      throw cause;
+    }
+    if (dir !== path.join(root, id)) throw new BadRequestException('task path is redirected');
+    let current: string = dir;
+    for (const part of parts) {
+      current = path.join(current, part);
+      try { current = await fs.realpath(current); }
+      catch (cause: unknown) {
+        if ((cause as NodeJS.ErrnoException).code !== 'ENOENT') throw cause;
+      }
+      if (!current.startsWith(dir + path.sep)) {
+        throw new BadRequestException('runtime path escapes task directory');
+      }
+    }
+    return current;
+  }
+
+  private async optionalRuntimeJson<T>(id: string, parts: string[], fallback: T): Promise<T> {
+    const file: string = await this.runtimePath(id, parts);
+    try { return JSON.parse(await fs.readFile(file, 'utf8')) as T; }
+    catch (cause: unknown) {
+      if ((cause as NodeJS.ErrnoException).code === 'ENOENT') return fallback;
+      throw cause;
+    }
+  }
+
+  async getRuntime(id: string, cursor = 0): Promise<DevAgentRuntimeSnapshot> {
+    if (!Number.isSafeInteger(cursor) || cursor < 0) throw new BadRequestException('invalid runtime cursor');
+    const taskFile: string = await this.runtimePath(id, ['task.json']);
+    const task: DevTask = await this.readJsonFile<DevTask>(taskFile);
+    const state = await this.optionalRuntimeJson<Partial<DevAgentRuntimeSnapshot> & {
+      waiting_for?: string; acknowledged_messages?: string[];
+    }>(
+      id, ['runtime', 'state.json'], {},
+    );
+    const checkpoint = await this.optionalRuntimeJson<{ changes?: DevAgentChange[] }>(
+      id, ['runtime', 'checkpoints', 'state.json'], {},
+    );
+    const eventsFile: string = await this.runtimePath(id, ['runtime', 'events.jsonl']);
+    let raw = '';
+    try { raw = await fs.readFile(eventsFile, 'utf8'); }
+    catch (cause: unknown) {
+      if ((cause as NodeJS.ErrnoException).code !== 'ENOENT') throw cause;
+    }
+    // A writer can be appending the final row while polling; only consume complete rows.
+    const complete: string[] = raw.split('\n').slice(0, -1).filter((line: string) => line.trim() !== '');
+    const events: DevAgentToolEvent[] = complete.map((line: string) => JSON.parse(line) as DevAgentToolEvent);
+    const selected: DevAgentToolEvent[] = events.filter((event: DevAgentToolEvent) => event.index >= cursor).slice(0, 100);
+    const nextCursor: number = selected.length === 0 ? cursor : selected[selected.length - 1].index + 1;
+    const [messages, approvals, workerState] = await Promise.all([
+      this.controlRecords<DevAgentUserMessage>(id, 'inbox'),
+      this.controlRecords<DevAgentExternalApproval>(id, 'approvals'),
+      this.optionalRuntimeJson<{ workers?: Record<string, DevAgentWorker> }>(
+        id, ['runtime', 'workers', 'workers.json'], {}),
+    ]);
+    for (const approval of approvals) {
+      const decision = await this.optionalRuntimeJson<{ status?: DevAgentExternalApproval['status'] }>(
+        id, ['runtime', 'control', 'approvals', `${approval.id}.decision.json`], {});
+      approval.status = decision.status ?? 'pending';
+      const consumed: string = await this.runtimePath(id, ['runtime', 'control', 'approvals', `${approval.id}.consumed`]);
+      try { await fs.access(consumed); approval.status = 'consumed'; }
+      catch (cause: unknown) { if ((cause as NodeJS.ErrnoException).code !== 'ENOENT') throw cause; }
+    }
+    return {
+      version: state.version ?? null, revision: state.revision ?? null,
+      changes: checkpoint.changes ?? [], events: selected,
+      cursor: nextCursor, pending: state.pending ?? null, verification: state.verification ?? [],
+      ...((task.runtime_version === 2 || state.version === 2) ? {
+        plan: state.plan ?? [], memory: state.memory, capabilities: state.capabilities,
+        workers: Object.values(workerState.workers ?? {}), approvals, messages,
+        waitingFor: state.waiting_for ?? null,
+          modelActivity: state.modelActivity,
+        unreadMessageCount: messages.filter((message: DevAgentUserMessage) =>
+          !(state.acknowledged_messages ?? []).includes(message.id)).length,
+      } : {}),
+    };
+  }
+
+  private async controlRecords<T extends { id: string; createdAt: string }>(id: string, kind: string): Promise<T[]> {
+    const directory: string = await this.runtimePath(id, ['runtime', 'control', kind]);
+    let names: string[];
+    try { names = await fs.readdir(directory); }
+    catch (cause: unknown) {
+      if ((cause as NodeJS.ErrnoException).code === 'ENOENT') return [];
+      throw cause;
+    }
+    const rows: T[] = await Promise.all(names.filter((name: string) => /^[a-f0-9]{32}\.json$/.test(name))
+      .map(async (name: string): Promise<T> => {
+        const file: string = await this.runtimePath(id, ['runtime', 'control', kind, name]);
+        const row: T = await this.readJsonFile<T>(file);
+        if (row.id !== name.slice(0, -5)) throw new BadRequestException('invalid control record');
+        return row;
+      }));
+    return rows.sort((a: T, b: T) => a.createdAt.localeCompare(b.createdAt));
+  }
+
+  async getArtifact(id: string, artifactId: string): Promise<Buffer> {
+    if (!/^[a-f0-9]{32}$/.test(artifactId)) throw new BadRequestException('invalid artifact id');
+    const file: string = await this.runtimePath(id, ['runtime', 'artifacts', `${artifactId}.png`]);
+    try {
+      const data: Buffer = await fs.readFile(file);
+      if (!data.subarray(0, 8).equals(Buffer.from('89504e470d0a1a0a', 'hex'))) {
+        throw new BadRequestException('artifact is not a PNG');
+      }
+      return data;
+    } catch (cause: unknown) {
+      if ((cause as NodeJS.ErrnoException).code === 'ENOENT') {
+        throw new NotFoundException(`artifact not found: ${artifactId}`);
+      }
+      throw cause;
+    }
+  }
+
   private async readJsonFile<T>(file: string): Promise<T> {
     let raw: string;
     try {
@@ -112,22 +253,26 @@ export class TaskArtifactReader {
     }
   }
 
-  private latestPatchMeta(
+  private patchMeta(
+    patchId: string,
     ids: string[],
     iterations: Iteration[],
-  ): { patchId: string; hypothesis: string; createdAt: string | null } | null {
-    if (ids.length === 0) return null;
-    const patchId = ids[ids.length - 1];
-    let hypothesis = '';
-    let createdAt: string | null = null;
-    for (let i = iterations.length - 1; i >= 0; i--) {
-      if (iterations[i].phase === 'patch') {
-        hypothesis = iterations[i].hypothesis ?? '';
-        createdAt = iterations[i].created_at ?? null;
-        break;
-      }
-    }
-    return { patchId, hypothesis, createdAt };
+  ): Pick<PatchMeta, 'patchId' | 'hypothesis' | 'createdAt'> {
+    const proposals: Iteration[] = iterations.filter((iteration: Iteration) => (
+      iteration.phase === 'patch' ||
+      (iteration.phase === 'react' && iteration.action === 'apply_patch')
+    ) && /^patch proposed(?:;|$)/.test(iteration.decision));
+    // TaskStore saves each accepted proposal under the next continuous number.
+    // Missing logs/files or numbering gaps make positional attribution unsafe.
+    const reliable: boolean = proposals.length === ids.length && ids.every(
+      (id: string, index: number) => Number(id) === index + 1,
+    );
+    const proposal: Iteration | undefined = reliable ? proposals[ids.indexOf(patchId)] : undefined;
+    return {
+      patchId,
+      hypothesis: proposal?.hypothesis ?? '',
+      createdAt: proposal?.created_at ?? null,
+    };
   }
 
   async listTasks(): Promise<DevTaskSummary[]> {
@@ -152,6 +297,7 @@ export class TaskArtifactReader {
         redSeen: task.red_seen,
         iterationCount: iterations.length,
         updatedAt: task.updated_at,
+        canResume: canResume(task, iterations),
       });
     }
     rows.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
@@ -172,7 +318,9 @@ export class TaskArtifactReader {
     }
     const iterations = await this.readIterations(id, dir);
     const patchIds = await this.listPatchIds(dir);
-    const meta = this.latestPatchMeta(patchIds, iterations);
+    const meta = patchIds.length > 0
+      ? this.patchMeta(patchIds[patchIds.length - 1], patchIds, iterations)
+      : null;
     let latestPatch: PatchMeta | null = null;
     if (meta) {
       const diff = await fs.readFile(
@@ -186,7 +334,7 @@ export class TaskArtifactReader {
         createdAt: meta.createdAt,
       };
     }
-    return { ...task, iterations, latestPatch, patchCount: patchIds.length };
+    return { ...task, iterations, latestPatch, patchCount: patchIds.length, canResume: canResume(task, iterations) };
   }
 
   async getIterations(id: string): Promise<Iteration[]> {
@@ -209,7 +357,8 @@ export class TaskArtifactReader {
     // Hypothesis/created_at come from the matching patch iteration when present.
     const dir = this.taskDir(id);
     const iterations = await this.readIterations(id, dir);
-    const meta = this.latestPatchMeta([patchId], iterations);
+    const patchIds: string[] = await this.listPatchIds(dir);
+    const meta = this.patchMeta(patchId, patchIds, iterations);
     return {
       patchId,
       targetFiles: parseDiffFiles(diff),

@@ -63,6 +63,7 @@ def test_new_acceptance_with_optional_target(isolated_store):
     criterion = task.acceptance[0]
     assert criterion.check == CheckKind.E2E
     assert criterion.description == "login works"
+    assert task.runtime_version == 2
     assert criterion.target == "tests/login.spec.ts"
 
 
@@ -147,6 +148,25 @@ def test_run_json_reports_status(isolated_store, monkeypatch):
     assert payload["status"] == "awaiting_approval"
 
 
+def test_run_explicitly_forwards_budget_resume_flag(isolated_store, monkeypatch):
+    calls = []
+
+    class ResumeHarness:
+        def run(self, *, auto_approve, resume_budget=False):
+            calls.append((auto_approve, resume_budget))
+            return DevTask(
+                id="dev_resume", title="t", problem="p", workdir=str(isolated_store),
+                acceptance=[AcceptanceCriterion(id="a", description="d", check=CheckKind.UNIT)],
+                status=TaskStatus.AWAITING_APPROVAL,
+            )
+
+    monkeypatch.setattr(coder_cli, "build_harness", lambda tid: ResumeHarness())
+    result = runner.invoke(coder_cli.app, ["run", "dev_resume", "--resume-budget", "--json"])
+    assert result.exit_code == 0, result.output
+    assert calls == [(False, True)]
+    assert json.loads(result.stdout.strip())["status"] == "awaiting_approval"
+
+
 def _advance_to_awaiting(store: TaskStore, task: DevTask) -> DevTask:
     for st in (TaskStatus.REPRODUCED, TaskStatus.DIAGNOSED, TaskStatus.PATCHED,
                TaskStatus.VERIFYING, TaskStatus.AWAITING_APPROVAL):
@@ -194,3 +214,49 @@ def test_dev_subcommand_registered_on_main_app():
     assert r.exit_code == 0
     assert "new" in r.stdout and "run" in r.stdout and "approve" in r.stdout
     assert "reject" in r.stdout
+
+
+def test_runtime_inspection_is_offline_and_empty_for_unstarted_task(isolated_store, monkeypatch):
+    created = runner.invoke(coder_cli.app, ["new", "--title", "t", "--problem", "p",
+                                           "--acceptance", "a:unit:works", "--json"])
+    tid = json.loads(created.stdout)["id"]
+    monkeypatch.setattr(coder_cli, "build_harness", lambda _: pytest.fail("inspection must not build model/runtime"))
+    result = runner.invoke(coder_cli.app, ["runtime-inspect", tid, "--json"])
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.stdout)
+    assert payload["changes"] == [] and payload["revision"] is None
+
+
+def test_runtime_inspect_rejects_task_path_traversal(isolated_store):
+    result = runner.invoke(coder_cli.app, ["runtime-inspect", "../outside", "--json"])
+    assert result.exit_code != 0
+
+
+def test_migrate_preserves_old_task_and_starts_v2_from_current_main(isolated_store):
+    store = TaskStore(isolated_store / "coder" / "tasks")
+    legacy = DevTask(id="dev_legacy", title="legacy", problem="fix prompt",
+                     acceptance=[AcceptanceCriterion(id="a", description="works", check=CheckKind.UNIT)],
+                     workdir=str(isolated_store))
+    store.create(legacy)
+    result = runner.invoke(coder_cli.app, ["migrate", legacy.id, "--json"])
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.stdout)
+    migrated = store.load(payload["id"])
+    assert migrated.runtime_version == 2 and migrated.id != legacy.id
+    assert migrated.problem == legacy.problem and migrated.workdir == legacy.workdir
+    assert migrated.status == TaskStatus.NEW
+    assert store.load(legacy.id) == legacy
+
+
+def test_rollback_landing_command_uses_offline_harness(isolated_store, monkeypatch):
+    import agent_core.coder.general_landing as landing
+    seen = []
+    class Offline:
+        def prepare(self):
+            seen.append("prepare")
+        journal = type("Journal", (), {"close": lambda self: None})()
+    monkeypatch.setattr(coder_cli, "_offline_general", lambda task_id: Offline())
+    monkeypatch.setattr(landing, "rollback_landing", lambda h: {"id": "land1", "status": "rolled_back"})
+    result = runner.invoke(coder_cli.app, ["rollback-landing", "dev_one", "--json"])
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout)["landing"]["status"] == "rolled_back"

@@ -1,9 +1,8 @@
 """Budget and retry discipline for the inner loop (spec section 5.2/5.3).
 
-Three independent caps (iterations / model calls / wall-clock) plus two
-counters that stop unproductive repetition:
-  * the same root-cause hypothesis failing twice forces a fresh diagnosis;
-  * a second forced re-diagnosis with no direction escalates to BLOCKED.
+Three opt-in caps (iterations / model calls / wall-clock) plus counters that
+prompt a fresh diagnosis after repeated failures. Counts alone do not stop
+the default continuous run.
 A clock is injected so wall-clock behaviour is deterministic in tests.
 """
 
@@ -44,16 +43,18 @@ class BudgetGuard:
         self._hypothesis_failures += 1
         return self._hypothesis_failures >= 2
 
-    def note_rethink(self) -> bool:
-        """Record a forced re-diagnosis. Return True when the task must block."""
+    def note_rethink(self) -> None:
+        """Record a fresh diagnosis without imposing another hidden cap."""
         self.rethink_count += 1
-        return self.rethink_count >= 2
 
     def exhausted(self) -> tuple[bool, str]:
-        if self.iterations >= self.config.max_iterations:
+        if self.config.max_iterations is not None \
+                and self.iterations >= self.config.max_iterations:
             return True, "iteration budget reached"
-        if self.model_calls >= self.config.max_model_calls:
+        if self.config.max_model_calls is not None \
+                and self.model_calls >= self.config.max_model_calls:
             return True, "model call budget reached"
-        if self._clock() - self._start >= self.config.wallclock_seconds:
+        if self.config.wallclock_seconds is not None \
+                and self._clock() - self._start >= self.config.wallclock_seconds:
             return True, "wall-clock time budget reached"
         return False, ""

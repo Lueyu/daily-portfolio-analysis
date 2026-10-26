@@ -9,7 +9,7 @@
  * (each tied to an `agentRuns` row to preserve historical versions). All reads
  * and writes are owner-scoped.
  */
-import { BadRequestException, Inject, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '@lark-apaas/fullstack-nestjs-core';
 import { eq, and, desc, gte, inArray, ne, notIlike } from 'drizzle-orm';
 import {
@@ -93,8 +93,6 @@ interface WatchItemRemoveDto {
  */
 @Injectable()
 export class AgentService {
-  private readonly logger = new Logger(AgentService.name);
-
   constructor(
     @Inject(DRIZZLE_DATABASE) private readonly db: PostgresJsDatabase,
     private readonly snapshotsService: SnapshotsService,

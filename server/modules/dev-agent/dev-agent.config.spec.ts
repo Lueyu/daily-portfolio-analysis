@@ -2,6 +2,10 @@ import { describe, it, expect } from 'vitest';
 import { loadDevAgentConfig, DEFAULT_RUN_TIMEOUT_MS } from './dev-agent.config';
 
 describe('loadDevAgentConfig', () => {
+  it('has no default long-running timeout and accepts an explicit zero', () => {
+    expect(loadDevAgentConfig({}, '/r').runTimeoutMs).toBe(0);
+    expect(loadDevAgentConfig({ AGENT_DEV_RUN_TIMEOUT_MS: '0' }, '/r').runTimeoutMs).toBe(0);
+  });
   it('is disabled by default and derives paths from the repo root', () => {
     const cfg = loadDevAgentConfig({}, '/repo/root');
     expect(cfg.enabled).toBe(false);

@@ -23,6 +23,18 @@ def test_not_exhausted_at_start():
     assert g.exhausted() == (False, "")
 
 
+def test_default_budget_keeps_counting_without_stopping():
+    clock = FakeClock()
+    g = guard(clock)
+    for _ in range(100):
+        g.tick_iteration()
+        g.tick_model_call()
+    clock.advance(100_000)
+    assert g.exhausted() == (False, "")
+    assert g.iterations == 100
+    assert g.model_calls == 100
+
+
 def test_iteration_cap_trips():
     g = guard(max_iterations=2)
     g.tick_iteration()
@@ -56,7 +68,9 @@ def test_same_hypothesis_failing_twice_forces_rethink():
     assert g.note_hypothesis_failure("hyp-B") is False
 
 
-def test_rethinking_twice_blocks():
+def test_rethinking_counts_without_imposing_another_hard_budget():
     g = guard()
-    assert g.note_rethink() is False
-    assert g.note_rethink() is True  # escalate to BLOCKED
+    for _ in range(5):
+        g.note_rethink()
+    assert g.rethink_count == 5
+    assert g.exhausted() == (False, "")

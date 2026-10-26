@@ -14,10 +14,28 @@ import {
   IsEnum,
   IsOptional,
   IsString,
+  IsBoolean,
+  MaxLength,
+  Matches,
   MinLength,
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+import type {
+  DevAgentGateFields, DevAgentRuntimeFields, DevAgentUndoInput, DevAgentRestoreInput,
+} from '@shared/api.interface';
+
+export class DevAgentMessageDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(20000)
+  text!: string;
+}
+
+export class DevAgentExternalDecisionDto {
+  @IsBoolean()
+  approve!: boolean;
+}
 
 /** The eight task states from the Python state machine. */
 export type DevTaskStatus =
@@ -53,7 +71,8 @@ export interface AcceptanceCriterion {
   target?: string | null;
 }
 
-export interface DevTask {
+export interface DevTask extends DevAgentGateFields {
+  runtime_version?: 1 | 2;
   id: string;
   title: string;
   problem: string;
@@ -87,14 +106,14 @@ export interface PatchMeta {
 }
 
 /** Detail payload for a single task. */
-export interface DevTaskDetail extends DevTask {
+export interface DevTaskDetail extends DevTask, DevAgentRuntimeFields {
   iterations: Iteration[];
   latestPatch: PatchMeta | null;
   patchCount: number;
 }
 
 /** Compact row for the task list. */
-export interface DevTaskSummary {
+export interface DevTaskSummary extends DevAgentRuntimeFields {
   id: string;
   title: string;
   status: DevTaskStatus;
@@ -174,6 +193,26 @@ export class RejectDevTaskDto {
   @IsString()
   @MinLength(1)
   reason!: string;
+}
+
+export class UndoDevChangeDto implements DevAgentUndoInput {
+  @IsString()
+  @Matches(/^[a-f0-9]{32}$/)
+  changeId!: string;
+
+  @IsString()
+  @Matches(/^[a-f0-9]{64}$/)
+  expectedRevision!: string;
+}
+
+export class RestoreDevCheckpointDto implements DevAgentRestoreInput {
+  @IsString()
+  @Matches(/^[a-f0-9]{64}$/)
+  revision!: string;
+
+  @IsString()
+  @Matches(/^[a-f0-9]{64}$/)
+  expectedRevision!: string;
 }
 
 export interface CreateDevTaskInput {

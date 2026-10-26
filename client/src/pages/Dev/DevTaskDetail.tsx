@@ -1,375 +1,113 @@
-/**
- * @file DevTaskDetail.tsx
- * @description Full-screen detail view for one Coding-Agent task.
- *
- * Polls the task while it is not in a terminal state, renders the state rail,
- * the problem/acceptance summary, the iteration timeline and the patch diff,
- * and hosts the human-in-the-loop actions (start, approve with confirmation,
- * reject with a reason).
- */
-import { useCallback, useEffect, useState } from 'react';
-import { ArrowLeft, Loader2, Play, CheckCircle2, XCircle } from 'lucide-react';
+/** Brief conversation with evidence available on demand. */
+import { useCallback, useState } from 'react';
+import { ArrowLeft, ChevronRight, Loader2, RefreshCw, TerminalSquare } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Textarea } from '@/components/ui/textarea';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import {
-  approveDevTask,
-  getDevPatch,
-  getDevTask,
-  rejectDevTask,
-  runDevTask,
-} from '@/api';
-import { DevStateStepper } from './DevStateStepper';
+import { getDevTask } from '@/api';
 import { DevIterationTimeline } from './DevIterationTimeline';
-import { DiffViewer } from './DiffViewer';
-import { CHECK_LABEL, DETAIL_POLL_MS, STATUS_LABEL, STATUS_TONE, formatTime } from './dev-ui';
-import { AWAITING_STATUS, TERMINAL_STATUSES } from './types';
-import type { DevPatchDetail, DevTaskDetail as DevTask } from './types';
+import { GateStatusSummary } from './GateStatusSummary';
+import { DevTaskActions } from './DevTaskActions';
+import { DevPatchPanel } from './DevPatchPanel';
+import { DevRuntimePanel } from './DevRuntimePanel';
+import { DevSessionPanel } from './DevSessionPanel';
+import { DevConversationTimeline } from './DevConversationTimeline';
+import { useDevRuntime } from './useDevRuntime';
+import { CHECK_LABEL, DETAIL_POLL_MS, executionLabel, formatTime } from './dev-ui';
+import { taskProgress, toolSummary } from './dev-conversation';
+import { TERMINAL_STATUSES } from './types';
+import type { DevTaskDetail as DevTask } from './types';
+import { useDevResource } from './useDevResource';
 
 interface Props {
   taskId: string;
   onBack: () => void;
+  ready: boolean;
+  onChanged: () => void;
+  kickoffError?: string;
 }
-
-function pad4(n: number): string {
-  return n.toString().padStart(4, '0');
+function shouldPoll(task: DevTask): boolean {
+  return task.execution?.state === 'running' || !TERMINAL_STATUSES.includes(task.status);
 }
+const summaryClass = 'flex cursor-pointer list-none items-center gap-2 rounded-md py-3 text-sm text-muted-foreground hover:text-foreground';
+const chevronClass = 'h-4 w-4 shrink-0 transition-transform group-open/fold:rotate-90';
 
-export function DevTaskDetail({ taskId, onBack }: Props) {
-  const [task, setTask] = useState<DevTask | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [acting, setActing] = useState(false);
-  const [actionError, setActionError] = useState<string | null>(null);
-  const [confirmApprove, setConfirmApprove] = useState(false);
-  const [rejectOpen, setRejectOpen] = useState(false);
-  const [rejectReason, setRejectReason] = useState('');
-
-  // Patch viewer state.
-  const [selectedPatch, setSelectedPatch] = useState<string | null>(null);
-  const [patch, setPatch] = useState<DevPatchDetail | null>(null);
-  const [patchLoading, setPatchLoading] = useState(false);
-
-  const reload = useCallback(async () => {
-    const t = await getDevTask(taskId);
-    setTask(t);
-    return t;
-  }, [taskId]);
-
-  // Poll until a terminal state; awaiting_approval keeps polling so the UI
-  // refreshes immediately after an approve/reject.
-  useEffect(() => {
-    let cancelled = false;
-    let timer: number | undefined;
-    const load = async () => {
-      try {
-        const t = await getDevTask(taskId);
-        if (cancelled) return;
-        setTask(t);
-        setLoadError(null);
-        if (TERMINAL_STATUSES.includes(t.status) && timer !== undefined) {
-          window.clearInterval(timer);
-        }
-      } catch (e) {
-        if (!cancelled) setLoadError(e instanceof Error ? e.message : String(e));
-      }
-    };
-    void load();
-    timer = window.setInterval(load, DETAIL_POLL_MS);
-    return () => {
-      cancelled = true;
-      if (timer !== undefined) window.clearInterval(timer);
-    };
-  }, [taskId]);
-
-  // Default to the newest patch whenever the patch list changes.
-  useEffect(() => {
-    if (task && task.patchCount > 0 && selectedPatch === null) {
-      setSelectedPatch(task.latestPatch?.patchId ?? pad4(task.patchCount));
-    }
-  }, [task, selectedPatch]);
-
-  // Load the selected patch.
-  useEffect(() => {
-    if (!selectedPatch) return;
-    let cancelled = false;
-    setPatchLoading(true);
-    getDevPatch(taskId, selectedPatch)
-      .then((p) => {
-        if (!cancelled) setPatch(p);
-      })
-      .catch((e) => {
-        if (!cancelled) setActionError(e instanceof Error ? e.message : String(e));
-      })
-      .finally(() => {
-        if (!cancelled) setPatchLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [taskId, selectedPatch]);
-
-  if (!task) {
-    return (
-      <div className="flex items-center gap-2 text-sm text-slate-500">
-        <Loader2 className="h-4 w-4 animate-spin" />
-        加载任务中…
-      </div>
-    );
-  }
-
-  const isTerminal = TERMINAL_STATUSES.includes(task.status);
-  const isAwaiting = task.status === AWAITING_STATUS;
-
-  const runAction = async (fn: () => Promise<unknown>) => {
-    setActing(true);
-    setActionError(null);
-    try {
-      await fn();
-      setConfirmApprove(false);
-      setRejectOpen(false);
-      setRejectReason('');
-      await reload();
-    } catch (e) {
-      setActionError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setActing(false);
-    }
-  };
+export function DevTaskDetail({ taskId, onBack, ready, onChanged, kickoffError }: Props) {
+  const request = useCallback(() => getDevTask(taskId), [taskId]);
+  const resource = useDevResource(request, DETAIL_POLL_MS, true, shouldPoll);
+  const [patchOpen, setPatchOpen] = useState(false);
+  const task = resource.data;
+  const runtime = useDevRuntime(taskId, ready && task?.runtime_version === 2, task?.execution?.state === 'running');
+  const refresh = () => { resource.refresh(); onChanged(); };
+  const latestIteration = task?.iterations.at(-1);
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-2">
-        <Button variant="ghost" size="sm" onClick={onBack}>
-          <ArrowLeft className="mr-1 h-4 w-4" />
-          返回
-        </Button>
-      </div>
-
-      <div className="rounded-lg border border-slate-200 bg-white p-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h2 className="text-lg font-semibold text-slate-900">{task.title}</h2>
-            <p className="mt-0.5 font-mono text-xs text-slate-400">{task.id}</p>
-          </div>
-          <Badge className={`ring-1 ${STATUS_TONE[task.status]}`} variant="outline">
-            {STATUS_LABEL[task.status]}
-          </Badge>
+    <section aria-label="任务详情" className="mx-auto w-full min-w-0 max-w-3xl space-y-6 pb-8">
+      <Button className="xl:hidden" variant="ghost" size="sm" onClick={onBack}><ArrowLeft className="h-4 w-4" />返回任务列表</Button>
+      {resource.error && <div role="alert" className="space-y-3 rounded-xl border border-destructive/30 p-4 text-sm">
+        <p className="break-words text-destructive">{resource.error}</p>
+        {task && <p className="text-muted-foreground">当前显示上次成功读取的记录，请刷新后再操作。</p>}
+        <Button variant="outline" size="sm" onClick={resource.refresh}>重试加载任务</Button>
+      </div>}
+      {kickoffError && <p role="alert" className="text-sm text-destructive">任务已创建，但启动失败：{kickoffError}。可以点击“开始运行”重试。</p>}
+      {!task && !resource.error && <p role="status" className="flex items-center gap-2 py-8 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />加载任务中…</p>}
+      {task && <>
+        <div className="flex min-w-0 items-center justify-between gap-3">
+          <h2 className="truncate text-sm text-muted-foreground" title={task.title}>{task.title}</h2>
+          <Button size="icon" variant="ghost" aria-label="刷新记录" onClick={refresh} className="h-8 w-8 shrink-0"><RefreshCw className="h-3.5 w-3.5" /></Button>
         </div>
-
-        <div className="mt-4">
-          <DevStateStepper status={task.status} />
+        <div className="ml-auto w-fit max-w-[92%] rounded-2xl rounded-tr-sm bg-muted px-4 py-3 sm:px-5">
+          <p className="whitespace-pre-wrap break-words text-sm leading-7 [overflow-wrap:anywhere]">{task.problem}</p>
         </div>
-
-        <div className="mt-4 flex flex-wrap items-center gap-2">
-          {task.status === 'new' && (
-            <Button size="sm" onClick={() => runAction(() => runDevTask(task.id))} disabled={acting}>
-              <Play className="mr-1 h-4 w-4" />
-              开始运行
-            </Button>
-          )}
-          {isAwaiting && (
-            <>
-              <Button
-                size="sm"
-                className="bg-emerald-600 hover:bg-emerald-700"
-                onClick={() => setConfirmApprove(true)}
-                disabled={acting}
-              >
-                <CheckCircle2 className="mr-1 h-4 w-4" />
-                批准并继续验证
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                className="text-rose-600"
-                onClick={() => setRejectOpen(true)}
-                disabled={acting}
-              >
-                <XCircle className="mr-1 h-4 w-4" />
-                拒绝补丁
-              </Button>
-            </>
-          )}
-          {!isTerminal && !isAwaiting && task.status !== 'new' && (
-            <span className="inline-flex items-center gap-2 text-sm text-slate-500">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Agent 正在运行…
-            </span>
-          )}
-          {isTerminal && (
-            <span className="text-sm text-slate-500">
-              任务已结束 · 更新于 {formatTime(task.updated_at)}
-            </span>
-          )}
+        <div className="space-y-4 pt-3">
+          <div className="flex items-center gap-2.5 text-sm font-medium"><TerminalSquare className="h-5 w-5" />Coding Agent</div>
+          <p role="status" className="text-sm leading-7">{taskProgress(task, runtime.snapshot?.modelActivity)}</p>
+          {task.runtime_version !== 2 && task.execution?.state === 'running' && <p className="flex items-start gap-2 text-xs leading-6 text-muted-foreground">
+            <Loader2 className="mt-1 h-3.5 w-3.5 shrink-0 animate-spin" />{latestIteration ? `最近进展：${toolSummary(latestIteration)}` : '正在准备工作区…'}
+          </p>}
+          {task.execution?.error && <div role="alert" className="text-sm text-destructive">
+            <details><summary className="cursor-pointer py-1">执行错误详情</summary><pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words text-xs leading-6 [overflow-wrap:anywhere]">{task.execution.error}</pre></details>
+          </div>}
+          <DevTaskActions task={task} ready={ready && !resource.error && !resource.loading} onChanged={refresh} />
         </div>
-
-        {actionError && <p className="mt-2 text-sm text-rose-600">{actionError}</p>}
-        {loadError && <p className="mt-2 text-sm text-rose-600">加载失败：{loadError}</p>}
-      </div>
-
-      <Tabs defaultValue="overview">
-        <TabsList>
-          <TabsTrigger value="overview">概览</TabsTrigger>
-          <TabsTrigger value="iterations">迭代（{task.iterations.length}）</TabsTrigger>
-          <TabsTrigger value="patch">补丁（{task.patchCount}）</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="overview" className="space-y-4">
-          <section className="rounded-lg border border-slate-200 bg-white p-4">
-            <h3 className="text-sm font-medium text-slate-800">问题描述</h3>
-            <p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">{task.problem}</p>
-          </section>
-          <section className="rounded-lg border border-slate-200 bg-white p-4">
-            <h3 className="text-sm font-medium text-slate-800">验收标准</h3>
-            <ul className="mt-2 space-y-2">
-              {task.acceptance.map((a) => (
-                <li key={a.id} className="text-sm text-slate-600">
-                  <div className="flex items-center gap-2">
-                    <Badge variant="secondary" className="text-[11px]">
-                      {CHECK_LABEL[a.check]}
-                    </Badge>
-                    <span className="font-mono text-xs text-slate-400">{a.id}</span>
-                  </div>
-                  <p className="mt-1">{a.description}</p>
-                  {a.target && <p className="mt-0.5 font-mono text-xs text-slate-400">{a.target}</p>}
-                </li>
-              ))}
-            </ul>
-          </section>
-          <section className="rounded-lg border border-slate-200 bg-white p-4 text-xs text-slate-500">
-            <p>
-              工作目录：<span className="font-mono">{task.workdir}</span>
-            </p>
-            <p className="mt-1">
-              分支：<span className="font-mono">{task.branch || '（工作区）'}</span> · 已见失败：
-              {task.red_seen ? '是' : '否'} · 诊断反思：{task.diagnosis_rethink_count} 次
-            </p>
-          </section>
-        </TabsContent>
-
-        <TabsContent value="iterations">
-          <div className="rounded-lg border border-slate-200 bg-white p-4">
-            <DevIterationTimeline iterations={task.iterations} />
-          </div>
-        </TabsContent>
-
-        <TabsContent value="patch">
-          <div className="rounded-lg border border-slate-200 bg-white p-4">
-            {task.patchCount === 0 ? (
-              <p className="text-sm text-slate-400">还没有补丁。Agent 修复时会生成补丁并停在这里等待审批。</p>
-            ) : (
-              <div className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-slate-600">查看补丁</span>
-                  <Select value={selectedPatch ?? undefined} onValueChange={setSelectedPatch}>
-                    <SelectTrigger className="w-28">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {Array.from({ length: task.patchCount }, (_, i) => pad4(i + 1)).map((p) => (
-                        <SelectItem key={p} value={p}>
-                          {p}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                {patchLoading && <p className="text-sm text-slate-400">加载补丁中…</p>}
-                {patch && !patchLoading && (
-                  <DiffViewer
-                    patchId={patch.patchId}
-                    targetFiles={patch.targetFiles}
-                    hypothesis={patch.hypothesis}
-                    diff={patch.diff}
-                  />
-                )}
-              </div>
-            )}
-          </div>
-        </TabsContent>
-      </Tabs>
-
-      {/* Approve confirmation */}
-      <AlertDialog open={confirmApprove} onOpenChange={setConfirmApprove}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>批准这个补丁？</AlertDialogTitle>
-            <AlertDialogDescription>
-              补丁将应用到代码并重新运行全部验收检查。若检查通过，任务标记为已验证；若仍失败，Agent 会继续修复。
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={acting}>取消</AlertDialogCancel>
-            <AlertDialogAction
-              disabled={acting}
-              onClick={(e) => {
-                e.preventDefault();
-                void runAction(() => approveDevTask(task.id));
-              }}
-            >
-              {acting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              确认批准
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* Reject reason */}
-      <Dialog open={rejectOpen} onOpenChange={setRejectOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>拒绝补丁</DialogTitle>
-            <DialogDescription>
-              说明拒绝原因，Agent 会记录这次反馈并进入阻断状态（不会应用该补丁）。
-            </DialogDescription>
-          </DialogHeader>
-          <Textarea
-            rows={4}
-            placeholder="例如：这个改动绕过了原有校验，或缺少边界条件处理。"
-            value={rejectReason}
-            onChange={(e) => setRejectReason(e.target.value)}
+        {task.runtime_version === 2 && <DevConversationTimeline taskId={taskId} snapshot={runtime.snapshot} />}
+        <div className="min-w-0 divide-y divide-border border-y border-border">
+          <DevRuntimePanel
+            taskId={task.id}
+            running={task.execution?.state === 'running'}
+            ready={ready && !resource.error && !resource.loading}
+            onChanged={refresh}
+            runtime={task.runtime_version === 2 ? runtime : undefined}
+            showEvents={task.runtime_version !== 2}
           />
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setRejectOpen(false)} disabled={acting}>
-              取消
-            </Button>
-            <Button
-              variant="destructive"
-              disabled={acting || rejectReason.trim().length === 0}
-              onClick={() => void runAction(() => rejectDevTask(task.id, rejectReason.trim()))}
-            >
-              {acting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              确认拒绝
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
+          {task.runtime_version !== 2 && <details className="group/fold min-w-0">
+            <summary className={summaryClass}><ChevronRight className={chevronClass} />执行记录（{task.iterations.length}）</summary>
+            <div className="min-w-0 pb-4"><DevIterationTimeline iterations={task.iterations} /></div>
+          </details>}
+          <details className="group/fold min-w-0" onToggle={(event) => setPatchOpen(event.currentTarget.open)}>
+            <summary className={summaryClass}><ChevronRight className={chevronClass} />查看改动（{task.patchCount}）</summary>
+            {patchOpen && <div className="min-w-0 pb-5"><DevPatchPanel taskId={task.id} patchCount={task.patchCount} latestPatchId={task.latestPatch?.patchId} /></div>}
+          </details>
+          <details className="group/fold min-w-0">
+            <summary className={summaryClass}><ChevronRight className={chevronClass} />任务详情与验收</summary>
+            <div className="space-y-6 pb-5">
+              <GateStatusSummary task={task} />
+              <section className="space-y-3 text-sm">
+                <h3 className="font-medium">验收标准</h3>
+                <ul className="space-y-3">{task.acceptance.map((criterion) => <li key={criterion.id} className="space-y-1">
+                  <p className="break-words leading-6 [overflow-wrap:anywhere]">{criterion.description}</p>
+                  <p className="text-xs text-muted-foreground">{CHECK_LABEL[criterion.check]}{criterion.target && ` · ${criterion.target}`}</p>
+                </li>)}</ul>
+              </section>
+              <div className="space-y-1 break-all text-xs leading-6 text-muted-foreground">
+                <p>任务 ID：{task.id}</p><p>{executionLabel(task.status, task.execution)}</p>
+                <p>工作目录：{task.workdir}</p><p>记录分支：{task.branch || '未记录'}</p>
+                <p>创建于 {formatTime(task.created_at)} · 更新于 {formatTime(task.updated_at)}</p>
+              </div>
+            </div>
+          </details>
+        </div>
+        {task.runtime_version === 2 && <DevSessionPanel task={task} ready={ready && !resource.error}
+          onChanged={refresh} runtime={runtime} />}
+      </>}
+    </section>
   );
 }

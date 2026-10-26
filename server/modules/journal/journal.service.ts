@@ -5,7 +5,7 @@
  * trading journal. Entries are owner-scoped and keyed by (owner, journalDate);
  * `upsert` updates the existing entry for that date or creates one if absent.
  */
-import { Injectable, Inject, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Inject, NotFoundException } from '@nestjs/common';
 import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '@lark-apaas/fullstack-nestjs-core';
 import { eq, and, desc } from 'drizzle-orm';
 import { journal } from '@server/database/schema';
@@ -16,8 +16,6 @@ import type { JournalEntry, CreateJournalDto, ListResponse } from '@shared/api.i
  */
 @Injectable()
 export class JournalService {
-  private readonly logger = new Logger(JournalService.name);
-
   constructor(@Inject(DRIZZLE_DATABASE) private readonly db: PostgresJsDatabase) {}
 
   /**

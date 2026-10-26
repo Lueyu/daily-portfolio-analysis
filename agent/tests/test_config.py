@@ -86,3 +86,41 @@ def test_sandbox_can_be_disabled(monkeypatch):
         assert s.coder_sandbox_enabled is False
     finally:
         config.get_settings.cache_clear()
+
+
+def test_coder_budget_defaults_are_unlimited():
+    settings = Settings(_env_file=None)
+    assert settings.coder_max_iterations is None
+    assert settings.coder_max_model_calls is None
+    assert settings.coder_wallclock_seconds is None
+    assert settings.coder_max_probes is None
+
+
+def test_model_network_policy_defaults_to_explicit_direct_connection(monkeypatch):
+    monkeypatch.delenv('MODEL_TRUST_ENV', raising=False)
+    assert Settings(_env_file=None).model_trust_env is False
+    monkeypatch.setenv('MODEL_TRUST_ENV', 'true')
+    assert Settings(_env_file=None).model_trust_env is True
+
+
+def test_model_timeout_is_finite_and_configurable(monkeypatch):
+    from pydantic import ValidationError
+    monkeypatch.delenv('MODEL_REQUEST_TIMEOUT_SECONDS', raising=False)
+    assert Settings(_env_file=None).model_request_timeout_seconds == 180
+    monkeypatch.setenv('MODEL_REQUEST_TIMEOUT_SECONDS', '240')
+    assert Settings(_env_file=None).model_request_timeout_seconds == 240
+    for value in [0, float('inf'), 601]:
+        with pytest.raises(ValidationError):
+            Settings(_env_file=None, model_request_timeout_seconds=value)
+
+
+def test_coder_budget_accepts_explicit_limits(monkeypatch):
+    monkeypatch.setenv("CODER_MAX_ITERATIONS", "12")
+    monkeypatch.setenv("CODER_MAX_MODEL_CALLS", "30")
+    monkeypatch.setenv("CODER_WALLCLOCK_SECONDS", "600")
+    monkeypatch.setenv("CODER_MAX_PROBES", "8")
+    settings = Settings(_env_file=None)
+    assert settings.coder_max_iterations == 12
+    assert settings.coder_max_model_calls == 30
+    assert settings.coder_wallclock_seconds == 600
+    assert settings.coder_max_probes == 8

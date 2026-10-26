@@ -123,6 +123,19 @@ def test_chat_request_carries_tools():
     assert req.tool_choice == "auto"
 
 
+def test_explicit_request_timeout_reaches_sdk():
+    from agent_core.models import ChatRequest
+    provider, fake = _provider_with_fake_client()
+    provider.chat(ChatRequest(messages=[{'role': 'user', 'content': 'test'}], timeout=12.5))
+    assert fake.chat.completions.last_kwargs['timeout'] == 12.5
+
+
+def test_default_request_timeout_keeps_configured_client_timeout():
+    from agent_core.models import ChatRequest
+    request = ChatRequest(messages=[])
+    assert request.timeout is None
+
+
 def test_chat_response_carries_tool_calls():
     from agent_core.models import ChatResponse, ToolCall, Usage
     resp = ChatResponse(

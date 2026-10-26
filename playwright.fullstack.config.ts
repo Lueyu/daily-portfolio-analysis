@@ -16,21 +16,41 @@
  * The browser opens the SPA route `/dev`; the Vite HTML proxy forwards it to
  * Nest, which renders the page and the React router mounts DevTasksPage.
  *
+ * The Vite preset still writes a shared dist/client/index.html. Pause the
+ * regular Vite process while running this suite, then restart it afterwards;
+ * two Vite module graphs can otherwise overwrite each other's entry URL and
+ * trigger duplicate React roots. The normal database/Nest may stay running.
+ *
  * Run with: npm run test:e2e:fullstack
  */
 import { defineConfig, devices } from '@playwright/test';
 
 const NEST_PORT = '3099';
 const VITE_PORT = '8090';
-const NEST_ORIGIN = `http://localhost:${NEST_PORT}`;
-const VITE_ORIGIN = `http://localhost:${VITE_PORT}`;
+const NEST_ORIGIN = `http://127.0.0.1:${NEST_PORT}`;
+const VITE_ORIGIN = `http://127.0.0.1:${VITE_PORT}`;
+
+// Playwright's own readiness requests also inherit the host HTTP proxy.
+// Preserve existing exclusions while keeping this isolated stack on loopback.
+const noProxy = [process.env.NO_PROXY, process.env.no_proxy, 'localhost,127.0.0.1,::1']
+  .filter(Boolean)
+  .join(',');
+process.env.NO_PROXY = noProxy;
+process.env.no_proxy = noProxy;
+const nodeOptions = [process.env.NODE_OPTIONS, '--dns-result-order=ipv4first']
+  .filter(Boolean)
+  .join(' ');
 
 // Both servers must proxy/serve against the isolated backend port.
 // MIAODA_APP_TYPE=3 enables the preset's fullstack proxy + view pipeline;
 // MIAODA_LOCAL_DEV=1 mirrors scripts/dev-local.js for local identity/csrf.
 const testEnv = {
   ...process.env,
+  SERVER_HOST: '127.0.0.1',
   SERVER_PORT: NEST_PORT,
+  NODE_OPTIONS: nodeOptions,
+  NO_PROXY: noProxy,
+  no_proxy: noProxy,
   MIAODA_APP_TYPE: '3',
   MIAODA_LOCAL_DEV: '1',
 };
