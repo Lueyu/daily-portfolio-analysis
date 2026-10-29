@@ -16,16 +16,14 @@ type Theme = 'light' | 'dark';
 const THEME_KEY = 'pt-theme';
 
 /**
- * Resolve the initial theme: stored value wins, otherwise fall back to the
- * OS color-scheme preference. SSR-safe (returns 'light' on the server).
+ * Resolve the initial theme: stored value wins, otherwise default to the
+ * first-class dark theme. SSR-safe (returns 'dark' on the server).
  */
 function getInitialTheme(): Theme {
-  if (typeof window === 'undefined') return 'light';
+  if (typeof window === 'undefined') return 'dark';
   const stored = localStorage.getItem(THEME_KEY);
   if (stored === 'dark' || stored === 'light') return stored;
-  return window.matchMedia('(prefers-color-scheme: dark)').matches
-    ? 'dark'
-    : 'light';
+  return 'dark';
 }
 
 /**

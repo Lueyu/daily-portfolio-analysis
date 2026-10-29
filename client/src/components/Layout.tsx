@@ -126,11 +126,9 @@ function Layout() {
         <div className="flex h-full flex-col">
           <div className="flex h-14 items-center justify-between border-b border-sidebar-border px-4">
             <div className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-foreground">
-                <Briefcase size={18} />
-              </div>
+              <img src="/logo.svg" alt="吵股" className="h-8 w-8" />
               <span className="font-serif text-lg font-semibold tracking-wide">
-                Portfolio
+                吵股
               </span>
             </div>
             <button
@@ -216,7 +214,7 @@ function Layout() {
               {navItems.find((item) => {
                 if (item.end) return location.pathname === item.path;
                 return location.pathname.startsWith(item.path);
-              })?.label || 'Portfolio Terminal'}
+              })?.label || '吵股'}
             </div>
           </div>
           <MarketStatusIndicator />
