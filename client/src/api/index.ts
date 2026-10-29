@@ -773,6 +773,11 @@ import type {
   PaperOverview,
   NotificationChannel,
   CreateNotificationChannelDto,
+  ImportCommitDto,
+  ImportCommitResult,
+  ImportHistoryItem,
+  OcrExtractDto,
+  OcrExtractResult,
 } from '@shared/api.interface';
 
 /**
@@ -901,5 +906,32 @@ export async function testNotificationChannel(
   id: string,
 ): Promise<{ ok: boolean; error?: string }> {
   const response = await http({ url: `/api/notifications/channels/${id}/test`, method: 'POST' });
+  return response.data;
+}
+
+/**
+ * Import: create holdings from mapped/extracted rows.
+ */
+export async function commitImport(dto: ImportCommitDto): Promise<ImportCommitResult> {
+  const response = await http({ url: '/api/import/commit', method: 'POST', data: dto });
+  return response.data;
+}
+
+/**
+ * Import: extract holdings from a broker screenshot via the user's own
+ * multimodal LLM key (transient, server never persists it).
+ */
+export async function extractScreenshot(
+  dto: OcrExtractDto,
+): Promise<OcrExtractResult> {
+  const response = await http({ url: '/api/import/ocr/extract', method: 'POST', data: dto, timeout: 120000 });
+  return response.data;
+}
+
+/**
+ * Import: recent import history.
+ */
+export async function fetchImportHistory(): Promise<ImportHistoryItem[]> {
+  const response = await http({ url: '/api/import/history', method: 'GET' });
   return response.data;
 }

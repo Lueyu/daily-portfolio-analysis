@@ -17,6 +17,7 @@ import { fetchMyProfile } from '@/api';
 import { hasSession, tokenStore } from '@/api/http';
 import {
   FlaskConical,
+  Upload,
   LayoutDashboard,
   Briefcase,
   Eye,
@@ -44,6 +45,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 const navItems = [
   { path: '/', label: '仪表盘', icon: LayoutDashboard, end: true },
   { path: '/holdings', label: '持仓', icon: Briefcase },
+  { path: '/import', label: '持仓导入', icon: Upload },
   { path: '/watchlist', label: '关注', icon: Eye },
   { path: '/analysis', label: '每日分析', icon: BarChart3 },
   { path: '/paper', label: 'AI 模拟盘', icon: FlaskConical },

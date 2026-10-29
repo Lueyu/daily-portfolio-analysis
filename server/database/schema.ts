@@ -799,3 +799,19 @@ export const notificationChannels = pgTable("notification_channels", {
   updatedAt: customTimestamptz("updated_at", { precision: 3 }).default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 export const notificationChannelsTable = notificationChannels;
+
+/**
+ * Portfolio import history: one row per committed import
+ * (source: 'csv' | 'robinhood' | 'ocr'), with per-row errors preserved.
+ */
+export const importLogs = pgTable("import_logs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  owner: userProfile("owner").notNull(),
+  source: varchar("source", { length: 20 }).notNull(),
+  filename: varchar("filename", { length: 255 }),
+  rowsTotal: integer("rows_total").default(0).notNull(),
+  rowsImported: integer("rows_imported").default(0).notNull(),
+  errors: jsonb("errors"),
+  createdAt: customTimestamptz("created_at", { precision: 3 }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+export const importLogsTable = importLogs;

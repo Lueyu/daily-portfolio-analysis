@@ -23,6 +23,7 @@ import JournalPage from './pages/Journal/JournalPage';
 import TransactionsPage from './pages/Transactions/TransactionsPage';
 import StrategyRulesPage from './pages/StrategyRules/StrategyRulesPage';
 import PaperPage from './pages/Paper/PaperPage';
+import ImportPage from './pages/Import/ImportPage';
 import LoginPage from './pages/Auth/LoginPage';
 import RegisterPage from './pages/Auth/RegisterPage';
 import NotFound from './pages/NotFound/NotFound';
@@ -50,6 +51,7 @@ const RoutesComponent = () => {
       <Route element={<Layout />}>
         <Route index element={<DashboardPage />} />
         <Route path="holdings" element={<HoldingsPage />} />
+        <Route path="import" element={<ImportPage />} />
         <Route path="watchlist" element={<WatchlistPage />} />
         <Route path="analysis" element={<AnalysisPage />} />
         <Route path="paper" element={<PaperPage />} />

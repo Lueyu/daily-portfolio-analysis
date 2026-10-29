@@ -71,7 +71,7 @@ quotes. Details: [self-hosting guide](docs/self-hosting.md).
 - ✅ One-command Docker demo with fictional data
 - ✅ **First-party accounts** — username + password (bcrypt), JWT sessions, no phone number, no email verification, registration toggle via env
 - ✅ **AI paper trading** — signal-driven watchbot with hard guardrails (daily-loss circuit breaker, per-order/per-day caps), market-clock aware, and push notifications on fills (Webhook / Bark / Server酱 / SMTP / Telegram)
-- 🚧 **Portfolio import** — generic CSV, Robinhood CSV, and broker-screenshot OCR (powered by your own multimodal key)
+- ✅ **Portfolio import** — generic CSV with auto column mapping + GBK support, a Robinhood CSV preset, and broker-screenshot OCR powered by your own multimodal key (同花顺 / 东方财富 / 雪球 / 富途 / Robinhood …)
 - 🔜 **Desktop app** — one-click installer; download counts via GitHub Releases, no telemetry
 
 ## FAQ
@@ -135,6 +135,7 @@ typing its case while the bear bubble shouts back.
 
 - [Self-hosting guide](docs/self-hosting.md) — Docker, environment variables, backup & restore, reverse proxy
 - [Privacy](docs/privacy.md) — exactly what data exists and what leaves your machine
+- [Portfolio import guide](docs/import.md) — CSV, Robinhood CSV and broker-screenshot OCR
 - [Architecture](docs/architecture.md) — components, request flow, multi-agent pipeline, data model
 - [Development guide](docs/development.md) — running from source, lint/tests, the Python agent, design tokens
 - [Contributing](CONTRIBUTING.md) · [Security policy](SECURITY.md)

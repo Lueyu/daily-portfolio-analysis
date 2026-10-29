@@ -1094,3 +1094,53 @@ export interface CreateNotificationChannelDto {
   config: Record<string, string>;
   enabled?: boolean;
 }
+
+/**
+ * Portfolio import (CSV / Robinhood CSV / screenshot OCR).
+ */
+export type ImportSource = 'csv' | 'robinhood' | 'ocr';
+
+export interface ImportRowCandidate {
+  ticker: string;
+  company?: string | null;
+  shares: number | string;
+  avgCost?: number | string | null;
+  currentPrice?: number | string | null;
+  currency?: string | null;
+}
+
+export interface ImportCommitDto {
+  source: ImportSource;
+  rows: ImportRowCandidate[];
+  filename?: string;
+  buyDate?: string;
+}
+
+export interface ImportCommitResult {
+  logId: string;
+  created: number;
+  skipped: number;
+  failed: Array<{ ticker: string; reason: string }>;
+}
+
+export interface ImportHistoryItem {
+  id: string;
+  source: ImportSource;
+  filename: string | null;
+  rowsTotal: number;
+  rowsImported: number;
+  errors: Array<{ ticker: string; reason: string }>;
+  createdAt: string;
+}
+
+export interface OcrExtractDto {
+  imageBase64: string;
+  apiKey: string;
+  baseUrl?: string;
+  model: string;
+}
+
+export interface OcrExtractResult {
+  broker: string | null;
+  rows: ImportRowCandidate[];
+}

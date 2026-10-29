@@ -57,7 +57,7 @@ docker compose up --build
 - ✅ 一条命令跑起来的 Docker 演示（虚构数据）
 - ✅ **自建账号体系** —— 用户名 + 密码（bcrypt 哈希）、JWT 会话；不收手机号、不收邮箱验证，注册开关走环境变量
 - ✅ **AI 模拟炒股** —— 信号驱动的盯盘代理 + 硬性守护（日亏损熔断、单笔/日频次上限）、三市场盘钟感知，成交即推送（Webhook / Bark / Server酱 / 邮件 / Telegram）
-- 🚧 **持仓导入** —— 通用 CSV、Robinhood CSV、券商截图 OCR 识别（用你自己的多模态 key）
+- ✅ **持仓导入** —— 通用 CSV（自动列映射 + GBK 编码）、Robinhood 导出预设、券商截图 OCR 识别（用你自己的多模态 key，同花顺 / 东方财富 / 雪球 / 富途 / Robinhood …）
 - 🔜 **桌面版** —— 一键安装包；下载量用 GitHub Releases 官方统计，零埋点
 
 ## 常见问题
@@ -108,6 +108,7 @@ docker compose up --build
 
 - [自托管指南](docs/self-hosting.md) —— Docker、环境变量、备份恢复、反向代理
 - [隐私说明](docs/privacy.md) —— 什么数据存在、什么出网，逐条可验证
+- [持仓导入指南](docs/zh-CN/import.md) —— 通用 CSV、Robinhood 导出、券商截图 OCR
 - [架构文档](docs/architecture.md) —— 组件、请求链路、多智能体流水线、数据模型
 - [开发指南](docs/development.md) —— 源码运行、lint/测试、Python Agent、设计令牌
 - [参与贡献](CONTRIBUTING.md) · [安全策略](SECURITY.md)

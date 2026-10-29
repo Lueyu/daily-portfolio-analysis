@@ -529,3 +529,19 @@ CREATE TABLE "notification_channels" (
 	"updated_at" timestamptz (3) DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 CREATE INDEX "idx_notification_channels_owner" ON "notification_channels" USING btree ("owner");
+
+
+-- ============================================================
+-- Portfolio import history (CSV / Robinhood CSV / screenshot OCR).
+-- ============================================================
+CREATE TABLE "import_logs" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"owner" text NOT NULL,
+	"source" varchar(20) NOT NULL,
+	"filename" varchar(255),
+	"rows_total" integer DEFAULT 0 NOT NULL,
+	"rows_imported" integer DEFAULT 0 NOT NULL,
+	"errors" jsonb,
+	"created_at" timestamptz (3) DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+CREATE INDEX "idx_import_logs_owner_created" ON "import_logs" USING btree ("owner","created_at");

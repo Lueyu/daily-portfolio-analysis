@@ -34,6 +34,7 @@ import { FxModule } from './modules/fx/fx.module';
 import { MultiAgentModule } from './modules/multi-agent/multi-agent.module';
 import { NotificationModule } from './modules/notifications/notification.module';
 import { PaperTradingModule } from './modules/paper-trading/paper-trading.module';
+import { ImportModule } from './modules/import/import.module';
 
 /**
  * Root Nest module. Aggregates feature modules and installs the global
@@ -64,6 +65,7 @@ import { PaperTradingModule } from './modules/paper-trading/paper-trading.module
     MultiAgentModule,
     NotificationModule,
     PaperTradingModule,
+    ImportModule,
     // ====== @route-section: business-modules END ======
 
     // ⚠️ @route-order: last

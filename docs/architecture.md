@@ -201,7 +201,7 @@ The deep report contains 14 sections rendered by `client/src/components/MultiAge
 
 ## Data Model
 
-The database contains 28 tables in five groups:
+The database contains 29 tables in six groups:
 
 | Group | Tables | Description |
 |---|---|---|
@@ -210,6 +210,7 @@ The database contains 28 tables in five groups:
 | Configuration | `strategy_rules` | Risk-control rules; UI supports create/edit and enable/disable |
 | Users & paper trading | `users`, `paper_accounts`, `paper_positions`, `paper_orders`, `paper_trades`, `paper_events`, `paper_snapshots` | First-party accounts plus the fully isolated AI paper-trading book (no real-broker code path exists) |
 | Notifications | `notification_channels` | Self-hosted push routing (webhook / bark / serverchan / smtp / telegram); channel secrets never leave the user's database |
+| Import | `import_logs` | Portfolio import history (CSV / Robinhood CSV / screenshot OCR) with per-row failure reasons |
 
 The table structure is defined in `server/database/schema.ts` and must stay in
 sync with `scripts/db/01_schema.sql` (applied on fresh installs).

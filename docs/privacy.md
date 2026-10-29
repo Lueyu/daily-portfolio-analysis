@@ -28,13 +28,14 @@ take our word for it.
 
 ## What leaves your machine
 
-Exactly three categories of outbound requests exist in the codebase:
+Exactly four categories of outbound requests exist in the codebase:
 
 1. **LLM 推理请求** — 当你运行多智能体分析时，后端/Agent 会把行情、财务等分析所需数据发送给你配置的大模型厂商（火山方舟 / DeepSeek / 任意 OpenAI 兼容端点）。使用你自己的 API key，直连厂商，不经过任何中间服务器。不填 key 时此功能停用，其余功能不受影响。
 2. **行情数据请求** — 浏览器直连 Finnhub 拉取实时报价（你自己的 token，仅存于本设备浏览器）。
 3. **通知推送** — 仅当你主动配置了通知渠道（Webhook / Bark / Server酱 / SMTP / Telegram）时，才会在成交等事件发生时向该渠道发送消息。
+4. **截图识别（可选功能）** — 仅当你主动上传券商截图并配置了自己的多模态模型时，截图才会从你的部署直达你选择的大模型厂商。API Key 只存在本浏览器、按请求发送，服务端从不持久化（见 [import.md](import.md)）。
 
-除以上三类外，代码中不存在任何其他出网路径。
+除以上四类外，代码中不存在任何其他出网路径。
 
 ## Where your data lives
 
