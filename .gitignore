@@ -110,6 +110,10 @@ db/snapshot/*.sql
 # 本地后端调试日志（后台 dev server 重定向产物）
 /backend-*.log
 
-# 本地设计文档（仅本地，不入库；docs/screenshots 为 README 截图，正常入库）
+# 本地设计文档（仅本地，不入库；docs 下的 .md 与 screenshots 正常入库）
 docs/*
 !docs/screenshots/
+!docs/*.md
+
+# Playwright MCP 会话产物
+.playwright-mcp/

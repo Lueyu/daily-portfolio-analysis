@@ -3,7 +3,7 @@
 ## Reporting a vulnerability
 
 Please do **not** open a public issue for security problems. Instead, use
-[GitHub's private vulnerability reporting](https://github.com/Lueyu/daily-portfolio-analysis/security/advisories/new)
+[GitHub's private vulnerability reporting](https://github.com/Lueyu/squabble/security/advisories/new)
 for this repository, or email the owner via the address on the GitHub profile.
 
 Include what you can of: reproduction steps, affected endpoints/files, and

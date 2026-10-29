@@ -1,4 +1,4 @@
-# Contributing to Daily Portfolio Analysis
+# Contributing to 吵股 Squabble
 
 Thanks for your interest in improving this project! A few minutes reading this
 document will save both of us a round trip.
