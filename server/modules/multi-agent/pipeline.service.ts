@@ -34,7 +34,7 @@
  * on the run row for cost tracking.
  */
 import { Injectable, Inject, Logger } from '@nestjs/common';
-import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '@lark-apaas/fullstack-nestjs-core';
+import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '../../common/platform';
 import { eq, and } from 'drizzle-orm';
 import { agentRuns } from '@server/database/schema';
 import { LlmService } from './llm.service';

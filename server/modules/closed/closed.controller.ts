@@ -7,7 +7,7 @@
  * and currency.
  */
 import { Controller, Get, Post, Patch, Delete, Body, Param, Req } from '@nestjs/common';
-import { NeedLogin } from '@lark-apaas/fullstack-nestjs-core';
+import { NeedLogin } from '../../common/platform';
 import type { Request } from 'express';
 import { ClosedService } from './closed.service';
 import type { ClosedPosition, CreateClosedDto, RealizedPlSummary } from '@shared/api.interface';

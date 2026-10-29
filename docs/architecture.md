@@ -9,6 +9,8 @@ data model. For the product overview see the [README](../README.md); 中文版�
 
 The system has two parts: a full-stack trading terminal (NestJS + React + PostgreSQL) that is the system of record for accounts, transactions, ratings and reports, and a standalone Python agent service under `agent/` that handles reasoning tasks such as market queries, research and analysis. The backend is the sole orchestrator and data gateway, delegating reasoning to the agent over a protected HTTP API. The agent is model-agnostic — it can switch between Volcengine Ark, DeepSeek or any OpenAI-compatible endpoint — and never touches the business database directly.
 
+Authentication is first-party: username+password accounts (bcrypt) with short-lived JWT bearer sessions — no cookies, no CSRF surface, no third-party identity provider. Every business row carries an `owner` text column holding the owning `users.id`; services scope all queries by the authenticated userId, giving per-account row-level isolation without platform middleware.
+
 Market data is requested directly from Finnhub in the browser, and the API token is stored only on the local device; FX rates are fetched centrally by the backend FX module.
 
 The system boundary at a glance:

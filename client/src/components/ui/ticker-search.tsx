@@ -6,7 +6,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Search, TrendingUp } from 'lucide-react';
-import { logger } from '@lark-apaas/client-toolkit/logger';
+import { logger } from '../../utils/logger';
 import type { StockSearchResult } from '@shared/api.interface';
 import { searchStocks } from '@/api';
 import { Input } from '@/components/ui/input';

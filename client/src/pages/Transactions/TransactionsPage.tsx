@@ -24,7 +24,7 @@ import {
   ArrowDownToLine,
   ArrowUpFromLine,
 } from 'lucide-react';
-import { axiosForBackend } from '@lark-apaas/client-toolkit/utils/getAxiosForBackend';
+import http from '@/api/http';
 import type { Transaction, ClosedPosition, RealizedPlSummary } from '@shared/api.interface';
 import {
   fetchTransactions,
@@ -178,7 +178,7 @@ export default function TransactionsPage() {
     if (!deleteTarget) return;
     setDeleting(true);
     try {
-      await axiosForBackend({
+      await http({
         url: `/api/portfolio/transactions/${deleteTarget}`,
         method: 'DELETE',
       });

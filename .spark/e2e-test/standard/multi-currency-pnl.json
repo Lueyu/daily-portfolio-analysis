@@ -1,1 +1,0 @@
-{"cases":[{"id":1,"priority":"p0","description":"Dashboard当日盈亏明细表01810行当日盈亏显示HK$符号"},{"id":2,"priority":"p0","description":"当日盈亏总额按本位币折算并显示，有多币种小计"},{"id":3,"priority":"p1","description":"切换本位币后总额重新折算，符号正确"},{"id":4,"priority":"p1","description":"贡献占比按折算后计算，各股相加约等于100%"}]}

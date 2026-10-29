@@ -17,7 +17,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '@lark-apaas/fullstack-nestjs-core';
+import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '../../common/platform';
 import { eq, and, desc, asc, inArray, sql } from 'drizzle-orm';
 import { transactions, holdings, closed, cashAccounts } from '@server/database/schema';
 import { QuoteService } from './../quote/quote.service';

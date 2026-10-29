@@ -22,25 +22,30 @@ import DeepReportPage from './pages/Analysis/DeepReportPage';
 import JournalPage from './pages/Journal/JournalPage';
 import TransactionsPage from './pages/Transactions/TransactionsPage';
 import StrategyRulesPage from './pages/StrategyRules/StrategyRulesPage';
+import LoginPage from './pages/Auth/LoginPage';
+import RegisterPage from './pages/Auth/RegisterPage';
 import NotFound from './pages/NotFound/NotFound';
 
 /**
  * Root route component.
- * Mounts the embedded agent API bridge once on first render, then renders the
- * route table. Nested routes share the <Layout> element; an unmatched path
- * (`*`) falls through to the NotFound page.
+ * Mounts the embedded agent API bridge once on first render, then renders
+ * the route table. Auth pages render outside the app shell; nested routes
+ * share the <Layout> element; an unmatched path (`*`) falls through to the
+ * NotFound page.
  *
  * @returns The React element tree for the whole application.
  */
 const RoutesComponent = () => {
   // One-time side effect: expose the in-page agent bridge so the host
-  // (Lark aPaaS container / embedded runtime) can call into this SPA.
+  // container can call into this SPA.
   useEffect(() => {
     initAgentAPI();
   }, []);
 
   return (
     <Routes>
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/register" element={<RegisterPage />} />
       <Route element={<Layout />}>
         <Route index element={<DashboardPage />} />
         <Route path="holdings" element={<HoldingsPage />} />

@@ -7,7 +7,7 @@
  */
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { eq, desc, and } from 'drizzle-orm';
-import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '@lark-apaas/fullstack-nestjs-core';
+import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '../../common/platform';
 
 import { alphaPicks } from '@server/database/schema';
 import type {

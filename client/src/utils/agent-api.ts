@@ -12,9 +12,10 @@
  * called out-of-process; the UI itself should prefer the typed functions in
  * `api/index.ts`.
  */
-import { axiosForBackend } from '@lark-apaas/client-toolkit/utils/getAxiosForBackend';
-import { resolveAppUrl } from '@lark-apaas/client-toolkit/utils/resolveAppUrl';
-import { logger } from '@lark-apaas/client-toolkit/logger';
+import http from '../api/http';
+/** Same-origin absolute URL for links shared outside the SPA. */
+const resolveAppUrl = (path: string) => `${window.location.origin}${path}`;
+import { logger } from './logger';
 
 declare global {
   interface Window {
@@ -69,7 +70,7 @@ export function initAgentAPI() {
   const api: PortfolioTerminalAPI = {
     async getState() {
       try {
-        const response = await axiosForBackend.get('/api/agent/state');
+        const response = await http.get('/api/agent/state');
         return response.data;
       } catch (error) {
         logger.error('agent getState failed', error);
@@ -79,7 +80,7 @@ export function initAgentAPI() {
 
     async getHistory() {
       try {
-        const response = await axiosForBackend.get('/api/agent/history');
+        const response = await http.get('/api/agent/history');
         return response.data;
       } catch (error) {
         logger.error('agent getHistory failed', error);
@@ -89,7 +90,7 @@ export function initAgentAPI() {
 
     async saveDailyAnalysis(date: string, items: unknown[]) {
       try {
-        const response = await axiosForBackend.post('/api/agent/daily-analysis', {
+        const response = await http.post('/api/agent/daily-analysis', {
           date,
           items,
         });
@@ -102,7 +103,7 @@ export function initAgentAPI() {
 
     async applyHoldingRatings(items: unknown[]) {
       try {
-        const response = await axiosForBackend.post('/api/agent/holding-ratings', {
+        const response = await http.post('/api/agent/holding-ratings', {
           items,
         });
         return response.data;
@@ -114,7 +115,7 @@ export function initAgentAPI() {
 
     async addWatchItems(items: unknown[]) {
       try {
-        const response = await axiosForBackend.post('/api/agent/watch-items/add', {
+        const response = await http.post('/api/agent/watch-items/add', {
           items,
         });
         return response.data;
@@ -126,7 +127,7 @@ export function initAgentAPI() {
 
     async removeWatchItems(tickers: string[]) {
       try {
-        const response = await axiosForBackend.post(
+        const response = await http.post(
           '/api/agent/watch-items/remove',
           { tickers }
         );
@@ -139,7 +140,7 @@ export function initAgentAPI() {
 
     async saveJournal(data: unknown) {
       try {
-        const response = await axiosForBackend.post('/api/agent/journal', data);
+        const response = await http.post('/api/agent/journal', data);
         return response.data;
       } catch (error) {
         logger.error('agent saveJournal failed', error);
@@ -152,7 +153,7 @@ export function initAgentAPI() {
         const url = date
           ? `/api/agent/journal?date=${date}`
           : '/api/agent/journal';
-        const response = await axiosForBackend.get(url);
+        const response = await http.get(url);
         return response.data;
       } catch (error) {
         logger.error('agent getJournal failed', error);
@@ -162,7 +163,7 @@ export function initAgentAPI() {
 
     async saveSnapshot(data: unknown) {
       try {
-        const response = await axiosForBackend.post('/api/agent/snapshot', data);
+        const response = await http.post('/api/agent/snapshot', data);
         return response.data;
       } catch (error) {
         logger.error('agent saveSnapshot failed', error);
@@ -175,7 +176,7 @@ export function initAgentAPI() {
         const url = limit
           ? `/api/agent/snapshots?limit=${limit}`
           : '/api/agent/snapshots';
-        const response = await axiosForBackend.get(url);
+        const response = await http.get(url);
         return response.data;
       } catch (error) {
         logger.error('agent getSnapshots failed', error);
@@ -185,7 +186,7 @@ export function initAgentAPI() {
 
     async saveDeepReport(input: unknown) {
       try {
-        const response = await axiosForBackend.post('/api/agent/deep-report', input);
+        const response = await http.post('/api/agent/deep-report', input);
         const data = response.data;
         const url = resolveAppUrl(`/analysis/deep-report/${data.runId}`);
         return { ...data, url };
@@ -197,7 +198,7 @@ export function initAgentAPI() {
 
     async getStrategyRules() {
       try {
-        const response = await axiosForBackend.get('/api/agent/strategy-rules');
+        const response = await http.get('/api/agent/strategy-rules');
         return response.data;
       } catch (error) {
         logger.error('agent getStrategyRules failed', error);
@@ -207,7 +208,7 @@ export function initAgentAPI() {
 
     async getLatestDeepReport(ticker: string) {
       try {
-        const response = await axiosForBackend.get(
+        const response = await http.get(
           `/api/agent/deep-report/latest?ticker=${ticker}`,
         );
         const data = response.data;
@@ -224,7 +225,7 @@ export function initAgentAPI() {
 
     async listDeepReports() {
       try {
-        const response = await axiosForBackend.get('/api/agent/deep-reports');
+        const response = await http.get('/api/agent/deep-reports');
         const items = Array.isArray(response.data) ? response.data : [];
         return items.map((item: { runId: string }) => ({
           ...item,

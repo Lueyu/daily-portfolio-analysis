@@ -7,7 +7,7 @@
  * reading/writing deep research reports and strategy rules. Requires login.
  */
 import { Controller, Get, Post, Body, Req, Query } from '@nestjs/common';
-import { NeedLogin } from '@lark-apaas/fullstack-nestjs-core';
+import { NeedLogin } from '../../common/platform';
 import type { Request } from 'express';
 import { AgentService } from './agent.service';
 import type {

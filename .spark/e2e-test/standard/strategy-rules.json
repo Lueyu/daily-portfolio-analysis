@@ -1,1 +1,0 @@
-{"cases":[{"id":1,"priority":"p0","description":"打开 /settings/rules 页面，等待 15 秒，断言页面未崩溃、规则列表至少 5 行数据"},{"id":2,"priority":"p1","description":"点击现金比例行的开关，断言网络响应 2xx 且开关状态切换"},{"id":3,"priority":"p1","description":"编辑现金比例阈值为 8.5，保存后断言网络响应 2xx 且页面显示新值"},{"id":4,"priority":"p1","description":"刷新页面再次进入，断言规则列表稳定显示、无白屏或崩溃"}]}

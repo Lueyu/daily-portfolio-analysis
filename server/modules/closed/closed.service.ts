@@ -9,7 +9,7 @@
  * since closed rows themselves store no currency).
  */
 import { Injectable, Inject, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
-import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '@lark-apaas/fullstack-nestjs-core';
+import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '../../common/platform';
 import { eq, and, desc, inArray } from 'drizzle-orm';
 import { closed, transactions } from '@server/database/schema';
 import type { ClosedPosition, CreateClosedDto, RealizedPlSummary, RealizedPlItem } from '@shared/api.interface';

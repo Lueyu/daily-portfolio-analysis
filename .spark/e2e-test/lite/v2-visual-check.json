@@ -1,1 +1,0 @@
-{"cases":[{"id":1,"priority":"p0","description":"Dashboard 每日盈亏卡片标题旁有最后更新时间标注"},{"id":2,"priority":"p0","description":"Dashboard 逐股当日盈亏明细表格渲染，至少 3 行数据，正绿负红"},{"id":3,"priority":"p1","description":"Dashboard 每日盈亏卡片有实时/已收盘标签"},{"id":4,"priority":"p1","description":"持仓页无行业列、有三市场过滤、币种符号正确"}]}

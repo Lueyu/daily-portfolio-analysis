@@ -32,7 +32,7 @@ import {
   Loader2,
   Eye,
 } from 'lucide-react';
-import { axiosForBackend } from '@lark-apaas/client-toolkit/utils/getAxiosForBackend';
+import http from '@/api/http';
 import { toast } from 'sonner';
 import { fetchDashboard, fetchHoldings, fetchDailyPl, logger, getAgentRuns } from '@/api';
 import type {
@@ -370,7 +370,7 @@ export default function DashboardPage() {
         const results = await Promise.all(
           completedIds.map(async (id: string) => {
             try {
-              const res = await axiosForBackend({
+              const res = await http({
                 url: `/api/multi-agent/runs/${id}/risk-gate`,
                 method: 'GET',
               });

@@ -37,7 +37,7 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
-import { NeedLogin } from '@lark-apaas/fullstack-nestjs-core';
+import { NeedLogin } from '../../common/platform';
 import type { Request } from 'express';
 import { MultiAgentService } from './multi-agent.service';
 import { PipelineService } from './pipeline.service';

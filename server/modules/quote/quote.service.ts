@@ -12,7 +12,7 @@
  */
 import { Injectable, Inject, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
-import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '@lark-apaas/fullstack-nestjs-core';
+import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '../../common/platform';
 import { eq, sql } from 'drizzle-orm';
 import { firstValueFrom } from 'rxjs';
 import { holdings, watchlist } from '@server/database/schema';
@@ -909,11 +909,10 @@ export class QuoteService {
             .set({
               currentPrice: price,
               updatedAt: sql`CURRENT_TIMESTAMP`,
-              // updatedBy references the user_profile composite type; cast explicitly.
-              updatedBy: sql`ROW(${userId})::user_profile`,
+              updatedBy: userId,
             })
             .where(
-              sql`(${holdings.owner}).user_id = ${userId} AND ${holdings.ticker} = ${ticker}`,
+              sql`${holdings.owner} = ${userId} AND ${holdings.ticker} = ${ticker}`,
             ),
         );
         updatePromises.push(
@@ -922,10 +921,10 @@ export class QuoteService {
             .set({
               currentPrice: price,
               updatedAt: sql`CURRENT_TIMESTAMP`,
-              updatedBy: sql`ROW(${userId})::user_profile`,
+              updatedBy: userId,
             })
             .where(
-              sql`(${watchlist.owner}).user_id = ${userId} AND ${watchlist.ticker} = ${ticker}`,
+              sql`${watchlist.owner} = ${userId} AND ${watchlist.ticker} = ${ticker}`,
             ),
         );
       }

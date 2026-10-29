@@ -1,1 +1,0 @@
-{"cases":[{"id":1,"priority":"p0","description":"Dashboard六张卡片USD本位币显示正确折算值（账户总值约$10k而非$28k）"},{"id":2,"priority":"p0","description":"切换本位币到HKD后六张卡片数值按HKD折算并显示HK$符号"},{"id":3,"priority":"p1","description":"切换本位币到CNY后六张卡片显示CN¥符号且数值合理"},{"id":4,"priority":"p1","description":"持仓页顶部总市值/浮盈亏显示USD本位币折算值（非名义相加）"}]}

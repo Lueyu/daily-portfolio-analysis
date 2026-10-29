@@ -1,1 +1,0 @@
-{"cases":[{"id":1,"priority":"p0","description":"点击 Multi-Agent 标签，data-state 变为 active，显示深度报告列表卡片"},{"id":2,"priority":"p0","description":"传统分析卡片 01810 有深度报告角标，正文截断，有查看深度报告入口"},{"id":3,"priority":"p1","description":"点击深度报告卡片跳转到 /analysis/deep-report/:runId 页面"},{"id":4,"priority":"p1","description":"PORTFOLIO 组合策略复盘卡片样式与个股不同"}]}

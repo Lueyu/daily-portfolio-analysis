@@ -9,7 +9,7 @@
  * as performance. All rows are owner-scoped.
  */
 import { Injectable, Inject, Logger, NotFoundException, forwardRef } from '@nestjs/common';
-import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '@lark-apaas/fullstack-nestjs-core';
+import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '../../common/platform';
 import { eq, and, desc, sql } from 'drizzle-orm';
 import { snapshots, transactions } from '@server/database/schema';
 import type { Snapshot, CreateSnapshotDto, ListResponse } from '@shared/api.interface';
@@ -127,7 +127,7 @@ export class SnapshotsService {
       .from(transactions)
       .where(
         and(
-          sql`(${transactions.owner}).user_id = ${userId}`,
+          sql`${transactions.owner} = ${userId}`,
           sql`${transactions.txDate} = ${dateStr}::date`,
           sql`${transactions.txType} IN ('Deposit', 'Withdrawal')`,
         ),

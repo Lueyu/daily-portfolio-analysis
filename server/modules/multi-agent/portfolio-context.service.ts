@@ -13,7 +13,7 @@
  *     resulting rating/action/targetPrice back onto the holdings row.
  */
 import { Injectable, Inject, Logger } from '@nestjs/common';
-import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '@lark-apaas/fullstack-nestjs-core';
+import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '../../common/platform';
 import { eq, and } from 'drizzle-orm';
 import { holdings, cashAccounts, agentRuns, agentRatings } from '@server/database/schema';
 import type { PortfolioContext, StrategyRule } from '@shared/api.interface';

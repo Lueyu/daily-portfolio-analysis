@@ -48,10 +48,13 @@ cd squabble
 docker compose up --build
 ```
 
-Open **http://localhost:3000** — a fictional demo account loads automatically:
-6 holdings across US/HK/CN markets, 3 completed agent runs (including a
-two-version NVDA report where the rating upgraded Hold → Buy, with the losing
-bear argument preserved), and one triggered risk gate.
+Open **http://localhost:3000** and log in with the built-in demo account
+(**demo / demo1234** — one click fills it on the login page). You get a
+fictional portfolio to explore: 6 holdings across US/HK/CN markets, 3
+completed agent runs (including a two-version NVDA report where the rating
+upgraded Hold → Buy, with the losing bear argument preserved), and one
+triggered risk gate. The demo account is seeded by the database initializer —
+change or drop it for a public deployment.
 
 **No API keys needed.** The demo runs fully offline. When you're ready to run
 analyses on real stocks, you bring your own LLM key — any OpenAI-compatible
@@ -65,7 +68,7 @@ quotes. Details: [self-hosting guide](docs/self-hosting.md).
 
 - ✅ Multi-agent research reports (bull/bear debate, critic, risk gates, versioned)
 - ✅ One-command Docker demo with fictional data
-- 🚧 **First-party accounts** — username + password, argon2-hashed, JWT sessions; the platform-login coupling is being removed
+- ✅ **First-party accounts** — username + password (bcrypt), JWT sessions, no phone number, no email verification, registration toggle via env
 - 🚧 **AI paper trading** — an execution agent with an adapter interface (paper broker first, real brokers when/if they open up), hard guardrails (daily-loss circuit breaker, per-order caps), and push notifications (Webhook / Bark / Server酱 / SMTP / Telegram) when it fills
 - 🚧 **Portfolio import** — generic CSV, Robinhood CSV, and broker-screenshot OCR (powered by your own multimodal key)
 - 🔜 **Desktop app** — one-click installer; download counts via GitHub Releases, no telemetry

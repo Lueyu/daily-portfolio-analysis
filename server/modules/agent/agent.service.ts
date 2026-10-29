@@ -10,7 +10,7 @@
  * and writes are owner-scoped.
  */
 import { BadRequestException, Inject, Injectable, Logger } from '@nestjs/common';
-import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '@lark-apaas/fullstack-nestjs-core';
+import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '../../common/platform';
 import { eq, and, desc, gte, inArray, ne, notIlike } from 'drizzle-orm';
 import {
   holdings,

@@ -1,1 +1,0 @@
-{"cases":[{"id":1,"priority":"p0","description":"切换到 Multi-Agent 标签，显示深度报告列表或空状态引导"},{"id":2,"priority":"p1","description":"有深度报告时点击查看按钮跳转到 /analysis/deep-report/:runId"},{"id":3,"priority":"p0","description":"控制台验证 window.__pt.saveDeepReport / getStrategyRules / getLatestDeepReport 均为 function"},{"id":4,"priority":"p1","description":"传统分析卡片有深度报告角标时显示「深度报告」徽章和查看入口"}]}

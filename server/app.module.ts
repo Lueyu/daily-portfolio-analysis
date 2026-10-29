@@ -1,19 +1,20 @@
 /**
  * Root (application) module.
  *
- * Wires together the entire NestJS backend: it imports the shared platform
- * module and every feature module (holdings, watchlist, groups, analysis,
- * transactions, closed positions, journal, snapshots, alpha picks, dashboard,
- * LLM agent, cash accounts, quotes, FX, and multi-agent pipeline), and registers
- * `GlobalExceptionFilter` as the application-wide exception handler via
- * `APP_FILTER`. `ViewModule` must remain the last import because it provides the
- * SPA fallback routes.
+ * Wires together the first-party platform layer (database + auth with the
+ * global guard) and every feature module (holdings, watchlist, groups,
+ * analysis, transactions, closed positions, journal, snapshots, alpha picks,
+ * dashboard, LLM agent, cash accounts, quotes, FX, and the multi-agent
+ * pipeline), and registers `GlobalExceptionFilter` as the application-wide
+ * exception handler via `APP_FILTER`. `ViewModule` must remain the last
+ * import because it provides the SPA fallback routes.
  */
 import { APP_FILTER } from '@nestjs/core';
 import { Module } from '@nestjs/common';
-import { PlatformModule } from '@lark-apaas/fullstack-nestjs-core';
 
 import { GlobalExceptionFilter } from './common/filters/exception.filter';
+import { DatabaseModule } from './common/platform/database.provider';
+import { AuthModule } from './modules/auth/auth.module';
 import { ViewModule } from './modules/view/view.module';
 import { HoldingsModule } from './modules/holdings/holdings.module';
 import { WatchlistModule } from './modules/watchlist/watchlist.module';
@@ -33,20 +34,15 @@ import { FxModule } from './modules/fx/fx.module';
 import { MultiAgentModule } from './modules/multi-agent/multi-agent.module';
 
 /**
- * Root NestJS module. Aggregates all feature modules and installs the global
+ * Root Nest module. Aggregates feature modules and installs the global
  * exception filter. Has no logic of its own; it exists purely for DI wiring.
  */
 @Module({
   imports: [
-    // Local dev opt-out for the browser CSRF double-token guard: set
-    // DISABLE_CSRF=true for the local Vite frontend (which has no gateway cookie
-    // session). The Python agent does not rely on this: it authenticates with
-    // x-agent-token through AgentGatewayModule under /openapi/agent-gateway, a
-    // prefix the platform exempts from CSRF. When unset (production) browser CSRF
-    // stays enabled; the openapi gateway keeps using its own token guard.
-    PlatformModule.forRoot({
-      enableCsrf: process.env.DISABLE_CSRF !== 'true',
-    }),
+    // First-party platform layer: Drizzle database + JWT auth guard.
+    DatabaseModule,
+    AuthModule,
+
     // ====== @route-section: business-modules START ======
     HoldingsModule,
     WatchlistModule,

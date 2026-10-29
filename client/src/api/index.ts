@@ -3,7 +3,7 @@
  * @description Typed HTTP client for the portfolio backend.
  *
  * Every function here is a thin async wrapper around the aPaaS-provided
- * `axiosForBackend` instance, which already injects base URL, auth headers and
+ * `http` instance, which already injects base URL, auth headers and
  * error handling. Callers receive `response.data` (or a derived list) and
  * handle errors locally.
  *
@@ -20,8 +20,8 @@
  * Note: most create/update payloads are still typed as `unknown`; the server
  * contract is the source of truth and pages shape the objects they send.
  */
-import { axiosForBackend } from '@lark-apaas/client-toolkit/utils/getAxiosForBackend';
-import { logger } from '@lark-apaas/client-toolkit/logger';
+import http from './http';
+import { logger } from '../utils/logger';
 
 /**
  * Fetch the dashboard aggregate overview (totals, allocation, etc.).
@@ -29,7 +29,7 @@ import { logger } from '@lark-apaas/client-toolkit/logger';
  * @returns The overview payload as returned by the backend.
  */
 export async function fetchDashboard(baseCurrency: string = 'USD') {
-  const response = await axiosForBackend({
+  const response = await http({
     url: `/api/portfolio/dashboard/overview?baseCurrency=${encodeURIComponent(baseCurrency)}`,
     method: 'GET',
   });
@@ -43,7 +43,7 @@ export async function fetchDashboard(baseCurrency: string = 'USD') {
  * @returns The daily P/L series payload.
  */
 export async function fetchDailyPl(days: number = 30, baseCurrency: string = 'USD') {
-  const response = await axiosForBackend({
+  const response = await http({
     url: `/api/portfolio/dashboard/daily-pl?days=${days}&baseCurrency=${encodeURIComponent(baseCurrency)}`,
     method: 'GET',
   });
@@ -55,7 +55,7 @@ export async function fetchDailyPl(days: number = 30, baseCurrency: string = 'US
  * @returns The `items` array from the paginated holdings response.
  */
 export async function fetchHoldings() {
-  const response = await axiosForBackend({
+  const response = await http({
     url: '/api/portfolio/holdings',
     method: 'GET',
   });
@@ -68,7 +68,7 @@ export async function fetchHoldings() {
  * @returns The created holding record.
  */
 export async function createHolding(data: unknown) {
-  const response = await axiosForBackend({
+  const response = await http({
     url: '/api/portfolio/holdings',
     method: 'POST',
     data,
@@ -83,7 +83,7 @@ export async function createHolding(data: unknown) {
  * @returns The updated holding record.
  */
 export async function updateHolding(id: string, data: unknown) {
-  const response = await axiosForBackend({
+  const response = await http({
     url: `/api/portfolio/holdings/${id}`,
     method: 'PATCH',
     data,
@@ -96,7 +96,7 @@ export async function updateHolding(id: string, data: unknown) {
  * @param id - Holding primary key.
  */
 export async function deleteHolding(id: string) {
-  await axiosForBackend({
+  await http({
     url: `/api/portfolio/holdings/${id}`,
     method: 'DELETE',
   });
@@ -107,7 +107,7 @@ export async function deleteHolding(id: string) {
  * @returns The `items` array from the paginated watchlist response.
  */
 export async function fetchWatchlist() {
-  const response = await axiosForBackend({
+  const response = await http({
     url: '/api/portfolio/watchlist',
     method: 'GET',
   });
@@ -120,7 +120,7 @@ export async function fetchWatchlist() {
  * @returns The created watch record.
  */
 export async function createWatchItem(data: unknown) {
-  const response = await axiosForBackend({
+  const response = await http({
     url: '/api/portfolio/watchlist',
     method: 'POST',
     data,
@@ -135,7 +135,7 @@ export async function createWatchItem(data: unknown) {
  * @returns The updated watch record.
  */
 export async function updateWatchItem(id: string, data: unknown) {
-  const response = await axiosForBackend({
+  const response = await http({
     url: `/api/portfolio/watchlist/${id}`,
     method: 'PATCH',
     data,
@@ -148,7 +148,7 @@ export async function updateWatchItem(id: string, data: unknown) {
  * @param id - Watch record primary key.
  */
 export async function deleteWatchItem(id: string) {
-  await axiosForBackend({
+  await http({
     url: `/api/portfolio/watchlist/${id}`,
     method: 'DELETE',
   });
@@ -159,7 +159,7 @@ export async function deleteWatchItem(id: string) {
  * @returns The `items` array from the paginated groups response.
  */
 export async function fetchGroups() {
-  const response = await axiosForBackend({
+  const response = await http({
     url: '/api/portfolio/groups',
     method: 'GET',
   });
@@ -172,7 +172,7 @@ export async function fetchGroups() {
  * @returns The created group record.
  */
 export async function createGroup(data: unknown) {
-  const response = await axiosForBackend({
+  const response = await http({
     url: '/api/portfolio/groups',
     method: 'POST',
     data,
@@ -187,7 +187,7 @@ export async function createGroup(data: unknown) {
  * @returns The updated group record.
  */
 export async function updateGroup(id: string, data: unknown) {
-  const response = await axiosForBackend({
+  const response = await http({
     url: `/api/portfolio/groups/${id}`,
     method: 'PATCH',
     data,
@@ -200,7 +200,7 @@ export async function updateGroup(id: string, data: unknown) {
  * @param id - Group primary key.
  */
 export async function deleteGroup(id: string) {
-  await axiosForBackend({
+  await http({
     url: `/api/portfolio/groups/${id}`,
     method: 'DELETE',
   });
@@ -215,7 +215,7 @@ export async function fetchAnalysis(date?: string) {
   const url = date
     ? `/api/portfolio/analysis?date=${date}`
     : '/api/portfolio/analysis';
-  const response = await axiosForBackend({ url, method: 'GET' });
+  const response = await http({ url, method: 'GET' });
   return response.data.items;
 }
 
@@ -224,7 +224,7 @@ export async function fetchAnalysis(date?: string) {
  * @returns An array of `YYYY-MM-DD` strings, with falsy entries removed.
  */
 export async function fetchAnalysisDates() {
-  const response = await axiosForBackend({
+  const response = await http({
     url: '/api/portfolio/analysis/dates',
     method: 'GET',
   });
@@ -244,7 +244,7 @@ export async function fetchTransactions(params?: { ticker?: string; limit?: numb
   if (params?.ticker) query.set('ticker', params.ticker);
   if (params?.limit) query.set('limit', String(params.limit));
   const qs = query.toString();
-  const response = await axiosForBackend({
+  const response = await http({
     url: `/api/portfolio/transactions${qs ? `?${qs}` : ''}`,
     method: 'GET',
   });
@@ -257,7 +257,7 @@ export async function fetchTransactions(params?: { ticker?: string; limit?: numb
  * @returns The created transaction record.
  */
 export async function createTransaction(data: unknown) {
-  const response = await axiosForBackend({
+  const response = await http({
     url: '/api/portfolio/transactions',
     method: 'POST',
     data,
@@ -273,7 +273,7 @@ export async function createTransaction(data: unknown) {
  * @returns The created transaction (and linked deposit) record.
  */
 export async function createTransactionWithAutoDeposit(data: unknown) {
-  const response = await axiosForBackend({
+  const response = await http({
     url: '/api/portfolio/transactions/auto-deposit-buy',
     method: 'POST',
     data,
@@ -287,7 +287,7 @@ export async function createTransactionWithAutoDeposit(data: unknown) {
  * @returns The reconciliation result summary.
  */
 export async function reconcileTransactions() {
-  const response = await axiosForBackend({
+  const response = await http({
     url: '/api/portfolio/transactions/reconcile',
     method: 'POST',
   });
@@ -299,7 +299,7 @@ export async function reconcileTransactions() {
  * @returns The `items` array of closed-position records.
  */
 export async function fetchClosed() {
-  const response = await axiosForBackend({
+  const response = await http({
     url: '/api/portfolio/closed',
     method: 'GET',
   });
@@ -311,7 +311,7 @@ export async function fetchClosed() {
  * @returns The summary payload (total realized gain/loss, win rate, etc.).
  */
 export async function fetchRealizedPlSummary() {
-  const response = await axiosForBackend({
+  const response = await http({
     url: '/api/portfolio/closed/summary',
     method: 'GET',
   });
@@ -324,7 +324,7 @@ export async function fetchRealizedPlSummary() {
  * @returns The created closed-position record.
  */
 export async function createClosed(data: unknown) {
-  const response = await axiosForBackend({
+  const response = await http({
     url: '/api/portfolio/closed',
     method: 'POST',
     data,
@@ -341,7 +341,7 @@ export async function fetchJournal(date?: string) {
   const url = date
     ? `/api/portfolio/journal?date=${date}`
     : '/api/portfolio/journal';
-  const response = await axiosForBackend({ url, method: 'GET' });
+  const response = await http({ url, method: 'GET' });
   return response.data.items;
 }
 
@@ -354,7 +354,7 @@ export async function fetchSnapshots(limit?: number) {
   const url = limit
     ? `/api/portfolio/snapshots?limit=${limit}`
     : '/api/portfolio/snapshots';
-  const response = await axiosForBackend({ url, method: 'GET' });
+  const response = await http({ url, method: 'GET' });
   return response.data.items;
 }
 
@@ -363,7 +363,7 @@ export async function fetchSnapshots(limit?: number) {
  * @returns The `items` array of alpha-pick records.
  */
 export async function fetchAlphaPicks() {
-  const response = await axiosForBackend({
+  const response = await http({
     url: '/api/portfolio/alpha-picks',
     method: 'GET',
   });
@@ -375,7 +375,7 @@ export async function fetchAlphaPicks() {
  * @returns The `items` array of cash-account records.
  */
 export async function fetchCashAccounts() {
-  const response = await axiosForBackend({
+  const response = await http({
     url: '/api/cash',
     method: 'GET',
   });
@@ -389,7 +389,7 @@ export async function fetchCashAccounts() {
  * @returns The update result summary.
  */
 export async function batchUpdatePrices(items: { ticker: string; price: number }[]) {
-  const response = await axiosForBackend({
+  const response = await http({
     url: '/api/portfolio/holdings/prices',
     method: 'PATCH',
     data: { items },
@@ -403,7 +403,7 @@ export async function batchUpdatePrices(items: { ticker: string; price: number }
  * @returns The update result summary.
  */
 export async function batchUpdateWatchPrices(items: { ticker: string; price: number }[]) {
-  const response = await axiosForBackend({
+  const response = await http({
     url: '/api/portfolio/watchlist/prices',
     method: 'PATCH',
     data: { items },
@@ -416,7 +416,7 @@ export async function batchUpdateWatchPrices(items: { ticker: string; price: num
  * @returns The agent-state payload.
  */
 export async function fetchAgentState() {
-  const response = await axiosForBackend({
+  const response = await http({
     url: '/api/agent/state',
     method: 'GET',
   });
@@ -428,7 +428,7 @@ export async function fetchAgentState() {
  * @returns The history payload.
  */
 export async function fetchAgentHistory() {
-  const response = await axiosForBackend({
+  const response = await http({
     url: '/api/agent/history',
     method: 'GET',
   });
@@ -465,7 +465,7 @@ export async function getAgentRuns(params?: {
   if (params?.limit !== undefined) query.set('limit', String(params.limit));
   if (params?.offset !== undefined) query.set('offset', String(params.offset));
   const qs = query.toString();
-  const response = await axiosForBackend({
+  const response = await http({
     url: `/api/multi-agent/runs${qs ? `?${qs}` : ''}`,
     method: 'GET',
   });
@@ -478,7 +478,7 @@ export async function getAgentRuns(params?: {
  * @returns The run record.
  */
 export async function getAgentRun(id: string) {
-  const response = await axiosForBackend({
+  const response = await http({
     url: `/api/multi-agent/runs/${id}`,
     method: 'GET',
   });
@@ -503,7 +503,7 @@ export async function createAgentRun(data: {
   triggerType: string;
   runMode?: string;
 }) {
-  const response = await axiosForBackend({
+  const response = await http({
     url: '/api/multi-agent/runs',
     method: 'POST',
     data,
@@ -517,7 +517,7 @@ export async function createAgentRun(data: {
  * @returns The updated run record.
  */
 export async function startAgentRun(id: string) {
-  const response = await axiosForBackend({
+  const response = await http({
     url: `/api/multi-agent/runs/${id}/start`,
     method: 'POST',
   });
@@ -530,7 +530,7 @@ export async function startAgentRun(id: string) {
  * @returns The latest status snapshot.
  */
 export async function getAgentRunStatus(id: string) {
-  const response = await axiosForBackend({
+  const response = await http({
     url: `/api/multi-agent/runs/${id}/status`,
     method: 'GET',
   });
@@ -558,7 +558,7 @@ export async function submitHumanDecision(
     syncToAnalysis?: boolean;
   },
 ) {
-  const response = await axiosForBackend({
+  const response = await http({
     url: `/api/multi-agent/runs/${id}/human-decision`,
     method: 'POST',
     data,
@@ -579,7 +579,7 @@ export async function batchAgentRuns(data: {
   tiered: boolean;
   tickers?: string[];
 }) {
-  const response = await axiosForBackend({
+  const response = await http({
     url: '/api/multi-agent/runs/batch',
     method: 'POST',
     data,
@@ -592,7 +592,7 @@ export async function batchAgentRuns(data: {
  * @returns The batch enrollment result.
  */
 export async function dailyBatchAgentRuns() {
-  const response = await axiosForBackend({
+  const response = await http({
     url: '/api/multi-agent/daily-batch',
     method: 'POST',
   });
@@ -608,7 +608,7 @@ export async function getLatestRatings(tickers?: string[]) {
   const query = new URLSearchParams();
   if (tickers && tickers.length > 0) query.set('tickers', tickers.join(','));
   const qs = query.toString();
-  const response = await axiosForBackend({
+  const response = await http({
     url: `/api/multi-agent/latest-ratings${qs ? `?${qs}` : ''}`,
     method: 'GET',
   });
@@ -621,7 +621,7 @@ export async function getLatestRatings(tickers?: string[]) {
  * @returns The list of strategy-rule records.
  */
 export async function getStrategyRules() {
-  const response = await axiosForBackend({
+  const response = await http({
     url: '/api/multi-agent/strategy-rules',
     method: 'GET',
   });
@@ -637,7 +637,7 @@ export async function getStrategyRules() {
  * @returns The created rule record.
  */
 export async function createStrategyRule(data: Record<string, unknown>) {
-  const response = await axiosForBackend({
+  const response = await http({
     url: '/api/multi-agent/strategy-rules',
     method: 'POST',
     data,
@@ -652,7 +652,7 @@ export async function createStrategyRule(data: Record<string, unknown>) {
  * @returns The updated rule record.
  */
 export async function updateStrategyRule(id: string, data: Record<string, unknown>) {
-  const response = await axiosForBackend({
+  const response = await http({
     url: `/api/multi-agent/strategy-rules/${id}`,
     method: 'PATCH',
     data,
@@ -666,7 +666,7 @@ export async function updateStrategyRule(id: string, data: Record<string, unknow
  * @returns The delete result.
  */
 export async function deleteStrategyRule(id: string) {
-  const response = await axiosForBackend({
+  const response = await http({
     url: `/api/multi-agent/strategy-rules/${id}`,
     method: 'DELETE',
   });
@@ -679,7 +679,7 @@ export async function deleteStrategyRule(id: string) {
  * @returns The reorder result.
  */
 export async function reorderStrategyRules(items: Array<{ id: string; sort: number }>) {
-  const response = await axiosForBackend({
+  const response = await http({
     url: '/api/multi-agent/strategy-rules/reorder',
     method: 'POST',
     data: { items },
@@ -693,7 +693,7 @@ export async function reorderStrategyRules(items: Array<{ id: string; sort: numb
  * @returns The reset result.
  */
 export async function resetStrategyRules() {
-  const response = await axiosForBackend({
+  const response = await http({
     url: '/api/multi-agent/strategy-rules/reset-default',
     method: 'POST',
   });
@@ -707,7 +707,7 @@ export async function resetStrategyRules() {
  * @returns The deep-report payload.
  */
 export async function getDeepReport(runId: string) {
-  const response = await axiosForBackend({
+  const response = await http({
     url: `/api/multi-agent/deep-report/${runId}`,
     method: 'GET',
   });
@@ -720,7 +720,7 @@ export async function getDeepReport(runId: string) {
  * @returns The generated sample report.
  */
 export async function generateSampleDeepReport(runId: string) {
-  const response = await axiosForBackend({
+  const response = await http({
     url: `/api/multi-agent/runs/${runId}/generate-sample-deep-report`,
     method: 'POST',
   });
@@ -734,7 +734,7 @@ export async function generateSampleDeepReport(runId: string) {
  */
 export async function searchStocks(q: string) {
   if (!q || !q.trim()) return [];
-  const response = await axiosForBackend({
+  const response = await http({
     url: `/api/quote/search?q=${encodeURIComponent(q.trim())}`,
     method: 'GET',
   });
@@ -749,7 +749,7 @@ export async function searchStocks(q: string) {
  * @returns The portfolio-context payload.
  */
 export async function getPortfolioContext() {
-  const response = await axiosForBackend({
+  const response = await http({
     url: '/api/multi-agent/portfolio-context',
     method: 'GET',
   });
@@ -757,3 +757,32 @@ export async function getPortfolioContext() {
 }
 
 export { logger };
+
+/**
+ * Auth: first-party account system (server/modules/auth).
+ */
+import type { AuthTokens, AuthProfile, LoginDto, RegisterDto } from '@shared/api.interface';
+
+/**
+ * Log in with username + password; returns the issued JWT session.
+ */
+export async function apiLogin(dto: LoginDto): Promise<AuthTokens> {
+  const response = await http({ url: '/api/auth/login', method: 'POST', data: dto });
+  return response.data;
+}
+
+/**
+ * Create an account and return the issued JWT session.
+ */
+export async function apiRegister(dto: RegisterDto): Promise<AuthTokens> {
+  const response = await http({ url: '/api/auth/register', method: 'POST', data: dto });
+  return response.data;
+}
+
+/**
+ * Profile of the caller (layout user menu).
+ */
+export async function fetchMyProfile(): Promise<AuthProfile> {
+  const response = await http({ url: '/api/auth/me', method: 'GET' });
+  return response.data;
+}

@@ -8,7 +8,7 @@
  * conversions fall back to a 1:1 pass-through (logged) when a rate is missing.
  */
 import { Injectable, Inject, Logger, forwardRef } from '@nestjs/common';
-import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '@lark-apaas/fullstack-nestjs-core';
+import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '../../common/platform';
 import { eq, desc, and, gte, sql } from 'drizzle-orm';
 import { holdings, cashAccounts, snapshots } from '@server/database/schema';
 import type { DashboardOverview, GroupSummary, Currency, Market } from '@shared/api.interface';
@@ -118,7 +118,7 @@ export class DashboardService {
         currency: holdings.currency,
       })
       .from(holdings)
-      .where(sql`(${holdings.owner}).user_id = ${userId}`);
+      .where(sql`${holdings.owner} = ${userId}`);
 
     const items: HoldingRow[] = holdingRows.map((row) => ({
       id: row.id,
@@ -137,7 +137,7 @@ export class DashboardService {
         balance: cashAccounts.balance,
       })
       .from(cashAccounts)
-      .where(sql`(${cashAccounts.owner}).user_id = ${userId}`);
+      .where(sql`${cashAccounts.owner} = ${userId}`);
 
     const cashItems: CashRow[] = cashRows.map((row) => ({
       currency: row.currency,
@@ -274,7 +274,7 @@ export class DashboardService {
         dailyPct: snapshots.dailyPct,
       })
       .from(snapshots)
-      .where(sql`(${snapshots.owner}).user_id = ${userId}`)
+      .where(sql`${snapshots.owner} = ${userId}`)
       .orderBy(desc(snapshots.snapshotDate))
       .limit(1);
 
@@ -352,7 +352,7 @@ export class DashboardService {
       .from(snapshots)
       .where(
         and(
-          sql`(${snapshots.owner}).user_id = ${userId}`,
+          sql`${snapshots.owner} = ${userId}`,
           gte(snapshots.snapshotDate, startStr),
         ),
       )
@@ -375,7 +375,7 @@ export class DashboardService {
 
       let avBase = av;
       let dpBase = dp;
-      let dPctBase = dPct;
+      const dPctBase = dPct;
 
       if (base !== 'USD') {
         try {

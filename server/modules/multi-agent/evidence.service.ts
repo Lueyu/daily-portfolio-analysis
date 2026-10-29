@@ -18,7 +18,7 @@
  * for filtering today, but it is stored for future prompt-side ranking.
  */
 import { Injectable, Inject, Logger } from '@nestjs/common';
-import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '@lark-apaas/fullstack-nestjs-core';
+import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '../../common/platform';
 import { eq } from 'drizzle-orm';
 import { holdings, watchlist } from '@server/database/schema';
 import { QuoteService } from '@server/modules/quote/quote.service';

@@ -6,7 +6,7 @@
  * rows (ticker containing "testdeep") are filtered out of listings.
  */
 import { Injectable, Inject, Logger, NotFoundException } from '@nestjs/common';
-import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '@lark-apaas/fullstack-nestjs-core';
+import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '../../common/platform';
 import { eq, and, desc, asc, notIlike } from 'drizzle-orm';
 import { analysis } from '@server/database/schema';
 import type { Analysis, CreateAnalysisDto, ListResponse } from '@shared/api.interface';

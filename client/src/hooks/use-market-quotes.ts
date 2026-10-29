@@ -12,8 +12,8 @@
  * visibility change, so background tabs do not hammer the quote API.
  */
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { axiosForBackend } from '@lark-apaas/client-toolkit/utils/getAxiosForBackend';
-import { logger } from '@lark-apaas/client-toolkit/logger';
+import http from '../api/http';
+import { logger } from '../utils/logger';
 import type { QuoteResponse, Market } from '@shared/api.interface';
 
 /**
@@ -382,7 +382,7 @@ class QuoteScheduler {
     this.marketStatus[market] = isMarketTrading(market);
 
     try {
-      const resp = await axiosForBackend.get<{ items: QuoteResponse[] }>('/api/quote/batch', {
+      const resp = await http.get<{ items: QuoteResponse[] }>('/api/quote/batch', {
         params: { symbols: symbols.join(',') },
       });
       const items = resp.data?.items;

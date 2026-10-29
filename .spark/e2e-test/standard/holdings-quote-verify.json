@@ -1,1 +1,0 @@
-{"cases":[{"id":1,"priority":"p0","description":"持仓页行情价格已更新，币种符号正确，无行业列，三市场过滤可见"},{"id":2,"priority":"p1","description":"持仓页刷新按钮触发quote/batch请求"},{"id":3,"priority":"p1","description":"港股01810显示HK$货币符号，价格为实时价"}]}

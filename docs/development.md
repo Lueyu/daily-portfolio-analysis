@@ -15,13 +15,14 @@ this page is about running and extending the codebase.
 | Mode | How to start | Database | Best for |
 |---|---|---|---|
 | **Docker demo** | `docker compose up --build` | containerized PostgreSQL + demo seed | Full product in ~5 minutes, zero keys |
-| Source: full stack | `npm run dev` | via `SUDA_DATABASE_URL` (local or cloud) | Everyday development |
+| Source: full stack | `npm run dev` | via `DATABASE_URL` (local PostgreSQL) | Everyday development |
 | Source: backend only | `npm run dev:server` | same | API work |
 | Source: client only | `npm run dev:client` | proxies `/api` to :3000 | UI work |
 
-The historical platform-specific launchers (`scripts/dev-local-*.ps1`,
-`scripts/sync-from-miaoda.ps1`) are being retired as the project removes its
-platform coupling — do not build new workflows on them.
+The historical platform launchers and the Miaoda sync script have been
+removed — GitHub is the single source of truth since the de-platforming, and
+the first-party auth system (username + password, JWT sessions) replaced the
+platform gateway entirely.
 
 ## Lint, types, tests
 
@@ -72,13 +73,13 @@ market-semantic colors; keep them reserved for market up/down semantics.
 (`npm run gen:db-schema`) — do not edit it by hand. The SQL sources of truth
 for self-hosting live in `scripts/db/` and `drizzle/`.
 
-## Notes on the in-flight de-platforming
+## Notes on the de-platforming (completed)
 
 The webapp was originally developed on the Miaoda (aPaaS) cloud and inherited
-`@lark-apaas/*` packages for hosting, auth and database injection. This
-coupling is being removed (see the roadmap in the README): GitHub is becoming
-the single source of truth, auth moves to a first-party username+password
-system, and the platform compat layer will be replaced by direct PostgreSQL
-access. Expect the related scripts and env vars (`SUDA_DATABASE_URL`,
-`LOCAL_DEV_USER_ID`, …) to change names as this lands — migration notes will
-accompany each release.
+`@lark-apaas/*` packages for hosting, auth and database injection. That
+coupling has been fully removed: GitHub is the single source of truth, auth is
+the first-party username+password system in `server/modules/auth`, and the
+database layer is a direct Drizzle connection (`server/common/platform`).
+The old env vars (`SUDA_DATABASE_URL`, `LOCAL_DEV_USER_ID`, `DISABLE_CSRF`)
+are gone; the current set is documented in
+[self-hosting.md](self-hosting.md).

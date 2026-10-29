@@ -15,7 +15,7 @@ import {
   Query,
   Req,
 } from '@nestjs/common';
-import { NeedLogin } from '@lark-apaas/fullstack-nestjs-core';
+import { NeedLogin } from '../../common/platform';
 import type { Request } from 'express';
 import { AnalysisService } from './analysis.service';
 import type {

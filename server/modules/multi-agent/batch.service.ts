@@ -19,7 +19,7 @@
  *    items in tiered mode.
  */
 import { Injectable, Inject, Logger, OnModuleInit } from '@nestjs/common';
-import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '@lark-apaas/fullstack-nestjs-core';
+import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '../../common/platform';
 import { eq, and } from 'drizzle-orm';
 import { holdings, watchlist, agentRuns } from '@server/database/schema';
 import { MultiAgentService } from './multi-agent.service';

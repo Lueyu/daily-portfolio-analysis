@@ -10,7 +10,7 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import { Edit3, Save, X } from 'lucide-react';
 import { toast } from 'sonner';
-import { axiosForBackend } from '@lark-apaas/client-toolkit/utils/getAxiosForBackend';
+import http from '@/api/http';
 import { fetchJournal, fetchSnapshots, logger } from '@/api';
 import type { JournalEntry, Snapshot } from '@shared/api.interface';
 import { formatDate, cn, toDate } from '@/utils/format';
@@ -164,7 +164,7 @@ export default function JournalPage() {
         plan: editValues.plan || undefined,
         lessons: editValues.lessons || undefined,
       };
-      const response = await axiosForBackend({
+      const response = await http({
         url: '/api/portfolio/journal',
         method: 'POST',
         data: payload,

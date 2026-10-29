@@ -14,7 +14,7 @@ import {
   Req,
   BadRequestException,
 } from '@nestjs/common';
-import { NeedLogin } from '@lark-apaas/fullstack-nestjs-core';
+import { NeedLogin } from '../../common/platform';
 import type { Request } from 'express';
 
 import { CashAccountsService } from './cash-accounts.service';

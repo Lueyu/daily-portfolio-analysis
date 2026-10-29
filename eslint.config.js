@@ -1,21 +1,16 @@
 /**
  * eslint.config.js — flat ESLint config for the whole monorepo.
  *
- * Three blocks:
- *  1. Global ignores: build output (dist, dist-server), node_modules, generated
- *     API client, .d.ts files, source maps.
- *  2. Client block (client/** + shared/**): uses the fullstack-presets client
- *     rules, with tsconfig.app.json as the project, and import aliases
- *     (@ → ./client/src, @client → ./client, @shared → ./shared).
- *  3. Server block (server/** + shared/**): uses the fullstack-presets server
- *     rules, with tsconfig.node.json as the project, and import aliases
- *     (@server → ./server, @shared → ./shared).
+ * Two typed-linting blocks:
+ *  1. Client (client/** + shared/**) with tsconfig.app.json as the project.
+ *  2. Server (server/** + shared/**) with tsconfig.node.json as the project.
  *
- * The shared/ directory is linted under both client and server configs so
- * cross-cutting types are checked consistently.
+ * The shared/ directory is linted under both configs so cross-cutting types
+ * are checked consistently. Import aliases (@, @client, @server, @shared) are
+ * wired into the import resolver for both blocks.
  */
 const tseslint = require('typescript-eslint');
-const { eslintPresetsOfSimple } = require('@lark-apaas/fullstack-presets');
+const reactHooks = require('eslint-plugin-react-hooks');
 
 module.exports = tseslint.config(
   {
@@ -33,12 +28,24 @@ module.exports = tseslint.config(
   {
     files: ['client/**/*.{ts,tsx}', 'shared/**/*.{ts,tsx}'],
     extends: [
-      ...eslintPresetsOfSimple.client,
+      ...tseslint.configs.recommended,
     ],
+    plugins: {
+      'react-hooks': reactHooks,
+    },
     languageOptions: {
       parserOptions: {
         project: './tsconfig.app.json',
       },
+    },
+    rules: {
+      'react-hooks/rules-of-hooks': 'error',
+      'react-hooks/exhaustive-deps': 'warn',
+      '@typescript-eslint/no-explicit-any': 'off',
+      '@typescript-eslint/no-unused-vars': [
+        'warn',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
+      ],
     },
     settings: {
       'import/resolver': {
@@ -57,12 +64,19 @@ module.exports = tseslint.config(
   {
     files: ['server/**/*.{ts,tsx}', 'shared/**/*.{ts,tsx}'],
     extends: [
-      ...eslintPresetsOfSimple.server,
+      ...tseslint.configs.recommended,
     ],
     languageOptions: {
       parserOptions: {
         project: './tsconfig.node.json',
-      }
+      },
+    },
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'off',
+      '@typescript-eslint/no-unused-vars': [
+        'warn',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
+      ],
     },
     settings: {
       'import/resolver': {
@@ -70,7 +84,7 @@ module.exports = tseslint.config(
           map: [['@server', './server'], ['@shared', './shared']],
           extensions: ['.js', '.jsx', '.ts', '.tsx'],
         },
-      }
-    }
+      },
+    },
   },
 );

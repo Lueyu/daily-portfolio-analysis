@@ -21,10 +21,10 @@ take our word for it.
 | Real name / identity | ❌ Never | — |
 | Telemetry / analytics | ❌ None | 无埋点、无统计、无错误上报 |
 | Holdings & transactions | ✅ In your own DB | 只存在你部署的 PostgreSQL 里 |
-| Password | ✅ argon2 哈希 | 明文密码不落库、不记日志 |
+| Password | ✅ bcrypt 哈希 | 明文密码不落库、不记日志 |
 
-> 账号体系状态：自建「用户名 + 密码」登录正在落地（见 [Roadmap](../README.md#roadmap)）；
-> 当前 Docker 演示模式使用内置演示身份。
+> 账号体系已落地：自建「用户名 + 密码」登录（`server/modules/auth`），JWT 会话，
+> 无 cookie、无 CSRF 面。注册可通过 `REGISTER_ENABLED=false` 关闭。
 
 ## What leaves your machine
 

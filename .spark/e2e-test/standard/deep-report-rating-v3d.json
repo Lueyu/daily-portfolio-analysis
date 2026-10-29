@@ -1,1 +1,0 @@
-{"cases":[{"id":1,"priority":"p0","description":"访问/analysis?cb=sep30finalratingv3d，切到Multi-Agent标签，01810.HK卡片头部右上角存在评级徽章且文本内容为Hold"},{"id":2,"priority":"p1","description":"同卡片同时显示中置信度徽章、深度报告角标和三情景目标价区块"},{"id":3,"priority":"p1","description":"页面主bundle文件名（index-*.js），记录其hash值"}]}

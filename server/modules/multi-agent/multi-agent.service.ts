@@ -29,7 +29,7 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
-import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '@lark-apaas/fullstack-nestjs-core';
+import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '../../common/platform';
 import { eq, and, desc, inArray, gte, lt, sql } from 'drizzle-orm';
 import {
   agentRuns,

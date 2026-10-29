@@ -6,7 +6,7 @@
  * `upsert` updates the existing entry for that date or creates one if absent.
  */
 import { Injectable, Inject, Logger, NotFoundException } from '@nestjs/common';
-import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '@lark-apaas/fullstack-nestjs-core';
+import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '../../common/platform';
 import { eq, and, desc } from 'drizzle-orm';
 import { journal } from '@server/database/schema';
 import type { JournalEntry, CreateJournalDto, ListResponse } from '@shared/api.interface';

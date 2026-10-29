@@ -1,1 +1,0 @@
-{"cases":[{"id":1,"priority":"p0","description":"打开仪表盘 /，验证账户总值显示为快照数值(10454.66)且浮盈为正(+1362.51/+14.99%)，分组汇总正常展示"},{"id":2,"priority":"p0","description":"打开每日分析 /analysis，验证顶部显示PORTFOLIO策略复盘卡片，催化剂和风险条目完整不错拆"},{"id":3,"priority":"p0","description":"打开投资日志 /journal，验证日期导航和净值图表正常渲染"}]}

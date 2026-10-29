@@ -8,7 +8,7 @@
  * `TransactionsService`.
  */
 import { Controller, Get, Post, Patch, Delete, Body, Param, Query, Req } from '@nestjs/common';
-import { NeedLogin } from '@lark-apaas/fullstack-nestjs-core';
+import { NeedLogin } from '../../common/platform';
 import type { Request } from 'express';
 import { TransactionsService } from './transactions.service';
 import type { Transaction, CreateTransactionDto, ReconcileResult } from '@shared/api.interface';

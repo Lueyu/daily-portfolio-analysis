@@ -8,7 +8,7 @@
  */
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { eq, desc, and } from 'drizzle-orm';
-import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '@lark-apaas/fullstack-nestjs-core';
+import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '../../common/platform';
 
 import { watchlist } from '@server/database/schema';
 import { QuoteService } from './../quote/quote.service';

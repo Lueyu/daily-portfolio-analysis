@@ -1,1 +1,0 @@
-{"cases":[{"id":1,"priority":"p0","description":"打开交易记录页，点击「重算对账」按钮，验证成功提示和列表刷新"},{"id":2,"priority":"p0","description":"在交易记录页添加一笔买入交易，验证交易出现在列表中且持仓页对应股票出现"},{"id":3,"priority":"p1","description":"在交易记录页添加一笔卖出交易，验证持仓股数减少且已平仓记录出现"},{"id":4,"priority":"p1","description":"删除一笔交易，验证持仓同步回退到删除前状态"},{"id":5,"priority":"p0","description":"验证仪表盘总览数字在交易变动后正确刷新"}]}

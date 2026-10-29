@@ -6,7 +6,7 @@
  * currency) and a daily P&L time series. Requires login on every route.
  */
 import { Controller, Get, Post, Query, Req } from '@nestjs/common';
-import { NeedLogin } from '@lark-apaas/fullstack-nestjs-core';
+import { NeedLogin } from '../../common/platform';
 import type { Request } from 'express';
 import { DashboardService } from './dashboard.service';
 import type { DashboardOverview } from '@shared/api.interface';

@@ -25,7 +25,7 @@ import {
   Check,
   X,
 } from 'lucide-react';
-import { logger } from '@lark-apaas/client-toolkit/logger';
+import { logger } from '@/utils/logger';
 import type {
   StrategyRule,
   RuleCategory,

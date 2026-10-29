@@ -1,16 +1,20 @@
 /**
  * @file components/Layout.tsx
  * @description App-level shell: sidebar navigation, top bar, user menu, theme
- * toggle, sign-out flow and the empty-data warning banner.
+ * toggle and the session guard.
  *
  * Mounted as the layout route in `app.tsx`; every feature page renders inside
  * its `<Outlet/>`. Also owns the market-status indicator shown in the top bar.
+ *
+ * Auth: the layout requires a stored session (token presence check; actual
+ * validity is enforced server-side and by the http 401 interceptor). The
+ * user menu reads the profile from GET /api/auth/me.
  */
-import { Outlet, NavLink, useLocation } from 'react-router-dom';
+import { Outlet, NavLink, useLocation, useNavigate, Navigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { useCurrentUserProfile } from '@lark-apaas/client-toolkit/hooks/useCurrentUserProfile';
-import { authClient } from '@lark-apaas/client-toolkit/auth';
-import { logger, fetchDashboard } from '@/api';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { fetchMyProfile } from '@/api';
+import { hasSession, tokenStore } from '@/api/http';
 import {
   LayoutDashboard,
   Briefcase,
@@ -26,24 +30,9 @@ import {
   X,
   Circle,
   LogOut,
-  User as UserIcon,
-  AlertTriangle,
-  Sparkles,
-  Phone,
 } from 'lucide-react';
 import { useTheme } from '../hooks/use-theme';
 import { getAggregateMarketStatus, forceRefreshAllQuotes } from '../hooks/use-market-quotes';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Skeleton } from '@/components/ui/skeleton';
 
@@ -61,59 +50,31 @@ const navItems = [
   { path: '/settings/rules', label: '策略规则', icon: Settings },
 ];
 
+/** Profile shape used by the sidebar user block. */
+interface SidebarProfile {
+  id: string;
+  username: string;
+  displayName: string | null;
+}
+
 /**
- * Root layout component. Renders the responsive sidebar (off-canvas on mobile),
- * top bar with page title + market indicator, and the routed `<Outlet/>`.
- *
- * Side effects:
- *  - Closes the mobile drawer on route change.
- *  - Once the user profile loads, probes `/api/portfolio/dashboard/overview`
- *    to detect an empty portfolio; combined with the phone-login check this
- *    surfaces a warning banner guiding users to switch to their Feishu account.
+ * Root layout component. Renders the responsive sidebar (off-canvas on
+ * mobile), top bar with page title + market indicator, and the routed
+ * `<Outlet/>`. Redirects to /login when no session exists.
  */
 function Layout() {
   const { theme, toggleTheme } = useTheme();
+  const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [signOutOpen, setSignOutOpen] = useState(false);
-  const [isPhoneEmpty, setIsPhoneEmpty] = useState(false);
-  const [userLoaded, setUserLoaded] = useState(false);
-  const [dashboardEmpty, setDashboardEmpty] = useState(false);
-  const [phoneAvailable, setPhoneAvailable] = useState(false);
   const location = useLocation();
-  const user = useCurrentUserProfile();
 
   useEffect(() => {
     setMobileOpen(false);
   }, [location.pathname]);
 
-  useEffect(() => {
-    if (user?.user_id) {
-      setUserLoaded(true);
-    }
-  }, [user?.user_id]);
-
-  useEffect(() => {
-    if (!user?.user_id) return;
-    let cancelled = false;
-    const checkEmpty = async () => {
-      try {
-        const data = await fetchDashboard();
-        const isEmpty = !data?.accountValue || Number(data.accountValue) === 0;
-        if (!cancelled) setDashboardEmpty(isEmpty);
-      } catch {
-        if (!cancelled) setDashboardEmpty(false);
-      }
-    };
-    checkEmpty();
-    return () => { cancelled = true; };
-  }, [user?.user_id]);
-
-  const isPhoneLogin = userLoaded && !user?.lark_user_id && phoneAvailable;
-  const showEmptyWarning = isPhoneLogin && dashboardEmpty;
-
-  const handleSwitchToFeishu = () => {
-    setSignOutOpen(true);
-  };
+  if (!hasSession()) {
+    return <Navigate to="/login" replace state={{ from: location }} />;
+  }
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-background text-foreground">
@@ -160,17 +121,7 @@ function Layout() {
           </nav>
 
           <div className="border-t border-sidebar-border p-3 space-y-1">
-            <div className="flex items-center gap-2.5 rounded-md px-2 py-1.5">
-              <UserAvatar />
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-medium text-sidebar-foreground">
-                  <UserName />
-                </div>
-                <div className="flex items-center gap-1 truncate text-xs text-sidebar-foreground/50">
-                  <LoginMethodBadge />
-                </div>
-              </div>
-            </div>
+            <SidebarUserBlock />
             <button
               onClick={toggleTheme}
               className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
@@ -178,16 +129,8 @@ function Layout() {
               {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
               <span>{theme === 'dark' ? '浅色模式' : '深色模式'}</span>
             </button>
-            <button
-              onClick={() => setSignOutOpen(true)}
-              className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
-            >
-              <LogOut size={18} />
-              <span>切换账号</span>
-            </button>
+            <LogoutButton />
           </div>
-
-          <SignOutDialog open={signOutOpen} onOpenChange={setSignOutOpen} />
         </div>
       </aside>
 
@@ -222,25 +165,6 @@ function Layout() {
 
         {/* Page content */}
         <main className="flex-1 overflow-y-auto p-4 md:p-6 safe-bottom">
-          {showEmptyWarning && (
-            <Alert variant="destructive" className="mb-4 border-amber-500/50 bg-amber-500/10">
-              <AlertTriangle className="h-4 w-4 text-amber-500" />
-              <AlertTitle className="text-amber-700 dark:text-amber-400">
-                当前为手机号登录的独立空间，未找到持仓数据
-              </AlertTitle>
-              <AlertDescription className="text-amber-700/80 dark:text-amber-400/80">
-                你的全部数据在飞书账号下。请点击下方按钮切换到飞书登录，
-                登录同一飞书账号即可恢复所有持仓、分析与快照。
-                <button
-                  onClick={handleSwitchToFeishu}
-                  className="ml-2 inline-flex items-center gap-1 rounded-md bg-amber-500 px-2.5 py-1 text-xs font-medium text-white hover:bg-amber-600"
-                >
-                  <Sparkles size={12} />
-                  切换到飞书登录
-                </button>
-              </AlertDescription>
-            </Alert>
-          )}
           <Outlet />
         </main>
       </div>
@@ -295,131 +219,57 @@ function MarketStatusIndicator() {
   );
 }
 
-/** Sidebar avatar: shows the user's photo, falling back to an initial or generic icon. */
-function UserAvatar() {
-  const user = useCurrentUserProfile();
-  const name = user?.name || '';
+/**
+ * Sidebar user block: avatar with initial, display name and username.
+ * Fetches GET /api/auth/me (react-query); shows skeletons until resolved.
+ */
+function SidebarUserBlock() {
+  const { data: profile, isLoading } = useQuery<SidebarProfile>({
+    queryKey: ['auth', 'me'],
+    queryFn: fetchMyProfile,
+    staleTime: 5 * 60 * 1000,
+    retry: false,
+  });
+
+  const name = profile?.displayName || profile?.username || '';
   const initial = name ? name.charAt(0).toUpperCase() : '?';
 
-  if (user?.avatar) {
-    return (
-      <Avatar className="h-8 w-8 border border-sidebar-border">
-        <AvatarImage src={user.avatar} alt={name} />
-        <AvatarFallback>{initial}</AvatarFallback>
-      </Avatar>
-    );
-  }
-
   return (
-    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-sidebar-accent text-sidebar-accent-foreground">
-      <UserIcon size={14} />
+    <div className="flex items-center gap-2.5 rounded-md px-2 py-1.5">
+      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-sidebar-accent text-sm font-semibold text-sidebar-accent-foreground">
+        {isLoading ? <Skeleton className="h-8 w-8 rounded-full" /> : initial}
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-sm font-medium text-sidebar-foreground">
+          {isLoading ? <Skeleton className="h-4 w-16" /> : name || '未知用户'}
+        </div>
+        <div className="truncate text-xs text-sidebar-foreground/50">
+          {isLoading ? <Skeleton className="mt-1 h-3 w-12" /> : `@${profile?.username ?? ''}`}
+        </div>
+      </div>
     </div>
   );
 }
 
-/** Sidebar display name; renders a skeleton until the profile resolves. */
-function UserName() {
-  const user = useCurrentUserProfile();
-  if (!user?.user_id) return <Skeleton className="h-4 w-16" />;
-  return <span>{user.name || '未知用户'}</span>;
-}
+/** Sign out: drop the local session and return to the login page. */
+function LogoutButton() {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
-/**
- * Badge indicating how the current user signed in.
- * - Feishu (lark_user_id present) -> green "飞书账号" badge.
- * - Phone login -> amber masked phone number.
- * - Otherwise generic "当前账号".
- */
-function LoginMethodBadge() {
-  const user = useCurrentUserProfile();
-  const [phoneNumber, setPhoneNumber] = useState<string>('');
-
-  useEffect(() => {
-    if (!user?.user_id) return;
-    const loadPhone = async () => {
-      try {
-        const result = await authClient.session.getUserInfo();
-        const info = result.data?.user_info;
-        if (info?.phone_number) {
-          setPhoneNumber(info.phone_number);
-        }
-      } catch {
-        // ignore
-      }
-    };
-    loadPhone();
-  }, [user?.user_id]);
-
-  if (!user?.user_id) return <Skeleton className="h-4 w-16" />;
-
-  if (user.lark_user_id) {
-    return (
-      <span className="inline-flex items-center gap-1">
-        <Sparkles size={10} className="text-success" />
-        <span>飞书账号</span>
-      </span>
-    );
-  }
-
-  if (phoneNumber) {
-    const masked = phoneNumber.length >= 11
-      ? `${phoneNumber.slice(0, 3)}****${phoneNumber.slice(-4)}`
-      : phoneNumber;
-    return (
-      <span className="inline-flex items-center gap-1 text-amber-500/80">
-        <Phone size={10} />
-        <span>手机号 {masked}</span>
-      </span>
-    );
-  }
-
-  return <span>当前账号</span>;
-}
-
-/**
- * Confirmation dialog for signing out / switching accounts.
- * On confirm it calls the aPaaS `authClient.session.signOut` and redirects to
- * the login page regardless of success/failure (the user must re-authenticate).
- */
-function SignOutDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
-  const [signingOut, setSigningOut] = useState(false);
-
-  const handleSignOut = async () => {
-    try {
-      setSigningOut(true);
-      const result = await authClient.session.signOut();
-      if (result.error) {
-        logger.error('退出登录失败', result.error.message);
-      }
-      authClient.session.redirectToLogin();
-    } catch (error) {
-      logger.error('退出登录异常', error);
-      authClient.session.redirectToLogin();
-    } finally {
-      setSigningOut(false);
-    }
+  const handleLogout = () => {
+    tokenStore.clear();
+    queryClient.clear();
+    navigate('/login', { replace: true });
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>切换账号</DialogTitle>
-          <DialogDescription className="pt-2 leading-relaxed">
-            退出后需重新用飞书登录。当前账号的持仓、分析、快照等数据会保留，
-            重新登录同一账号即可恢复。
-          </DialogDescription>
-        </DialogHeader>
-        <DialogFooter>
-          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={signingOut}>
-            取消
-          </Button>
-          <Button onClick={handleSignOut} disabled={signingOut}>
-            {signingOut ? '正在退出...' : '确认退出'}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <button
+      onClick={handleLogout}
+      className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
+    >
+      <LogOut size={18} />
+      <span>退出登录</span>
+    </button>
   );
 }
 

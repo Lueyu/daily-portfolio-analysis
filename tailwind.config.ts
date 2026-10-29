@@ -2,16 +2,15 @@
  * @file tailwind.config.ts
  * @description Tailwind CSS configuration.
  *
- * Uses the shared Lark aapaas "simple" preset and scans all source files under
- * `client/src` for utility classes. Theme extensions (success/warning/destructive
- * tokens, font-serif / font-mono-nums families) live in the preset.
+ * Scans client sources for utility classes. Design tokens (colors, fonts,
+ * radii, shadows, bull/bear semantic colors) are declared as CSS variables
+ * in client/src/tailwind-theme.css and mapped via the `@theme inline` block
+ * there; the typography plugin is registered from CSS (typography.css) via
+ * `@plugin`, so this file only sets the content globs.
  */
-import { createTailwindPresetOfSimple } from '@lark-apaas/fullstack-presets';
-
 export default {
-  presets: [createTailwindPresetOfSimple()],
   content: [
-    './client/src/**/*.{ts,tsx,css}',
+    './client/**/*.{ts,tsx,html}',
   ],
   plugins: [],
 }

@@ -9,7 +9,7 @@
  */
 import { Injectable, Inject, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
-import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '@lark-apaas/fullstack-nestjs-core';
+import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '../../common/platform';
 import { eq, desc, sql } from 'drizzle-orm';
 import { firstValueFrom } from 'rxjs';
 import { fxRates } from '@server/database/schema';

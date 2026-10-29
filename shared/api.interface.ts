@@ -917,3 +917,37 @@ export interface PortfolioContext {
   }>;
   companyExposures: Record<string, number>;
 }
+
+/**
+ * Auth: first-party account system (server/modules/auth).
+ *
+ * Privacy posture: an account is a username + bcrypt password hash. No
+ * phone number, no email verification; emailNotify is an optional routing
+ * hint for notifications and is never required.
+ */
+export interface AuthUser {
+  id: string;
+  username: string;
+  displayName: string | null;
+}
+
+export interface AuthProfile extends AuthUser {
+  emailNotify: string | null;
+}
+
+export interface AuthTokens {
+  user: AuthUser;
+  accessToken: string;
+  refreshToken: string;
+}
+
+export interface LoginDto {
+  username: string;
+  password: string;
+}
+
+export interface RegisterDto {
+  username: string;
+  password: string;
+  displayName?: string;
+}
