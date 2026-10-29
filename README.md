@@ -25,8 +25,9 @@ Self-hosted. No phone number, no email verification, zero telemetry — see
 ![Dashboard](docs/screenshots/dashboard.png)
 
 <details>
-<summary><b>More screenshots</b> (daily analysis · deep research report)</summary>
+<summary><b>More screenshots</b> (paper trading · daily analysis · deep research report)</summary>
 
+![AI paper trading](docs/screenshots/paper-trading.png)
 ![Daily analysis](docs/screenshots/daily-analysis.png)
 ![Deep research report](docs/screenshots/deep-report.png)
 
@@ -36,8 +37,8 @@ Self-hosted. No phone number, no email verification, zero telemetry — see
 
 | | |
 |---|---|
-| 🗣️ **AI 吵架出研报** | Pick any stock. A bull and a bear argue over it — every point must cite evidence — a critic overturns the weak claims, your risk rules run as hard gates, and a PM rolls it into a **14-section research report**. Re-run it and you can see how the view changed, and *why*. |
-| 🧭 **每天给持仓做体检** | One glance card per holding and watchlist stock: rating, action, target price, catalysts, risks. Net-value snapshots, journals, realized P&L — the boring bookkeeping, done for you. |
+| 🗣️ **AI 吵架出研报** | Pick any stock. A bull and a bear argue over it — every point must cite evidence — a critic overturns the weak claims, your risk rules run as hard gates, and a PM rolls it into a **14-section research report**. Re-run it and you can see how the view changed, and *why*. Daily health checks, watchlist scans, journals and realized P&L included. |
+| 🤖 **AI 全天候模拟盘** | A fully isolated paper account where an AI agent watches the markets around the clock, trades on the signals from your own research ratings, and pushes a notification (Webhook / Bark / Server酱 / 邮件 / Telegram) every time it fills. Hard guardrails: daily-loss circuit breaker, per-order caps, per-day caps — and no real-broker code path exists anywhere. |
 | 🔒 **不碰你的个人数据** | Self-hosted, zero telemetry, username+password only (no phone number, no email verification). The only outbound calls are the ones you make with **your own API keys**. |
 
 ## Try it in 5 minutes
@@ -69,7 +70,7 @@ quotes. Details: [self-hosting guide](docs/self-hosting.md).
 - ✅ Multi-agent research reports (bull/bear debate, critic, risk gates, versioned)
 - ✅ One-command Docker demo with fictional data
 - ✅ **First-party accounts** — username + password (bcrypt), JWT sessions, no phone number, no email verification, registration toggle via env
-- 🚧 **AI paper trading** — an execution agent with an adapter interface (paper broker first, real brokers when/if they open up), hard guardrails (daily-loss circuit breaker, per-order caps), and push notifications (Webhook / Bark / Server酱 / SMTP / Telegram) when it fills
+- ✅ **AI paper trading** — signal-driven watchbot with hard guardrails (daily-loss circuit breaker, per-order/per-day caps), market-clock aware, and push notifications on fills (Webhook / Bark / Server酱 / SMTP / Telegram)
 - 🚧 **Portfolio import** — generic CSV, Robinhood CSV, and broker-screenshot OCR (powered by your own multimodal key)
 - 🔜 **Desktop app** — one-click installer; download counts via GitHub Releases, no telemetry
 

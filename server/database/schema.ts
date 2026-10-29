@@ -677,3 +677,125 @@ export const snapshotsTable = snapshots;
 export const strategyRulesTable = strategyRules;
 export const transactionsTable = transactions;
 export const watchlistTable = watchlist;
+
+/**
+ * Paper trading (AI 模拟盘) — fully isolated from real records. The broker
+ * adapter is paper-only by construction: no table here connects to any real
+ * brokerage account.
+ */
+
+/** One paper account per user; guardrails config lives inline as JSON. */
+export const paperAccounts = pgTable("paper_accounts", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  owner: userProfile("owner").notNull(),
+  baseCurrency: varchar("base_currency", { length: 10 }).default("USD").notNull(),
+  initialCash: numeric("initial_cash").default("1000000").notNull(),
+  cashBalance: numeric("cash_balance").default("1000000").notNull(),
+  botEnabled: boolean("bot_enabled").default(false).notNull(),
+  guardrails: jsonb("guardrails")
+    .default(sql`'{"dailyLossLimitPct":3,"maxOrderPct":5,"maxOrdersPerDay":10}'::jsonb`)
+    .notNull(),
+  createdAt: customTimestamptz("created_at", { precision: 3 }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+  updatedAt: customTimestamptz("updated_at", { precision: 3 }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+export const paperAccountsTable = paperAccounts;
+
+/** Simulated positions keyed by (account, ticker). */
+export const paperPositions = pgTable("paper_positions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  owner: userProfile("owner").notNull(),
+  accountId: uuid("account_id").notNull(),
+  ticker: varchar("ticker", { length: 20 }).notNull(),
+  market: varchar("market", { length: 10 }).default("US").notNull(),
+  currency: varchar("currency", { length: 10 }).default("USD").notNull(),
+  company: varchar("company", { length: 255 }),
+  shares: numeric("shares").default("0").notNull(),
+  avgCost: numeric("avg_cost").default("0").notNull(),
+  openedAt: customTimestamptz("opened_at", { precision: 3 }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+  updatedAt: customTimestamptz("updated_at", { precision: 3 }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+export const paperPositionsTable = paperPositions;
+
+/** Order lifecycle incl. risk-gate rejections (status='rejected_risk'). */
+export const paperOrders = pgTable("paper_orders", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  owner: userProfile("owner").notNull(),
+  accountId: uuid("account_id").notNull(),
+  ticker: varchar("ticker", { length: 20 }).notNull(),
+  market: varchar("market", { length: 10 }).default("US").notNull(),
+  currency: varchar("currency", { length: 10 }).default("USD").notNull(),
+  company: varchar("company", { length: 255 }),
+  side: varchar("side", { length: 10 }).notNull(),
+  orderType: varchar("order_type", { length: 10 }).default("market").notNull(),
+  quantity: numeric("quantity").notNull(),
+  limitPrice: numeric("limit_price"),
+  status: varchar("status", { length: 20 }).default("pending").notNull(),
+  source: varchar("source", { length: 10 }).default("agent").notNull(),
+  reason: text("reason"),
+  strategyNote: text("strategy_note"),
+  riskCheck: jsonb("risk_check"),
+  filledPrice: numeric("filled_price"),
+  filledAt: customTimestamptz("filled_at", { precision: 3 }),
+  createdAt: customTimestamptz("created_at", { precision: 3 }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+export const paperOrdersTable = paperOrders;
+
+/** Fill ledger with realized P&L and post-trade cash. */
+export const paperTrades = pgTable("paper_trades", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  owner: userProfile("owner").notNull(),
+  accountId: uuid("account_id").notNull(),
+  orderId: uuid("order_id").notNull(),
+  ticker: varchar("ticker", { length: 20 }).notNull(),
+  market: varchar("market", { length: 10 }).default("US").notNull(),
+  side: varchar("side", { length: 10 }).notNull(),
+  quantity: numeric("quantity").notNull(),
+  price: numeric("price").notNull(),
+  fee: numeric("fee").default("0").notNull(),
+  realizedPl: numeric("realized_pl"),
+  cashAfter: numeric("cash_after").notNull(),
+  createdAt: customTimestamptz("created_at", { precision: 3 }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+export const paperTradesTable = paperTrades;
+
+/** Activity timeline: bot runs, fills, guardrail triggers. */
+export const paperEvents = pgTable("paper_events", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  owner: userProfile("owner").notNull(),
+  accountId: uuid("account_id").notNull(),
+  eventType: varchar("event_type", { length: 30 }).notNull(),
+  detail: jsonb("detail"),
+  createdAt: customTimestamptz("created_at", { precision: 3 }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+export const paperEventsTable = paperEvents;
+
+/** Daily equity snapshots powering the paper-account curve. */
+export const paperSnapshots = pgTable("paper_snapshots", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  owner: userProfile("owner").notNull(),
+  accountId: uuid("account_id").notNull(),
+  snapshotDate: date("snapshot_date").notNull(),
+  equity: numeric("equity").notNull(),
+  cash: numeric("cash").notNull(),
+  positionsValue: numeric("positions_value").default("0").notNull(),
+  dailyPl: numeric("daily_pl").default("0").notNull(),
+  createdAt: customTimestamptz("created_at", { precision: 3 }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+export const paperSnapshotsTable = paperSnapshots;
+
+/**
+ * Notification channels (self-hosted push routing). config holds
+ * per-channel secrets (bark key, serverchan sendkey, telegram token, smtp
+ * credentials, webhook url) — they never leave the user's own database.
+ */
+export const notificationChannels = pgTable("notification_channels", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  owner: userProfile("owner").notNull(),
+  channelType: varchar("channel_type", { length: 20 }).notNull(),
+  label: varchar("label", { length: 100 }),
+  config: jsonb("config").notNull(),
+  enabled: boolean("enabled").default(true).notNull(),
+  createdAt: customTimestamptz("created_at", { precision: 3 }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+  updatedAt: customTimestamptz("updated_at", { precision: 3 }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+export const notificationChannelsTable = notificationChannels;

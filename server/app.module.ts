@@ -32,6 +32,8 @@ import { CashAccountsModule } from './modules/cash-accounts/cash-accounts.module
 import { QuoteModule } from './modules/quote/quote.module';
 import { FxModule } from './modules/fx/fx.module';
 import { MultiAgentModule } from './modules/multi-agent/multi-agent.module';
+import { NotificationModule } from './modules/notifications/notification.module';
+import { PaperTradingModule } from './modules/paper-trading/paper-trading.module';
 
 /**
  * Root Nest module. Aggregates feature modules and installs the global
@@ -60,6 +62,8 @@ import { MultiAgentModule } from './modules/multi-agent/multi-agent.module';
     QuoteModule,
     FxModule,
     MultiAgentModule,
+    NotificationModule,
+    PaperTradingModule,
     // ====== @route-section: business-modules END ======
 
     // ⚠️ @route-order: last

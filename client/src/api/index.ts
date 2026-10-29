@@ -761,7 +761,19 @@ export { logger };
 /**
  * Auth: first-party account system (server/modules/auth).
  */
-import type { AuthTokens, AuthProfile, LoginDto, RegisterDto } from '@shared/api.interface';
+import type {
+  AuthTokens,
+  AuthProfile,
+  LoginDto,
+  RegisterDto,
+  CreatePaperOrderDto,
+  PaperAccount,
+  PaperGuardrails,
+  PaperOrder,
+  PaperOverview,
+  NotificationChannel,
+  CreateNotificationChannelDto,
+} from '@shared/api.interface';
 
 /**
  * Log in with username + password; returns the issued JWT session.
@@ -784,5 +796,110 @@ export async function apiRegister(dto: RegisterDto): Promise<AuthTokens> {
  */
 export async function fetchMyProfile(): Promise<AuthProfile> {
   const response = await http({ url: '/api/auth/me', method: 'GET' });
+  return response.data;
+}
+
+/**
+ * Paper trading: full overview for the paper page.
+ */
+export async function fetchPaperOverview(): Promise<PaperOverview> {
+  const response = await http({ url: '/api/paper/overview', method: 'GET' });
+  return response.data;
+}
+
+/**
+ * Paper trading: place a manual (market) order.
+ */
+export async function placePaperOrder(dto: CreatePaperOrderDto): Promise<PaperOrder> {
+  const response = await http({ url: '/api/paper/orders', method: 'POST', data: dto });
+  return response.data;
+}
+
+/**
+ * Paper trading: enable/disable the watchbot.
+ */
+export async function togglePaperBot(enabled: boolean): Promise<PaperAccount> {
+  const response = await http({ url: '/api/paper/bot/toggle', method: 'POST', data: { enabled } });
+  return response.data;
+}
+
+/**
+ * Paper trading: trigger one bot scan immediately.
+ */
+export async function runPaperBot(): Promise<{
+  scanned: number;
+  signals: Array<{ ticker: string; side: 'buy' | 'sell'; reason: string }>;
+  placed: number;
+  rejected: number;
+}> {
+  const response = await http({ url: '/api/paper/bot/run', method: 'POST' });
+  return response.data;
+}
+
+/**
+ * Paper trading: update guardrail thresholds.
+ */
+export async function updatePaperGuardrails(
+  patch: Partial<PaperGuardrails>,
+): Promise<PaperAccount> {
+  const response = await http({ url: '/api/paper/guardrails', method: 'PUT', data: patch });
+  return response.data;
+}
+
+/**
+ * Paper trading: reset the account (drops all paper data).
+ */
+export async function resetPaperAccount(initialCash?: number): Promise<PaperAccount> {
+  const response = await http({ url: '/api/paper/account/reset', method: 'POST', data: { initialCash } });
+  return response.data;
+}
+
+/**
+ * Paper trading: lazily create the caller's paper account.
+ */
+export async function ensurePaperAccount(): Promise<PaperAccount> {
+  const response = await http({ url: '/api/paper/account', method: 'POST' });
+  return response.data;
+}
+
+/**
+ * Notifications: list configured channels.
+ */
+export async function fetchNotificationChannels(): Promise<NotificationChannel[]> {
+  const response = await http({ url: '/api/notifications/channels', method: 'GET' });
+  return response.data;
+}
+
+/**
+ * Notifications: add a channel.
+ */
+export async function createNotificationChannel(
+  dto: CreateNotificationChannelDto,
+): Promise<NotificationChannel> {
+  const response = await http({ url: '/api/notifications/channels', method: 'POST', data: dto });
+  return response.data;
+}
+
+/**
+ * Notifications: enable/disable a channel.
+ */
+export async function setNotificationChannelEnabled(id: string, enabled: boolean): Promise<void> {
+  await http({ url: `/api/notifications/channels/${id}/enabled`, method: 'PUT', data: { enabled } });
+}
+
+/**
+ * Notifications: remove a channel.
+ */
+export async function deleteNotificationChannel(id: string): Promise<void> {
+  await http({ url: `/api/notifications/channels/${id}`, method: 'DELETE' });
+}
+
+/**
+ * Notifications: send a test message through one channel.
+ */
+export async function testNotificationChannel(
+  id: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const response = await http({ url: `/api/notifications/channels/${id}/test`, method: 'POST' });
   return response.data;
 }

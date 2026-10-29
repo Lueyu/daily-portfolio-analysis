@@ -40,6 +40,8 @@ for any public deployment.
 | `ACCESS_TOKEN_TTL` / `REFRESH_TOKEN_TTL` | `2h` / `30d` | Session lifetimes |
 | `DOUBAO_API_KEY` | *(unset)* | LLM key for running real analyses. Without it the multi-agent reasoning is disabled; everything else works |
 | `AGENT_GATEWAY_ENABLED` | `false` | Enables the `/openapi/agent-gateway` used by the Python agent service |
+| `PAPER_TRADING_ENABLED` | *(enabled)* | Set to `false` to disable the paper-trading bot scheduler entirely |
+| `PAPER_TRADING_SCAN_MINUTES` | `15` | Minutes between bot scans (only runs while some market is open) |
 
 To run analyses against real stocks, put your key in a
 `docker-compose.override.yml`:

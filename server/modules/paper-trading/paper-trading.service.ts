@@ -1,0 +1,831 @@
+/**
+ * @file server/modules/paper-trading/paper-trading.service.ts
+ * @description AI paper-trading engine.
+ *
+ * The paper book is fully isolated from real records: dedicated tables,
+ * dedicated cash ledger, no code path touches holdings/transactions. The
+ * broker adapter is paper-only by construction — there is no real-broker
+ * implementation to misconfigure.
+ *
+ * Fills are priced from the server-side quote service (free public
+ * providers, no key needed) with a fallback chain: live quote -> the
+ * caller's real holdings/watchlist price -> the paper position's average
+ * cost -> reject. Non-USD tickers are converted to the account's USD base
+ * via the FX service (with a static fallback table if FX is unavailable).
+ *
+ * Guardrails (bot orders only; manual orders still require sufficient
+ * cash/shares but skip the bot caps, so a human always stays in control):
+ *  - daily loss circuit breaker: stop trading for the day once equity has
+ *    dropped `dailyLossLimitPct`% from the day-start equity
+ *  - per-order cap: a single order may not exceed `maxOrderPct`% of equity
+ *  - per-day cap: at most `maxOrdersPerDay` bot orders per day
+ */
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
+import { and, desc, eq, gte } from 'drizzle-orm';
+import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '../../common/platform';
+import {
+  holdings,
+  paperAccounts,
+  paperEvents,
+  paperOrders,
+  paperPositions,
+  paperSnapshots,
+  paperTrades,
+  watchlist,
+} from '../../database/schema';
+import { FxService } from '../fx/fx.service';
+import { QuoteService } from '../quote/quote.service';
+import { NotificationService } from '../notifications/notification.service';
+import { isMarketOpen } from '../../common/market-clock';
+import type {
+  CreatePaperOrderDto,
+  PaperAccount,
+  PaperGuardrails,
+  PaperOrder,
+  PaperOrderSource,
+  PaperOverview,
+  PaperSide,
+} from '@shared/api.interface';
+
+/** Static FX fallback (units per USD) when the FX service is unavailable. */
+const FX_FALLBACK_PER_USD: Record<string, number> = { USD: 1, HKD: 7.78, CNY: 7.1 };
+
+/** Default guardrails for new accounts. */
+const DEFAULT_GUARDRAILS: PaperGuardrails = {
+  dailyLossLimitPct: 3,
+  maxOrderPct: 5,
+  maxOrdersPerDay: 10,
+};
+
+/** A resolved price for a ticker (USD notional included). */
+interface ResolvedPrice {
+  price: number;
+  market: 'US' | 'HK' | 'CN';
+  currency: 'USD' | 'HKD' | 'CNY';
+  company: string | null;
+  /** Conversion rate from the quote currency to USD. */
+  fxToUsd: number;
+}
+
+/** Risk-gate evaluation snapshot stored on every order. */
+interface RiskCheck {
+  passed: boolean;
+  side: PaperSide;
+  notionalUsd: number;
+  equityUsd: number;
+  orderPct: number;
+  todayOrderCount: number;
+  circuitBreaker: boolean;
+  reason?: string;
+}
+
+@Injectable()
+export class PaperTradingService {
+  private readonly logger = new Logger('PaperTrading');
+
+  constructor(
+    @Inject(DRIZZLE_DATABASE) private readonly db: PostgresJsDatabase,
+    private readonly quoteService: QuoteService,
+    private readonly fxService: FxService,
+    private readonly notifications: NotificationService,
+  ) {}
+
+  /** Get (or lazily create) the caller's paper account. */
+  async ensureAccount(userId: string): Promise<PaperAccount> {
+    const rows = await this.db
+      .select()
+      .from(paperAccounts)
+      .where(eq(paperAccounts.owner, userId));
+    if (rows[0]) return this.mapAccount(rows[0]);
+    const [created] = await this.db
+      .insert(paperAccounts)
+      .values({ owner: userId, guardrails: DEFAULT_GUARDRAILS })
+      .returning();
+    return this.mapAccount(created);
+  }
+
+  /** Reset the paper account: drop all paper data, start a fresh ledger. */
+  async resetAccount(userId: string, initialCash?: number): Promise<PaperAccount> {
+    const account = await this.requireAccount(userId);
+    if (initialCash !== undefined && (!Number.isFinite(initialCash) || initialCash <= 0)) {
+      throw new BadRequestException('初始资金必须为正数');
+    }
+    await this.db.delete(paperTrades).where(eq(paperTrades.accountId, account.id));
+    await this.db.delete(paperOrders).where(eq(paperOrders.accountId, account.id));
+    await this.db.delete(paperEvents).where(eq(paperEvents.accountId, account.id));
+    await this.db.delete(paperSnapshots).where(eq(paperSnapshots.accountId, account.id));
+    await this.db.delete(paperPositions).where(eq(paperPositions.accountId, account.id));
+    const [updated] = await this.db
+      .update(paperAccounts)
+      .set({
+        initialCash: String(initialCash ?? 1_000_000),
+        cashBalance: String(initialCash ?? 1_000_000),
+        botEnabled: false,
+        updatedAt: new Date(),
+      })
+      .where(eq(paperAccounts.id, account.id))
+      .returning();
+    await this.recordEvent(userId, account.id, 'account_reset', {
+      initialCash: Number(updated.initialCash),
+    });
+    return this.mapAccount(updated);
+  }
+
+  /** Full overview for the paper page: account, positions, curve, feeds. */
+  async getOverview(userId: string): Promise<PaperOverview> {
+    const account = await this.requireAccount(userId);
+    const positions = await this.db
+      .select()
+      .from(paperPositions)
+      .where(eq(paperPositions.accountId, account.id));
+
+    // Resolve prices (live with fallbacks) and market values in USD.
+    const enriched = await Promise.all(
+      positions.map(async (p) => {
+        const price = await this.resolvePrice(userId, p.ticker);
+        const shares = Number(p.shares);
+        const avgCost = Number(p.avgCost);
+        if (!price) {
+          return {
+            ...this.mapPosition(p),
+            lastPrice: null,
+            marketValue: null,
+            unrealizedPl: null,
+            unrealizedPct: null,
+          };
+        }
+        const costUsd = shares * avgCost * price.fxToUsd;
+        const valueUsd = shares * price.price * price.fxToUsd;
+        const pl = valueUsd - costUsd;
+        return {
+          ...this.mapPosition(p),
+          lastPrice: price.price.toFixed(2),
+          marketValue: valueUsd.toFixed(2),
+          unrealizedPl: pl.toFixed(2),
+          unrealizedPct: costUsd > 0 ? ((pl / costUsd) * 100).toFixed(2) : '0.00',
+        };
+      }),
+    );
+
+    const positionsValue = enriched.reduce((sum, p) => sum + Number(p.marketValue ?? 0), 0);
+    const cash = Number(account.cashBalance);
+    const equity = cash + positionsValue;
+
+    const todayOrders = await this.todayOrders(userId, account.id);
+    const curveRows = await this.db
+      .select()
+      .from(paperSnapshots)
+      .where(eq(paperSnapshots.accountId, account.id))
+      .orderBy(desc(paperSnapshots.snapshotDate))
+      .limit(60);
+    const curve = curveRows
+      .slice()
+      .reverse()
+      .map((s) => ({
+        date: s.snapshotDate,
+        equity: String(s.equity),
+        cash: String(s.cash),
+        positionsValue: String(s.positionsValue),
+        dailyPl: String(s.dailyPl),
+      }));
+
+    const recentOrders = await this.db
+      .select()
+      .from(paperOrders)
+      .where(eq(paperOrders.accountId, account.id))
+      .orderBy(desc(paperOrders.createdAt))
+      .limit(20);
+    const recentEvents = await this.db
+      .select()
+      .from(paperEvents)
+      .where(eq(paperEvents.accountId, account.id))
+      .orderBy(desc(paperEvents.createdAt))
+      .limit(30);
+
+    const dayStart = await this.dayStartEquity(userId, account.id, account.initialCash);
+    const todayPl = equity - dayStart;
+    const totalPl = equity - Number(account.initialCash);
+
+    return {
+      account: this.mapAccount(
+        (await this.db.select().from(paperAccounts).where(eq(paperAccounts.id, account.id)))[0],
+      ),
+      positions: enriched,
+      equity: equity.toFixed(2),
+      positionsValue: positionsValue.toFixed(2),
+      todayPl: todayPl.toFixed(2),
+      totalPl: totalPl.toFixed(2),
+      totalPlPct: ((totalPl / Number(account.initialCash)) * 100).toFixed(2),
+      todayOrderCount: todayOrders.length,
+      circuitBreakerActive: this.circuitBreakerHit(dayStart, equity, this.parseGuardrails(account.guardrails)),
+      curve,
+      recentOrders: recentOrders.map((o) => this.mapOrder(o)),
+      recentEvents: recentEvents.map((e) => ({
+        id: e.id,
+        eventType: e.eventType as PaperOverview['recentEvents'][number]['eventType'],
+        detail: (e.detail as Record<string, unknown>) ?? null,
+        createdAt: e.createdAt.toISOString(),
+      })),
+    };
+  }
+
+  /** Place an order (market orders only in V1; limits are rejected early). */
+  async placeOrder(
+    userId: string,
+    dto: CreatePaperOrderDto,
+    source: PaperOrderSource,
+  ): Promise<PaperOrder> {
+    const account = await this.requireAccount(userId);
+    if (dto.orderType && dto.orderType !== 'market') {
+      throw new BadRequestException('V1 仅支持市价单（market）');
+    }
+    const quantity = Math.floor(Number(dto.quantity));
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      throw new BadRequestException('数量必须为正整数');
+    }
+    if (dto.side !== 'buy' && dto.side !== 'sell') {
+      throw new BadRequestException('side 必须为 buy 或 sell');
+    }
+
+    const price = await this.resolvePrice(userId, dto.ticker);
+    if (!price) {
+      throw new BadRequestException(`无法获取 ${dto.ticker} 的价格，订单未执行`);
+    }
+
+    const notionalUsd = quantity * price.price * price.fxToUsd;
+    const equity = await this.equityOf(userId, account);
+    const todayOrders = await this.todayOrders(userId, account.id);
+    const todayBotCount = todayOrders.filter((o) => o.source === 'agent').length;
+    const dayStart = await this.dayStartEquity(userId, account.id, account.initialCash);
+    const guardrails = this.parseGuardrails(account.guardrails);
+
+    // ---- Risk gate (bot orders; manual orders skip caps but keep solvency) ----
+    let rejection: string | undefined;
+    let circuitBreaker = false;
+    if (source === 'agent') {
+      if (!isMarketOpen(price.market)) {
+        rejection = `${dto.ticker} 所在市场当前未开盘`;
+      } else if (this.circuitBreakerHit(dayStart, equity, guardrails)) {
+        circuitBreaker = true;
+        rejection = `日亏损熔断：当日权益回撤已超过 ${guardrails.dailyLossLimitPct}%，今日停止交易`;
+      } else if (dto.side === 'buy' && notionalUsd > (equity * guardrails.maxOrderPct) / 100) {
+        // The per-order cap constrains exposure on the way in; closing a
+        // position must never be blocked by it.
+        rejection = `单笔金额 ${(notionalUsd / equity * 100).toFixed(1)}% 超过上限 ${guardrails.maxOrderPct}%`;
+      } else if (todayBotCount >= guardrails.maxOrdersPerDay) {
+        rejection = `今日 bot 订单已达 ${guardrails.maxOrdersPerDay} 笔上限`;
+      }
+    }
+
+    // ---- Solvency checks (both sources) ----
+    const cash = Number(account.cashBalance);
+    const [existing] = await this.db
+      .select()
+      .from(paperPositions)
+      .where(and(eq(paperPositions.accountId, account.id), eq(paperPositions.ticker, price.market === 'US' ? dto.ticker.toUpperCase() : dto.ticker)));
+    if (dto.side === 'buy' && notionalUsd > cash) {
+      rejection = rejection ?? `现金不足：需 ${notionalUsd.toFixed(2)} USD，可用 ${cash.toFixed(2)} USD`;
+    }
+    if (dto.side === 'sell') {
+      const held = existing ? Number(existing.shares) : 0;
+      if (quantity > held) {
+        rejection = rejection ?? `持仓不足：仅有 ${held} 股，无法卖出 ${quantity} 股`;
+      }
+    }
+
+    const riskCheck: RiskCheck = {
+      passed: !rejection,
+      side: dto.side,
+      notionalUsd: Number(notionalUsd.toFixed(2)),
+      equityUsd: Number(equity.toFixed(2)),
+      orderPct: equity > 0 ? Number(((notionalUsd / equity) * 100).toFixed(2)) : 0,
+      todayOrderCount: todayBotCount,
+      circuitBreaker,
+      reason: rejection,
+    };
+
+    const ticker = price.market === 'US' ? dto.ticker.toUpperCase() : dto.ticker;
+    const [order] = await this.db
+      .insert(paperOrders)
+      .values({
+        owner: userId,
+        accountId: account.id,
+        ticker,
+        market: price.market,
+        currency: price.currency,
+        company: price.company,
+        side: dto.side,
+        orderType: 'market',
+        quantity: String(quantity),
+        status: rejection ? 'rejected_risk' : 'filled',
+        source,
+        reason: rejection ?? dto.reason ?? null,
+        riskCheck,
+        filledPrice: rejection ? null : String(price.price),
+        filledAt: rejection ? null : new Date(),
+      })
+      .returning();
+
+    if (rejection) {
+      await this.recordEvent(userId, account.id, circuitBreaker ? 'circuit_breaker' : 'order_rejected', {
+        orderId: order.id,
+        ticker,
+        side: dto.side,
+        reason: rejection,
+      });
+      await this.notifications.notifyUser(userId, {
+        event: circuitBreaker ? 'circuit_breaker' : 'order_rejected',
+        title: circuitBreaker ? '熔断触发' : '订单被风控拦截',
+        body: `${ticker} ${dto.side === 'buy' ? '买入' : '卖出'} ${quantity} 股被拦截：${rejection}`,
+      });
+      return this.mapOrder(order);
+    }
+
+    // ---- Execute the fill ----
+    let cashAfter = cash;
+    let realizedPl: number | null = null;
+    if (dto.side === 'buy') {
+      cashAfter = cash - notionalUsd;
+      const totalShares = (existing ? Number(existing.shares) : 0) + quantity;
+      const totalCost = (existing ? Number(existing.shares) * Number(existing.avgCost) : 0) + quantity * price.price;
+      const avgCost = totalShares > 0 ? totalCost / totalShares : 0;
+      if (existing) {
+        await this.db
+          .update(paperPositions)
+          .set({ shares: String(totalShares), avgCost: String(avgCost), updatedAt: new Date() })
+          .where(eq(paperPositions.id, existing.id));
+      } else {
+        await this.db.insert(paperPositions).values({
+          owner: userId,
+          accountId: account.id,
+          ticker,
+          market: price.market,
+          currency: price.currency,
+          company: price.company,
+          shares: String(totalShares),
+          avgCost: String(avgCost),
+        });
+      }
+    } else {
+      cashAfter = cash + notionalUsd;
+      realizedPl = (price.price - Number(existing.avgCost)) * quantity;
+      const remaining = Number(existing.shares) - quantity;
+      if (remaining > 0) {
+        await this.db
+          .update(paperPositions)
+          .set({ shares: String(remaining), updatedAt: new Date() })
+          .where(eq(paperPositions.id, existing.id));
+      } else {
+        await this.db.delete(paperPositions).where(eq(paperPositions.id, existing.id));
+      }
+    }
+
+    await this.db
+      .update(paperAccounts)
+      .set({ cashBalance: cashAfter.toFixed(2), updatedAt: new Date() })
+      .where(eq(paperAccounts.id, account.id));
+
+    await this.db.insert(paperTrades).values({
+      owner: userId,
+      accountId: account.id,
+      orderId: order.id,
+      ticker,
+      market: price.market,
+      side: dto.side,
+      quantity: String(quantity),
+      price: String(price.price),
+      fee: '0',
+      realizedPl: realizedPl === null ? null : realizedPl.toFixed(2),
+      cashAfter: cashAfter.toFixed(2),
+    });
+
+    await this.recordEvent(userId, account.id, 'order_filled', {
+      orderId: order.id,
+      ticker,
+      side: dto.side,
+      quantity,
+      price: price.price,
+      source,
+      notionalUsd: Number(notionalUsd.toFixed(2)),
+      realizedPl: realizedPl === null ? undefined : Number(realizedPl.toFixed(2)),
+    });
+    await this.notifications.notifyUser(userId, {
+      event: 'order_filled',
+      title: `模拟盘成交：${ticker} ${dto.side === 'buy' ? '买入' : '卖出'} ${quantity} 股`,
+      body:
+        `成交价 ${price.price}（${price.currency}），约 ${notionalUsd.toFixed(2)} USD` +
+        (realizedPl !== null ? `，已实现盈亏 ${realizedPl >= 0 ? '+' : ''}${realizedPl.toFixed(2)} USD` : '') +
+        (source === 'agent' ? '\n来源：AI 盯盘代理' : '\n来源：手动下单'),
+    });
+
+    return this.mapOrder(order);
+  }
+
+  /** Enable/disable the bot for the caller's account. */
+  async toggleBot(userId: string, enabled: boolean): Promise<PaperAccount> {
+    const account = await this.requireAccount(userId);
+    const [updated] = await this.db
+      .update(paperAccounts)
+      .set({ botEnabled: enabled, updatedAt: new Date() })
+      .where(eq(paperAccounts.id, account.id))
+      .returning();
+    await this.recordEvent(userId, account.id, enabled ? 'bot_started' : 'bot_stopped', {});
+    if (enabled) {
+      // Take a baseline snapshot so the daily-loss circuit breaker has a
+      // day-start reference from the very first enabled moment.
+      await this.ensureDailySnapshot(userId, account.id);
+    }
+    return this.mapAccount(updated);
+  }
+
+  /** Update guardrail thresholds. */
+  async updateGuardrails(userId: string, patch: Partial<PaperGuardrails>): Promise<PaperAccount> {
+    const account = await this.requireAccount(userId);
+    const next: PaperGuardrails = { ...this.parseGuardrails(account.guardrails) };
+    for (const key of ['dailyLossLimitPct', 'maxOrderPct', 'maxOrdersPerDay'] as const) {
+      const value = Number(patch[key]);
+      if (Number.isFinite(value) && value > 0 && value <= 100) next[key] = value;
+    }
+    const [updated] = await this.db
+      .update(paperAccounts)
+      .set({ guardrails: next, updatedAt: new Date() })
+      .where(eq(paperAccounts.id, account.id))
+      .returning();
+    return this.mapAccount(updated);
+  }
+
+  /**
+   * One bot scan: derive signals from the caller's own analysis ratings and
+   * targets, run them through the risk gate, place orders. Used by the
+   * scheduler and by the manual "scan now" button.
+   */
+  async runBotScan(userId: string): Promise<{
+    scanned: number;
+    signals: Array<{ ticker: string; side: PaperSide; reason: string }>;
+    placed: number;
+    rejected: number;
+  }> {
+    const account = await this.requireAccount(userId);
+    if (!account.botEnabled) {
+      throw new BadRequestException('盯盘代理未开启');
+    }
+
+    // Universe: the caller's real holdings + watchlist carry the ratings and
+    // targets produced by the multi-agent research pipeline.
+    const realHoldings = await this.db
+      .select()
+      .from(holdings)
+      .where(eq(holdings.owner, userId));
+    const watchItems = await this.db
+      .select()
+      .from(watchlist)
+      .where(eq(watchlist.owner, userId));
+    const positions = await this.db
+      .select()
+      .from(paperPositions)
+      .where(eq(paperPositions.accountId, account.id));
+    const todayOrders = await this.todayOrders(userId, account.id);
+    const tradedToday = new Set(todayOrders.map((o) => o.ticker));
+
+    const universe = new Map<
+      string,
+      { rating: string | null; targetBuy: number | null; targetPrice: number | null; market: 'US' | 'HK' | 'CN' }
+    >();
+    for (const h of realHoldings) {
+      universe.set(h.ticker, {
+        rating: h.rating ?? null,
+        targetBuy: null,
+        targetPrice: h.targetPrice != null ? Number(h.targetPrice) : null,
+        market: (h.market as 'US' | 'HK' | 'CN') ?? 'US',
+      });
+    }
+    for (const w of watchItems) {
+      const existing = universe.get(w.ticker);
+      universe.set(w.ticker, {
+        rating: w.rating ?? existing?.rating ?? null,
+        targetBuy: w.targetBuy != null ? Number(w.targetBuy) : null,
+        targetPrice: existing?.targetPrice ?? null,
+        market: (w.market as 'US' | 'HK' | 'CN') ?? 'US',
+      });
+    }
+
+    const equity = await this.equityOf(userId, account);
+    const guardrails = this.parseGuardrails(account.guardrails);
+    const signals: Array<{ ticker: string; side: PaperSide; reason: string; quantity: number }> = [];
+
+    for (const [ticker, info] of universe) {
+      if (tradedToday.has(ticker)) continue;
+      const held = positions.find((p) => p.ticker === ticker);
+      const price = await this.resolvePrice(userId, ticker);
+      if (!price || price.price <= 0) continue;
+      const bullish = info.rating === 'Buy' || info.rating === 'Strong Buy';
+      const bearish = info.rating === 'Sell' || info.rating === 'Strong Sell';
+
+      if (held && Number(held.shares) > 0) {
+        if (bearish) {
+          signals.push({
+            ticker,
+            side: 'sell',
+            reason: `分析评级为 ${info.rating}，按信号清仓`,
+            quantity: Math.floor(Number(held.shares)),
+          });
+          continue;
+        }
+        if (info.targetPrice != null && price.price >= info.targetPrice) {
+          signals.push({
+            ticker,
+            side: 'sell',
+            reason: `现价 ${price.price} 已达分析目标价 ${info.targetPrice}，止盈清仓`,
+            quantity: Math.floor(Number(held.shares)),
+          });
+          continue;
+        }
+      }
+
+      if (!held && bullish) {
+        const withinBuyZone = info.targetBuy == null || price.price <= info.targetBuy * 1.02;
+        if (withinBuyZone && isMarketOpen(price.market)) {
+          const notional = Math.min(
+            (equity * guardrails.maxOrderPct) / 100,
+            Number(account.cashBalance) * 0.9,
+          );
+          const perShareUsd = price.price * price.fxToUsd;
+          const quantity = Math.floor(notional / perShareUsd);
+          if (quantity > 0) {
+            signals.push({
+              ticker,
+              side: 'buy',
+              reason:
+                info.targetBuy != null
+                  ? `分析评级 ${info.rating}，现价 ${price.price} 已进入目标买区（≤ ${info.targetBuy}）`
+                  : `分析评级 ${info.rating}，按信号建仓`,
+              quantity,
+            });
+          }
+        }
+      }
+    }
+
+    let placed = 0;
+    let rejected = 0;
+    for (const signal of signals) {
+      try {
+        const order = await this.placeOrder(
+          userId,
+          { ticker: signal.ticker, side: signal.side, quantity: signal.quantity, orderType: 'market', reason: signal.reason },
+          'agent',
+        );
+        if (order.status === 'filled') placed += 1;
+        else rejected += 1;
+      } catch (error) {
+        rejected += 1;
+        this.logger.warn(`bot order failed for ${signal.ticker}: ${String(error)}`);
+      }
+    }
+
+    await this.recordEvent(userId, account.id, 'bot_scan', {
+      scanned: universe.size,
+      signals: signals.map((s) => ({ ticker: s.ticker, side: s.side, reason: s.reason })),
+      placed,
+      rejected,
+    });
+    await this.ensureDailySnapshot(userId, account.id);
+
+    return {
+      scanned: universe.size,
+      signals: signals.map((s) => ({ ticker: s.ticker, side: s.side, reason: s.reason })),
+      placed,
+      rejected,
+    };
+  }
+
+  /** Upsert today's equity snapshot (idempotent per account+date). */
+  async ensureDailySnapshot(userId: string, accountId: string): Promise<void> {
+    const today = new Date().toISOString().slice(0, 10);
+    const [existing] = await this.db
+      .select()
+      .from(paperSnapshots)
+      .where(and(eq(paperSnapshots.accountId, accountId), eq(paperSnapshots.snapshotDate, today)));
+    const equityData = await this.equityOf(userId, { id: accountId } as PaperAccount);
+    const [account] = await this.db.select().from(paperAccounts).where(eq(paperAccounts.id, accountId));
+    const dayStart = existing
+      ? Number(existing.equity)
+      : await this.dayStartEquity(userId, accountId, account?.initialCash ?? '1000000');
+
+    if (existing) {
+      await this.db
+        .update(paperSnapshots)
+        .set({
+          equity: equityData.toString(),
+          cash: String(Number(account?.cashBalance ?? 0)),
+          positionsValue: (equityData - Number(account?.cashBalance ?? 0)).toFixed(2),
+          dailyPl: (equityData - dayStart).toFixed(2),
+        })
+        .where(eq(paperSnapshots.id, existing.id));
+    } else {
+      await this.db.insert(paperSnapshots).values({
+        owner: userId,
+        accountId,
+        snapshotDate: today,
+        equity: equityData.toFixed(2),
+        cash: Number(account?.cashBalance ?? 0).toFixed(2),
+        positionsValue: (equityData - Number(account?.cashBalance ?? 0)).toFixed(2),
+        dailyPl: (equityData - dayStart).toFixed(2),
+      });
+    }
+  }
+
+  // ------------------------------------------------------------------
+  // Internals
+  // ------------------------------------------------------------------
+
+  /** Throw 404 unless the caller has a paper account. */
+  private async requireAccount(userId: string) {
+    const rows = await this.db.select().from(paperAccounts).where(eq(paperAccounts.owner, userId));
+    if (!rows[0]) throw new NotFoundException('模拟盘账户不存在');
+    return rows[0];
+  }
+
+  /**
+   * Resolve a tradeable price for a ticker. Fallback chain: live quote ->
+   * the user's real holdings/watchlist stored price -> paper position avg
+   * cost -> null.
+   */
+  private async resolvePrice(userId: string, rawTicker: string): Promise<ResolvedPrice | null> {
+    const ticker = rawTicker.trim();
+    try {
+      const quote = await this.quoteService.getQuote(ticker);
+      if (quote && Number(quote.price) > 0) {
+        return {
+          price: Number(quote.price),
+          market: quote.market,
+          currency: quote.currency,
+          company: quote.companyName ?? null,
+          fxToUsd: await this.fxToUsd(quote.currency),
+        };
+      }
+    } catch {
+      // fall through to stored prices
+    }
+
+    const [h] = await this.db.select().from(holdings).where(and(eq(holdings.owner, userId), eq(holdings.ticker, ticker)));
+    if (h && h.currentPrice != null && Number(h.currentPrice) > 0) {
+      return {
+        price: Number(h.currentPrice),
+        market: (h.market as 'US' | 'HK' | 'CN') ?? 'US',
+        currency: (h.currency as 'USD' | 'HKD' | 'CNY') ?? 'USD',
+        company: h.company ?? null,
+        fxToUsd: await this.fxToUsd((h.currency as 'USD' | 'HKD' | 'CNY') ?? 'USD'),
+      };
+    }
+    const [w] = await this.db.select().from(watchlist).where(and(eq(watchlist.owner, userId), eq(watchlist.ticker, ticker)));
+    if (w && w.currentPrice != null && Number(w.currentPrice) > 0) {
+      return {
+        price: Number(w.currentPrice),
+        market: (w.market as 'US' | 'HK' | 'CN') ?? 'US',
+        currency: (w.currency as 'USD' | 'HKD' | 'CNY') ?? 'USD',
+        company: w.company ?? null,
+        fxToUsd: await this.fxToUsd((w.currency as 'USD' | 'HKD' | 'CNY') ?? 'USD'),
+      };
+    }
+    return null;
+  }
+
+  /** Convert one unit of `currency` into USD (FX service with static fallback). */
+  private async fxToUsd(currency: 'USD' | 'HKD' | 'CNY'): Promise<number> {
+    if (currency === 'USD') return 1;
+    try {
+      return await this.fxService.convert(1, currency, 'USD');
+    } catch {
+      return 1 / (FX_FALLBACK_PER_USD[currency] ?? 1);
+    }
+  }
+
+  /** Current equity: cash + market value of paper positions (USD). */
+  private async equityOf(userId: string, account: { id: string; cashBalance?: string }): Promise<number> {
+    const positions = await this.db
+      .select()
+      .from(paperPositions)
+      .where(eq(paperPositions.accountId, account.id));
+    const [acct] = await this.db.select().from(paperAccounts).where(eq(paperAccounts.id, account.id));
+    const cash = Number(acct?.cashBalance ?? account.cashBalance ?? 0);
+    let value = 0;
+    for (const p of positions) {
+      const price = await this.resolvePrice(userId, p.ticker);
+      if (price) value += Number(p.shares) * price.price * price.fxToUsd;
+      else value += Number(p.shares) * Number(p.avgCost) * (await this.fxToUsd(p.currency as 'USD' | 'HKD' | 'CNY'));
+    }
+    return cash + value;
+  }
+
+  /** Day-start equity: the latest snapshot strictly before today, else initial cash. */
+  private async dayStartEquity(userId: string, accountId: string, initialCash: string): Promise<number> {
+    const today = new Date().toISOString().slice(0, 10);
+    const rows = await this.db
+      .select()
+      .from(paperSnapshots)
+      .where(eq(paperSnapshots.accountId, accountId))
+      .orderBy(desc(paperSnapshots.snapshotDate));
+    const prev = rows.find((r) => r.snapshotDate < today);
+    if (prev) return Number(prev.equity);
+    // No prior snapshot: if today's exists use its opening (equity - dailyPl).
+    const todayRow = rows.find((r) => r.snapshotDate === today);
+    if (todayRow) return Number(todayRow.equity) - Number(todayRow.dailyPl);
+    return Number(initialCash);
+  }
+
+  /** Today's orders (UTC day) for an account. */
+  private async todayOrders(userId: string, accountId: string) {
+    const dayStart = new Date();
+    dayStart.setUTCHours(0, 0, 0, 0);
+    return this.db
+      .select()
+      .from(paperOrders)
+      .where(and(eq(paperOrders.accountId, accountId), gte(paperOrders.createdAt, dayStart)));
+  }
+
+  /** Whether the daily-loss circuit breaker is currently tripped. */
+  private circuitBreakerHit(dayStart: number, equityNow: number, guardrails: PaperGuardrails): boolean {
+    if (dayStart <= 0) return false;
+    return (dayStart - equityNow) / dayStart >= guardrails.dailyLossLimitPct / 100;
+  }
+
+  /** Parse the guardrails JSON with defaults for missing keys. */
+  private parseGuardrails(raw: unknown): PaperGuardrails {
+    const g = (raw ?? {}) as Partial<PaperGuardrails>;
+    return {
+      dailyLossLimitPct: Number(g.dailyLossLimitPct) > 0 ? Number(g.dailyLossLimitPct) : DEFAULT_GUARDRAILS.dailyLossLimitPct,
+      maxOrderPct: Number(g.maxOrderPct) > 0 ? Number(g.maxOrderPct) : DEFAULT_GUARDRAILS.maxOrderPct,
+      maxOrdersPerDay: Number(g.maxOrdersPerDay) > 0 ? Number(g.maxOrdersPerDay) : DEFAULT_GUARDRAILS.maxOrdersPerDay,
+    };
+  }
+
+  /** Append an event to the paper activity timeline. */
+  private async recordEvent(
+    userId: string,
+    accountId: string,
+    eventType: string,
+    detail: Record<string, unknown>,
+  ): Promise<void> {
+    await this.db.insert(paperEvents).values({
+      owner: userId,
+      accountId,
+      eventType,
+      detail,
+    });
+  }
+
+  private mapAccount(row: typeof paperAccounts.$inferSelect): PaperAccount {
+    return {
+      id: row.id,
+      baseCurrency: row.baseCurrency,
+      initialCash: String(row.initialCash),
+      cashBalance: String(row.cashBalance),
+      botEnabled: row.botEnabled,
+      guardrails: this.parseGuardrails(row.guardrails),
+      createdAt: row.createdAt.toISOString(),
+    };
+  }
+
+  private mapPosition(row: typeof paperPositions.$inferSelect) {
+    return {
+      id: row.id,
+      ticker: row.ticker,
+      market: row.market as 'US' | 'HK' | 'CN',
+      currency: row.currency as 'USD' | 'HKD' | 'CNY',
+      company: row.company,
+      shares: String(row.shares),
+      avgCost: String(row.avgCost),
+      openedAt: row.openedAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
+    };
+  }
+
+  private mapOrder(row: typeof paperOrders.$inferSelect): PaperOrder {
+    return {
+      id: row.id,
+      ticker: row.ticker,
+      market: row.market as 'US' | 'HK' | 'CN',
+      currency: row.currency as 'USD' | 'HKD' | 'CNY',
+      company: row.company,
+      side: row.side as PaperSide,
+      orderType: row.orderType as 'market' | 'limit',
+      quantity: String(row.quantity),
+      limitPrice: row.limitPrice == null ? null : String(row.limitPrice),
+      status: row.status as PaperOrder['status'],
+      source: row.source as PaperOrderSource,
+      reason: row.reason,
+      strategyNote: row.strategyNote,
+      riskCheck: (row.riskCheck as Record<string, unknown>) ?? null,
+      filledPrice: row.filledPrice == null ? null : String(row.filledPrice),
+      filledAt: row.filledAt == null ? null : row.filledAt.toISOString(),
+      createdAt: row.createdAt.toISOString(),
+    };
+  }
+}

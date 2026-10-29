@@ -951,3 +951,146 @@ export interface RegisterDto {
   password: string;
   displayName?: string;
 }
+
+/**
+ * Paper trading (AI 模拟盘) — fully isolated from real records.
+ */
+export type PaperSide = 'buy' | 'sell';
+export type PaperOrderStatus = 'pending' | 'filled' | 'rejected_risk' | 'cancelled' | 'failed';
+export type PaperOrderSource = 'agent' | 'manual';
+export type PaperEventType =
+  | 'bot_started'
+  | 'bot_stopped'
+  | 'bot_scan'
+  | 'order_placed'
+  | 'order_filled'
+  | 'order_rejected'
+  | 'circuit_breaker'
+  | 'manual_action'
+  | 'account_reset';
+
+export interface PaperGuardrails {
+  /** Stop the bot for the day when equity drops this % from the day start. */
+  dailyLossLimitPct: number;
+  /** Max notional of a single order as % of equity. */
+  maxOrderPct: number;
+  /** Max bot orders per day. */
+  maxOrdersPerDay: number;
+}
+
+export interface PaperAccount {
+  id: string;
+  baseCurrency: string;
+  initialCash: string;
+  cashBalance: string;
+  botEnabled: boolean;
+  guardrails: PaperGuardrails;
+  createdAt: string;
+}
+
+export interface PaperPosition {
+  id: string;
+  ticker: string;
+  market: Market;
+  currency: Currency;
+  company: string | null;
+  shares: string;
+  avgCost: string;
+  openedAt: string;
+  updatedAt: string;
+}
+
+export interface PaperOrder {
+  id: string;
+  ticker: string;
+  market: Market;
+  currency: Currency;
+  company: string | null;
+  side: PaperSide;
+  orderType: 'market' | 'limit';
+  quantity: string;
+  limitPrice: string | null;
+  status: PaperOrderStatus;
+  source: PaperOrderSource;
+  reason: string | null;
+  strategyNote: string | null;
+  riskCheck: Record<string, unknown> | null;
+  filledPrice: string | null;
+  filledAt: string | null;
+  createdAt: string;
+}
+
+export interface PaperTrade {
+  id: string;
+  orderId: string;
+  ticker: string;
+  market: Market;
+  side: PaperSide;
+  quantity: string;
+  price: string;
+  fee: string;
+  realizedPl: string | null;
+  cashAfter: string;
+  createdAt: string;
+}
+
+export interface PaperEvent {
+  id: string;
+  eventType: PaperEventType;
+  detail: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+export interface PaperSnapshotPoint {
+  date: string;
+  equity: string;
+  cash: string;
+  positionsValue: string;
+  dailyPl: string;
+}
+
+export interface PaperOverview {
+  account: PaperAccount;
+  positions: Array<PaperPosition & { lastPrice: string | null; marketValue: string | null; unrealizedPl: string | null; unrealizedPct: string | null }>;
+  equity: string;
+  positionsValue: string;
+  todayPl: string | null;
+  totalPl: string;
+  totalPlPct: string;
+  todayOrderCount: number;
+  circuitBreakerActive: boolean;
+  curve: PaperSnapshotPoint[];
+  recentOrders: PaperOrder[];
+  recentEvents: PaperEvent[];
+}
+
+export interface CreatePaperOrderDto {
+  ticker: string;
+  side: PaperSide;
+  quantity: number;
+  orderType?: 'market' | 'limit';
+  limitPrice?: number;
+  reason?: string;
+}
+
+/**
+ * Notification channels (self-hosted push routing).
+ */
+export type NotificationChannelType = 'webhook' | 'bark' | 'serverchan' | 'smtp' | 'telegram';
+
+export interface NotificationChannel {
+  id: string;
+  channelType: NotificationChannelType;
+  label: string | null;
+  config: Record<string, string>;
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateNotificationChannelDto {
+  channelType: NotificationChannelType;
+  label?: string;
+  config: Record<string, string>;
+  enabled?: boolean;
+}

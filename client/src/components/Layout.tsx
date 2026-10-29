@@ -16,6 +16,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchMyProfile } from '@/api';
 import { hasSession, tokenStore } from '@/api/http';
 import {
+  FlaskConical,
   LayoutDashboard,
   Briefcase,
   Eye,
@@ -45,6 +46,7 @@ const navItems = [
   { path: '/holdings', label: '持仓', icon: Briefcase },
   { path: '/watchlist', label: '关注', icon: Eye },
   { path: '/analysis', label: '每日分析', icon: BarChart3 },
+  { path: '/paper', label: 'AI 模拟盘', icon: FlaskConical },
   { path: '/journal', label: '日志', icon: BookOpen },
   { path: '/transactions', label: '交易记录', icon: Receipt },
   { path: '/settings/rules', label: '策略规则', icon: Settings },

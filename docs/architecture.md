@@ -201,12 +201,31 @@ The deep report contains 14 sections rendered by `client/src/components/MultiAge
 
 ## Data Model
 
-The database contains 20 tables in three groups:
+The database contains 28 tables in five groups:
 
 | Group | Tables | Description |
 |---|---|---|
 | Core business | `holdings`, `watchlist`, `transactions`, `closed`, `analysis`, `groups`, `journal`, `snapshots`, `alpha_picks`, `cash_accounts`, `fx_rates` | Holdings, watchlist, transactions, daily analysis, groups, journal, net-value snapshots, etc. |
 | Multi-agent | `agent_runs`, `agent_evidence`, `bull_bear_arguments`, `debate_records`, `agent_ratings`, `risk_gate_results`, `agent_audit_log`, `deep_report` | Full-process data of analysis runs and the final deep reports |
 | Configuration | `strategy_rules` | Risk-control rules; UI supports create/edit and enable/disable |
+| Users & paper trading | `users`, `paper_accounts`, `paper_positions`, `paper_orders`, `paper_trades`, `paper_events`, `paper_snapshots` | First-party accounts plus the fully isolated AI paper-trading book (no real-broker code path exists) |
+| Notifications | `notification_channels` | Self-hosted push routing (webhook / bark / serverchan / smtp / telegram); channel secrets never leave the user's database |
 
-The table structure is defined in `server/database/schema.ts`. This file is auto-generated from the database (`npm run gen:db-schema`) and should not be edited manually.
+The table structure is defined in `server/database/schema.ts` and must stay in
+sync with `scripts/db/01_schema.sql` (applied on fresh installs).
+
+## Paper Trading & Notifications
+
+The paper-trading engine (`server/modules/paper-trading/`) is the executable
+half of the research pipeline: a scheduler (market-clock aware, US/HK/CN
+sessions) wakes every few minutes and, for each account with the bot enabled,
+derives signals from that user's own holdings/watchlist ratings and targets,
+passes them through hard guardrails (daily-loss circuit breaker, per-order
+notional cap on buys, per-day order cap), fills at the server-side quote
+(free public providers, no key needed — with a fallback chain through stored
+prices), and records an immutable event trail. Manual orders skip the bot caps
+so a human always stays in control; solvency checks apply to everyone.
+
+The notification module (`server/modules/notifications/`) fans fills, risk
+rejections and circuit-breaker events out to the user's configured channels.
+Dispatch is fire-and-forget: a channel failure is logged, never thrown.

@@ -412,3 +412,120 @@ CREATE TABLE "users" (
 	"updated_at" timestamptz (3) DEFAULT CURRENT_TIMESTAMP NOT NULL,
 	CONSTRAINT "users_username_unique" UNIQUE("username")
 );
+
+
+-- ============================================================
+-- Paper trading (AI 模拟盘) — fully isolated from real records.
+-- The broker adapter is paper-only by construction: no table here
+-- connects to any real brokerage.
+-- ============================================================
+CREATE TABLE "paper_accounts" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"owner" text NOT NULL,
+	"base_currency" varchar(10) DEFAULT 'USD' NOT NULL,
+	"initial_cash" numeric DEFAULT '1000000' NOT NULL,
+	"cash_balance" numeric DEFAULT '1000000' NOT NULL,
+	"bot_enabled" boolean DEFAULT false NOT NULL,
+	"guardrails" jsonb DEFAULT '{"dailyLossLimitPct":3,"maxOrderPct":5,"maxOrdersPerDay":10}' NOT NULL,
+	"created_at" timestamptz (3) DEFAULT CURRENT_TIMESTAMP NOT NULL,
+	"updated_at" timestamptz (3) DEFAULT CURRENT_TIMESTAMP NOT NULL,
+	CONSTRAINT "paper_accounts_owner_unique" UNIQUE("owner")
+);
+
+CREATE TABLE "paper_positions" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"owner" text NOT NULL,
+	"account_id" uuid NOT NULL,
+	"ticker" varchar(20) NOT NULL,
+	"market" varchar(10) DEFAULT 'US' NOT NULL,
+	"currency" varchar(10) DEFAULT 'USD' NOT NULL,
+	"company" varchar(255),
+	"shares" numeric DEFAULT '0' NOT NULL,
+	"avg_cost" numeric DEFAULT '0' NOT NULL,
+	"opened_at" timestamptz (3) DEFAULT CURRENT_TIMESTAMP NOT NULL,
+	"updated_at" timestamptz (3) DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+CREATE UNIQUE INDEX "idx_paper_positions_account_ticker" ON "paper_positions" USING btree ("account_id","ticker");
+
+CREATE TABLE "paper_orders" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"owner" text NOT NULL,
+	"account_id" uuid NOT NULL,
+	"ticker" varchar(20) NOT NULL,
+	"market" varchar(10) DEFAULT 'US' NOT NULL,
+	"currency" varchar(10) DEFAULT 'USD' NOT NULL,
+	"company" varchar(255),
+	"side" varchar(10) NOT NULL,
+	"order_type" varchar(10) DEFAULT 'market' NOT NULL,
+	"quantity" numeric NOT NULL,
+	"limit_price" numeric,
+	"status" varchar(20) DEFAULT 'pending' NOT NULL,
+	"source" varchar(10) DEFAULT 'agent' NOT NULL,
+	"reason" text,
+	"strategy_note" text,
+	"risk_check" jsonb,
+	"filled_price" numeric,
+	"filled_at" timestamptz (3),
+	"created_at" timestamptz (3) DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+CREATE INDEX "idx_paper_orders_account_created" ON "paper_orders" USING btree ("account_id","created_at");
+CREATE INDEX "idx_paper_orders_owner_status" ON "paper_orders" USING btree ("owner","status");
+
+CREATE TABLE "paper_trades" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"owner" text NOT NULL,
+	"account_id" uuid NOT NULL,
+	"order_id" uuid NOT NULL,
+	"ticker" varchar(20) NOT NULL,
+	"market" varchar(10) DEFAULT 'US' NOT NULL,
+	"side" varchar(10) NOT NULL,
+	"quantity" numeric NOT NULL,
+	"price" numeric NOT NULL,
+	"fee" numeric DEFAULT '0' NOT NULL,
+	"realized_pl" numeric,
+	"cash_after" numeric NOT NULL,
+	"created_at" timestamptz (3) DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+CREATE INDEX "idx_paper_trades_account_created" ON "paper_trades" USING btree ("account_id","created_at");
+ALTER TABLE "paper_trades" ADD CONSTRAINT "paper_trades_order_id_fkey" FOREIGN KEY ("order_id") REFERENCES "paper_orders"("id") ON DELETE cascade ON UPDATE no action;
+
+CREATE TABLE "paper_events" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"owner" text NOT NULL,
+	"account_id" uuid NOT NULL,
+	"event_type" varchar(30) NOT NULL,
+	"detail" jsonb,
+	"created_at" timestamptz (3) DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+CREATE INDEX "idx_paper_events_account_created" ON "paper_events" USING btree ("account_id","created_at");
+
+CREATE TABLE "paper_snapshots" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"owner" text NOT NULL,
+	"account_id" uuid NOT NULL,
+	"snapshot_date" date NOT NULL,
+	"equity" numeric NOT NULL,
+	"cash" numeric NOT NULL,
+	"positions_value" numeric DEFAULT '0' NOT NULL,
+	"daily_pl" numeric DEFAULT '0' NOT NULL,
+	"created_at" timestamptz (3) DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+CREATE UNIQUE INDEX "idx_paper_snapshots_account_date" ON "paper_snapshots" USING btree ("account_id","snapshot_date");
+
+-- ============================================================
+-- Notification channels (self-hosted push routing).
+-- config holds per-channel secrets (bark key, serverchan sendkey,
+-- telegram token, smtp credentials, webhook url) — they never
+-- leave the user's own database (see docs/privacy.md).
+-- ============================================================
+CREATE TABLE "notification_channels" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"owner" text NOT NULL,
+	"channel_type" varchar(20) NOT NULL,
+	"label" varchar(100),
+	"config" jsonb NOT NULL,
+	"enabled" boolean DEFAULT true NOT NULL,
+	"created_at" timestamptz (3) DEFAULT CURRENT_TIMESTAMP NOT NULL,
+	"updated_at" timestamptz (3) DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+CREATE INDEX "idx_notification_channels_owner" ON "notification_channels" USING btree ("owner");
