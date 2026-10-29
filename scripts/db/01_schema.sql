@@ -545,3 +545,30 @@ CREATE TABLE "import_logs" (
 	"created_at" timestamptz (3) DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 CREATE INDEX "idx_import_logs_owner_created" ON "import_logs" USING btree ("owner","created_at");
+
+
+-- ============================================================
+-- AI agent sessions (Robinhood-style agent access).
+-- Each external AI assistant (Claude, ChatGPT, etc.) gets its own
+-- session with a token, daily spending limit, permission scope
+-- and approval mode. Tokens are stored in the user's own database.
+-- ============================================================
+CREATE TABLE "agent_sessions" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"owner" text NOT NULL,
+	"name" varchar(64) NOT NULL,
+	"token" varchar(128) NOT NULL,
+	"daily_limit_usd" numeric DEFAULT '500' NOT NULL,
+	"permission" varchar(10) DEFAULT 'trade' NOT NULL,
+	"approval_mode" varchar(20) DEFAULT 'require_approval' NOT NULL,
+	"status" varchar(10) DEFAULT 'active' NOT NULL,
+	"last_used_at" timestamptz (3),
+	"created_at" timestamptz (3) DEFAULT CURRENT_TIMESTAMP NOT NULL,
+	"updated_at" timestamptz (3) DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+CREATE UNIQUE INDEX "idx_agent_sessions_token" ON "agent_sessions" USING btree ("token");
+CREATE INDEX "idx_agent_sessions_owner" ON "agent_sessions" USING btree ("owner");
+
+-- Extend paper_orders with agent attribution and approval flow.
+ALTER TABLE "paper_orders" ADD COLUMN IF NOT EXISTS "session_id" uuid;
+ALTER TABLE "paper_orders" ADD COLUMN IF NOT EXISTS "agent_name" varchar(64);

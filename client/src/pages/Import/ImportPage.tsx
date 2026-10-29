@@ -78,14 +78,48 @@ const ROBINHOOD_ALIASES: Record<MapField, string[]> = {
   company: ['description', 'name', 'instrument'],
 };
 
-function suggestRobinhood(headers: string[]): Partial<Record<MapField, number>> {
+/** Futu (富途牛牛) CSV preset. */
+const FUTU_ALIASES: Record<MapField, string[]> = {
+  ticker: ['代码', 'code', 'symbol', 'ticker'],
+  shares: ['数量', '股数', 'qty', 'quantity', 'shares'],
+  avgCost: ['成本价', '买入均价', '平均成本', 'cost', 'avg cost', 'price'],
+  company: ['名称', '股票名称', 'name', 'company'],
+};
+
+/** Tiger (老虎证券) CSV preset. */
+const TIGER_ALIASES: Record<MapField, string[]> = {
+  ticker: ['symbol', '代码', 'ticker'],
+  shares: ['quantity', '数量', '股数', 'shares'],
+  avgCost: ['avg cost', '成本价', 'cost basis', '平均成本'],
+  company: ['name', '名称', 'description'],
+};
+
+/** Xueqiu (雪球) CSV preset. */
+const XUEQIU_ALIASES: Record<MapField, string[]> = {
+  ticker: ['symbol', '代码', 'ticker'],
+  shares: ['volume', '数量', '股数', 'shares', '持有数量'],
+  avgCost: ['cost', '成本价', 'avg cost', '买入成本'],
+  company: ['name', '名称', '股票名称'],
+};
+
+/** All broker presets keyed by selector value. */
+const BROKER_PRESETS: Record<string, { label: string; aliases: Record<MapField, string[]> }> = {
+  generic: { label: '通用 CSV', aliases: FIELD_ALIASES },
+  robinhood: { label: 'Robinhood 导出', aliases: ROBINHOOD_ALIASES },
+  futu: { label: '富途牛牛导出', aliases: FUTU_ALIASES },
+  tiger: { label: '老虎证券导出', aliases: TIGER_ALIASES },
+  xueqiu: { label: '雪球导出', aliases: XUEQIU_ALIASES },
+};
+
+function suggestForPreset(headers: string[], presetKey: string): Partial<Record<MapField, number>> {
+  const aliases = BROKER_PRESETS[presetKey]?.aliases ?? FIELD_ALIASES;
   const out: Partial<Record<MapField, number>> = {};
   const used = new Set<number>();
-  for (const field of Object.keys(ROBINHOOD_ALIASES) as MapField[]) {
+  for (const field of Object.keys(aliases) as MapField[]) {
     for (let i = 0; i < headers.length; i++) {
       if (used.has(i)) continue;
-      const h = headers[i].toLowerCase();
-      if (ROBINHOOD_ALIASES[field].some((a) => h.includes(a))) {
+      const h = headers[i].toLowerCase().replace(/\s+/g, '');
+      if (aliases[field].some((a) => h === a || h.includes(a))) {
         out[field] = i;
         used.add(i);
         break;
@@ -171,7 +205,7 @@ function CsvImport() {
   const [encoding, setEncoding] = useState<'utf-8' | 'gbk'>('utf-8');
   const [mapping, setMapping] = useState<Partial<Record<MapField, number>>>({});
   const [buyDate, setBuyDate] = useState('');
-  const [source, setSource] = useState<'generic' | 'robinhood'>('generic');
+  const [source, setSource] = useState<string>('generic');
   const [committing, setCommitting] = useState(false);
   const [result, setResult] = useState<{ created: number; skipped: number; failed: Array<{ ticker: string; reason: string }> } | null>(null);
 
@@ -191,7 +225,7 @@ function CsvImport() {
       const body = data.slice(1);
       setHeaders(hdrs);
       setMatrix(body);
-      setMapping(source === 'robinhood' ? suggestRobinhood(hdrs) : suggestMapping(hdrs));
+      setMapping(suggestForPreset(hdrs, source));
       if (String(text).includes('\uFFFD')) {
         toast.info('检测到乱码——若中文显示异常，请把编码切换为 GBK 后重新选择文件');
       }
@@ -209,7 +243,7 @@ function CsvImport() {
     try {
       setCommitting(true);
       const r = await commitImport({
-        source: source === 'robinhood' ? 'robinhood' : 'csv',
+        source: source === 'generic' ? 'csv' : source as 'csv' | 'robinhood',
         rows: previewRows,
         filename: filename || undefined,
         buyDate: buyDate || undefined,
@@ -234,13 +268,14 @@ function CsvImport() {
             className="h-8 rounded-md border border-input bg-background px-2 text-xs"
             value={source}
             onChange={(e) => {
-              const v = e.target.value as 'generic' | 'robinhood';
+              const v = e.target.value;
               setSource(v);
-              if (headers.length > 0) setMapping(v === 'robinhood' ? suggestRobinhood(headers) : suggestMapping(headers));
+              if (headers.length > 0) setMapping(suggestForPreset(headers, v));
             }}
           >
-            <option value="generic">通用 CSV</option>
-            <option value="robinhood">Robinhood 导出</option>
+            {Object.entries(BROKER_PRESETS).map(([k, v]) => (
+              <option key={k} value={k}>{v.label}</option>
+            ))}
           </select>
           <select
             className="h-8 rounded-md border border-input bg-background px-2 text-xs"

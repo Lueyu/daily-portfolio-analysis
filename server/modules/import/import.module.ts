@@ -13,5 +13,6 @@ import { OcrService } from './ocr.service';
   imports: [HttpModule, QuoteModule],
   controllers: [ImportController],
   providers: [ImportService, OcrService],
+  exports: [ImportService],
 })
 export class ImportModule {}

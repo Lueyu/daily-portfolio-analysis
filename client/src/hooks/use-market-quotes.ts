@@ -14,6 +14,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import http from '../api/http';
 import { logger } from '../utils/logger';
+import { tickerVariants } from '../utils/ticker';
 import type { QuoteResponse, Market } from '@shared/api.interface';
 
 /**
@@ -69,27 +70,6 @@ export function inferMarket(ticker: string): Market {
   if (/\.HK$/.test(clean)) return 'HK';
   if (/^\d{5,6}$/.test(clean)) return clean.length === 6 ? 'CN' : 'HK';
   return 'US';
-}
-
-/**
- * Normalize a quote symbol to match the local holding ticker format.
- *  - HK: "1810.HK" -> "01810" (5-digit, zero-padded); already 5-digit numeric -> as-is
- *  - US: pass through (e.g. "TQQQ", "MSFT")
- *  - CN: 6-digit numeric -> as-is
- * @param symbol - Symbol returned by the quote provider.
- * @param market - Market the quote belongs to.
- * @returns The normalized symbol used as the cache key.
- */
-function normalizeQuoteSymbol(symbol: string, market: Market): string {
-  const s = symbol.trim().toUpperCase();
-  if (market === 'HK') {
-    const dotHk = s.replace(/\.HK$/, '');
-    if (/^\d+$/.test(dotHk)) {
-      return dotHk.padStart(5, '0');
-    }
-    return s;
-  }
-  return s;
 }
 
 /**
@@ -393,11 +373,11 @@ class QuoteScheduler {
         let gotAny = false;
         for (const q of items) {
           if (!q || typeof q.price === 'undefined' || q.price === null) continue;
-          const rawSym = q.symbol;
-          const normSym = normalizeQuoteSymbol(rawSym, q.market ?? market);
-          this.quotes[rawSym] = q;
-          if (normSym !== rawSym) {
-            this.quotes[normSym] = q;
+          // Store under every equivalent spelling of the symbol so lookups by
+          // the holding's own storage form (e.g. '0700' vs provider '00700',
+          // '600519' vs '600519.SH') always hit.
+          for (const key of tickerVariants(q.symbol, q.market ?? market)) {
+            this.quotes[key] = q;
           }
           gotAny = true;
         }

@@ -342,17 +342,19 @@ export default function DashboardPage() {
   // Load today's agent runs and tally hard-rule risk-gate failures.
   useEffect(() => {
     let mounted = true;
-    const today = new Date().toISOString().split('T')[0];
+  const now = new Date();
+  const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const dayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
 
-    const loadRuns = async () => {
-      try {
-        setAgentRunsLoading(true);
-        setRiskGateLoading(true);
-        const data = await getAgentRuns({
-          from: today,
-          to: today,
-          limit: 20,
-        });
+  const loadRuns = async () => {
+    try {
+      setAgentRunsLoading(true);
+      setRiskGateLoading(true);
+      const data = await getAgentRuns({
+        from: dayStart.toISOString(),
+        to: dayEnd.toISOString(),
+        limit: 20,
+      });
         if (!mounted) return;
         const items: AgentRunWithRating[] = data?.items ?? [];
         setAgentRuns(items);

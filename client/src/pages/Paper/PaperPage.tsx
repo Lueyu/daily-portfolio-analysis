@@ -34,6 +34,8 @@ import {
   FlaskConical,
   ShieldAlert,
   Loader2,
+  CheckCircle2,
+  XCircle,
 } from 'lucide-react';
 import ReactECharts from 'echarts-for-react';
 
@@ -49,11 +51,18 @@ import {
   deleteNotificationChannel,
   setNotificationChannelEnabled,
   testNotificationChannel,
+  fetchAgentSessions,
+  createAgentSession,
+  updateAgentSession,
+  revokeAgentSession,
+  approvePaperOrder,
+  rejectPaperOrder,
 } from '@/api';
 import type {
   CreatePaperOrderDto,
   NotificationChannelType,
   PaperOverview,
+  AgentSession,
 } from '@shared/api.interface';
 import { cn } from '@/utils/format';
 import { Button } from '@/components/ui/button';
@@ -404,8 +413,65 @@ function PaperPage() {
         </CardContent>
       </Card>
 
-      {/* Notifications */}
+      {/* Notification channels */}
       <NotificationChannelsCard />
+
+      {/* AI agent sessions (MCP) */}
+      <AgentSessionsCard />
+
+      {/* Pending approvals */}
+      {(overview?.recentOrders ?? []).some((o) => o.status === 'pending_approval') && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-1.5 text-sm">
+              <Bot size={14} className="text-amber-500" /> 待审批订单
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 p-4">
+            {(overview?.recentOrders ?? [])
+              .filter((o) => o.status === 'pending_approval')
+              .map((o) => (
+                <div key={o.id} className="flex items-center gap-3 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2.5 text-sm">
+                  <div className="min-w-0 flex-1">
+                    <div className="font-medium">
+                      🤖 {o.reason?.includes('AI 代理') ? o.reason.split('AI 代理 ')[1]?.split(' ')[0] : 'AI'}{' '}
+                      请求{o.side === 'buy' ? '买入' : '卖出'} {o.ticker} × {Number(o.quantity)}
+                    </div>
+                    <div className="mt-0.5 text-xs text-muted-foreground">{o.reason}</div>
+                  </div>
+                  <Button
+                    size="sm"
+                    onClick={async () => {
+                      try {
+                        const result = await approvePaperOrder(o.id);
+                        toast.success(`${o.ticker} 审批通过，成交 @ ${result.filledPrice}`);
+                        invalidate();
+                      } catch (error) {
+                        toast.error((error as { response?: { data?: { message?: string } } })?.response?.data?.message ?? '审批失败');
+                      }
+                    }}
+                  >
+                    <CheckCircle2 size={14} className="mr-1" /> 批准
+                  </Button>
+                  <Button
+                    size="sm" variant="destructive"
+                    onClick={async () => {
+                      try {
+                        await rejectPaperOrder(o.id);
+                        toast.info(`${o.ticker} 订单已拒绝`);
+                        invalidate();
+                      } catch (error) {
+                        toast.error((error as { response?: { data?: { message?: string } } })?.response?.data?.message ?? '操作失败');
+                      }
+                    }}
+                  >
+                    <XCircle size={14} className="mr-1" /> 拒绝
+                  </Button>
+                </div>
+              ))}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Dialogs */}
       <ManualOrderDialog open={orderOpen} onOpenChange={setOrderOpen} onDone={invalidate} />
@@ -794,6 +860,167 @@ function NotificationChannelsCard() {
           <DialogFooter>
             <Button variant="ghost" onClick={() => setAddOpen(false)}>取消</Button>
             <Button onClick={addChannel} disabled={submitting}>{submitting ? '添加中…' : '添加'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </Card>
+  );
+}
+
+/** AI agent sessions management card (MCP connections). */
+function AgentSessionsCard() {
+  const queryClient = useQueryClient();
+  const [addOpen, setAddOpen] = useState(false);
+  const [name, setName] = useState('');
+  const [dailyLimit, setDailyLimit] = useState('500');
+  const [permission, setPermission] = useState<'read' | 'trade'>('trade');
+  const [approvalMode, setApprovalMode] = useState<'auto' | 'require_approval'>('require_approval');
+  const [newToken, setNewToken] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const sessionsQuery = useQuery({
+    queryKey: ['mcp', 'sessions'],
+    queryFn: fetchAgentSessions,
+  });
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['mcp'] });
+
+  const add = async () => {
+    if (!name.trim()) {
+      toast.warning('请填写代理名称');
+      return;
+    }
+    try {
+      setSubmitting(true);
+      const session = await createAgentSession({
+        name: name.trim(),
+        dailyLimitUsd: Number(dailyLimit) || 500,
+        permission,
+        approvalMode,
+      });
+      setNewToken(session.token ?? null);
+      setAddOpen(false);
+      setName('');
+      invalidate();
+    } catch {
+      toast.error('创建失败');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const sessions = sessionsQuery.data ?? [];
+  const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <CardTitle className="flex items-center gap-1.5 text-sm">
+          <Bot size={14} /> AI 代理（MCP 连接）
+        </CardTitle>
+        <Button variant="outline" size="sm" onClick={() => setAddOpen(true)}>
+          <Plus size={14} className="mr-1" /> 连接新代理
+        </Button>
+      </CardHeader>
+      <CardContent className="space-y-2 p-4">
+        <p className="text-xs text-muted-foreground">
+          让你的 AI 助手（Claude / ChatGPT / 任意 MCP 客户端）连接到这个模拟盘。每个代理有独立的日限额和审批模式。
+        </p>
+        {newToken && (
+          <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm">
+            <div className="font-medium text-emerald-600 dark:text-emerald-400">✓ 代理已创建</div>
+            <div className="mt-2 space-y-1 text-xs">
+              <div><span className="text-muted-foreground">MCP 地址：</span><code className="break-all">{baseUrl}/mcp</code></div>
+              <div><span className="text-muted-foreground">Token：</span><code className="break-all">{newToken}</code></div>
+            </div>
+            <div className="mt-2 text-xs text-muted-foreground">
+              在 AI 助手的 MCP 设置中添加这个地址和 Token。Token 只显示这一次，请保存。
+            </div>
+            <Button variant="ghost" size="sm" className="mt-2" onClick={() => setNewToken(null)}>关闭</Button>
+          </div>
+        )}
+        {sessions.map((s) => (
+          <div key={s.id} className={`flex items-center gap-3 rounded-md border px-3 py-2 text-sm ${s.status === 'revoked' ? 'border-border opacity-50' : 'border-border'}`}>
+            <Badge variant="outline" className={`shrink-0 text-[10px] ${s.permission === 'trade' ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400' : 'bg-slate-500/15 text-muted-foreground'}`}>
+              {s.permission === 'trade' ? '交易' : '只读'}
+            </Badge>
+            <div className="min-w-0 flex-1">
+              <div className="font-medium">{s.name}</div>
+              <div className="text-xs text-muted-foreground">
+                日限 ${Number(s.dailyLimitUsd).toLocaleString()} · {s.approvalMode === 'require_approval' ? '需审批' : '自动'}
+                {s.lastUsedAt && ` · 上次使用 ${new Date(s.lastUsedAt).toLocaleString('zh-CN', { hour12: false })}`}
+              </div>
+            </div>
+            {s.status === 'active' ? (
+              <div className="flex items-center gap-2">
+                <select
+                  className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+                  value={s.approvalMode}
+                  onChange={async (e) => {
+                    await updateAgentSession(s.id, { approvalMode: e.target.value as 'auto' | 'require_approval' });
+                    invalidate();
+                  }}
+                >
+                  <option value="require_approval">需审批</option>
+                  <option value="auto">自动成交</option>
+                </select>
+                <Button variant="ghost" size="sm" onClick={async () => { await revokeAgentSession(s.id); invalidate(); }}>
+                  <Trash2 size={14} className="text-destructive" />
+                </Button>
+              </div>
+            ) : (
+              <Badge variant="outline" className="text-[10px] text-muted-foreground">已吊销</Badge>
+            )}
+          </div>
+        ))}
+        {sessions.length === 0 && !newToken && (
+          <div className="rounded-md border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+            还没有连接任何 AI 代理——创建一个，然后把 MCP 地址和 Token 填入你的 AI 助手
+          </div>
+        )}
+      </CardContent>
+
+      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>连接 AI 代理</DialogTitle>
+            <DialogDescription>
+              创建一个 MCP 会话，让你的 AI 助手（Claude / ChatGPT 等）能查询持仓、阅读研报并在模拟盘下单。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>代理名称</Label>
+              <Input placeholder="如 我的 Claude" value={name} onChange={(e) => setName(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>日花费限额（USD）</Label>
+              <Input type="number" min={1} value={dailyLimit} onChange={(e) => setDailyLimit(e.target.value)} />
+              <p className="text-xs text-muted-foreground">该代理每天累计买入金额的上限</p>
+            </div>
+            <div className="space-y-2">
+              <Label>权限</Label>
+              <Select value={permission} onValueChange={(v) => setPermission(v as 'read' | 'trade')}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="trade">交易（可下单）</SelectItem>
+                  <SelectItem value="read">只读（仅查询）</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>审批模式</Label>
+              <Select value={approvalMode} onValueChange={(v) => setApprovalMode(v as 'auto' | 'require_approval')}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="require_approval">需人工审批（推荐）</SelectItem>
+                  <SelectItem value="auto">自动成交（仅受风控门约束）</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setAddOpen(false)}>取消</Button>
+            <Button onClick={add} disabled={submitting}>{submitting ? '创建中…' : '创建'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

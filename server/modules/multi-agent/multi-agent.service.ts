@@ -1044,8 +1044,15 @@ export class MultiAgentService {
     if (query.runMode) conditions.push(eq(agentRuns.runMode, query.runMode));
     if (query.from) conditions.push(gte(agentRuns.createdAt, new Date(query.from)));
     if (query.to) {
+      // `to` is treated as an exclusive upper bound. Callers that send a
+      // plain date (yyyy-MM-dd) still work: Date() parses it as midnight.
+      // Callers that send a full ISO timestamp (the dashboard sends the
+      // start of the next local day) get exact behavior with no timezone skew.
       const toDate = new Date(query.to);
-      toDate.setDate(toDate.getDate() + 1);
+      // Only add a day when the caller passed a bare date (no time part).
+      if (query.to.length === 10) {
+        toDate.setDate(toDate.getDate() + 1);
+      }
       conditions.push(lt(agentRuns.createdAt, toDate));
     }
 
@@ -1064,14 +1071,14 @@ export class MultiAgentService {
         .from(agentRuns)
         .leftJoin(deepReport, eq(agentRuns.id, deepReport.runId))
         .where(and(...conditions))
-        .orderBy(desc(agentRuns.createdAt))
+        .orderBy(desc(agentRuns.startedAt), desc(agentRuns.createdAt))
         .limit(limit)
         .offset(offset),
       this.db
         .select({ count: this.db.$count(agentRuns) })
         .from(agentRuns)
         .where(and(...conditions)),
-    ]);
+      ]);
 
     const runIds = rows.map((r) => r.run.id);
     const ratingRows = runIds.length > 0

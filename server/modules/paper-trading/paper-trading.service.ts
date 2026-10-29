@@ -240,6 +240,7 @@ export class PaperTradingService {
     userId: string,
     dto: CreatePaperOrderDto,
     source: PaperOrderSource,
+    agentInfo?: { sessionId: string; agentName: string; approvalMode: 'auto' | 'require_approval' },
   ): Promise<PaperOrder> {
     const account = await this.requireAccount(userId);
     if (dto.orderType && dto.orderType !== 'market') {
@@ -311,6 +312,12 @@ export class PaperTradingService {
     };
 
     const ticker = price.market === 'US' ? dto.ticker.toUpperCase() : dto.ticker;
+    // Determine the final status: agent orders in require_approval mode go
+    // to pending_approval instead of filling immediately.
+    const needsApproval =
+      source === 'agent' && agentInfo?.approvalMode === 'require_approval';
+    const finalStatus = rejection ? 'rejected_risk' : needsApproval ? 'pending_approval' : 'filled';
+
     const [order] = await this.db
       .insert(paperOrders)
       .values({
@@ -323,12 +330,14 @@ export class PaperTradingService {
         side: dto.side,
         orderType: 'market',
         quantity: String(quantity),
-        status: rejection ? 'rejected_risk' : 'filled',
+        status: finalStatus,
         source,
         reason: rejection ?? dto.reason ?? null,
         riskCheck,
-        filledPrice: rejection ? null : String(price.price),
-        filledAt: rejection ? null : new Date(),
+        filledPrice: rejection || needsApproval ? null : String(price.price),
+        filledAt: rejection || needsApproval ? null : new Date(),
+        sessionId: agentInfo?.sessionId ?? null,
+        agentName: agentInfo?.agentName ?? null,
       })
       .returning();
 
@@ -343,6 +352,25 @@ export class PaperTradingService {
         event: circuitBreaker ? 'circuit_breaker' : 'order_rejected',
         title: circuitBreaker ? '熔断触发' : '订单被风控拦截',
         body: `${ticker} ${dto.side === 'buy' ? '买入' : '卖出'} ${quantity} 股被拦截：${rejection}`,
+      });
+      return this.mapOrder(order);
+    }
+
+    // Agent order awaiting user approval: record event, notify, return.
+    if (needsApproval) {
+      await this.recordEvent(userId, account.id, 'order_placed', {
+        orderId: order.id,
+        ticker,
+        side: dto.side,
+        quantity,
+        reason: dto.reason ?? '',
+        agentName: agentInfo?.agentName ?? '',
+        pendingApproval: true,
+      });
+      await this.notifications.notifyUser(userId, {
+        event: 'pending_approval',
+        title: `AI 代理 ${agentInfo?.agentName ?? ''} 请求${dto.side === 'buy' ? '买入' : '卖出'} ${ticker}`,
+        body: `数量 ${quantity} 股，理由：${dto.reason ?? '未提供'}。请到模拟盘页面审批。`,
       });
       return this.mapOrder(order);
     }
@@ -442,6 +470,165 @@ export class PaperTradingService {
       await this.ensureDailySnapshot(userId, account.id);
     }
     return this.mapAccount(updated);
+  }
+
+  /**
+   * Approve a pending agent order: fill it at the current price.
+   * Re-runs the solvency checks but skips the bot guardrails (the human
+   * has already made the decision — that IS the guardrail).
+   */
+  async approveOrder(userId: string, orderId: string): Promise<PaperOrder> {
+    const account = await this.requireAccount(userId);
+    const [order] = await this.db
+      .select()
+      .from(paperOrders)
+      .where(and(eq(paperOrders.id, orderId), eq(paperOrders.owner, userId)));
+    if (!order) throw new NotFoundException('订单不存在');
+    if (order.status !== 'pending_approval') {
+      throw new BadRequestException('该订单不在待审批状态');
+    }
+
+    const price = await this.resolvePrice(userId, order.ticker);
+    if (!price) throw new BadRequestException(`无法获取 ${order.ticker} 的价格`);
+
+    const quantity = Number(order.quantity);
+    const notionalUsd = quantity * price.price * price.fxToUsd;
+    const cash = Number(account.cashBalance);
+
+    // Solvency check only (guardrails are the human's call now).
+    if (order.side === 'buy' && notionalUsd > cash) {
+      throw new BadRequestException(`现金不足：需 ${notionalUsd.toFixed(2)} USD，可用 ${cash.toFixed(2)} USD`);
+    }
+
+    // Execute the fill (same logic as placeOrder's fill section).
+    await this.executeFill(userId, account.id, order.id, order.ticker, price, order.side as 'buy' | 'sell', quantity);
+
+    const [updated] = await this.db
+      .update(paperOrders)
+      .set({ status: 'filled', filledPrice: String(price.price), filledAt: new Date() })
+      .where(eq(paperOrders.id, orderId))
+      .returning();
+
+    await this.recordEvent(userId, account.id, 'order_filled', {
+      orderId,
+      ticker: order.ticker,
+      side: order.side,
+      quantity,
+      price: price.price,
+      approvedBy: 'user',
+      agentName: order.agentName,
+      notionalUsd: Number(notionalUsd.toFixed(2)),
+    });
+    await this.notifications.notifyUser(userId, {
+      event: 'order_filled',
+      title: `审批通过：${order.ticker} ${order.side === 'buy' ? '买入' : '卖出'} ${quantity} 股`,
+      body: `成交价 ${price.price}（约 ${notionalUsd.toFixed(2)} USD）`,
+    });
+    return this.mapOrder(updated);
+  }
+
+  /** Reject a pending agent order. */
+  async rejectOrder(userId: string, orderId: string): Promise<PaperOrder> {
+    const account = await this.requireAccount(userId);
+    const [order] = await this.db
+      .select()
+      .from(paperOrders)
+      .where(and(eq(paperOrders.id, orderId), eq(paperOrders.owner, userId)));
+    if (!order) throw new NotFoundException('订单不存在');
+    if (order.status !== 'pending_approval') {
+      throw new BadRequestException('该订单不在待审批状态');
+    }
+    const [updated] = await this.db
+      .update(paperOrders)
+      .set({ status: 'cancelled', reason: '用户拒绝审批' })
+      .where(eq(paperOrders.id, orderId))
+      .returning();
+    await this.recordEvent(userId, account.id, 'order_rejected', {
+      orderId,
+      ticker: order.ticker,
+      side: order.side,
+      reason: '用户拒绝审批',
+      agentName: order.agentName,
+    });
+    return this.mapOrder(updated);
+  }
+
+  /** Shared fill execution used by both placeOrder and approveOrder. */
+  private async executeFill(
+    userId: string,
+    accountId: string,
+    orderId: string,
+    ticker: string,
+    price: ResolvedPrice,
+    side: 'buy' | 'sell',
+    quantity: number,
+  ): Promise<void> {
+    const [account] = await this.db.select().from(paperAccounts).where(eq(paperAccounts.id, accountId));
+    const cash = Number(account.cashBalance);
+    const notionalUsd = quantity * price.price * price.fxToUsd;
+
+    const [existing] = await this.db
+      .select()
+      .from(paperPositions)
+      .where(and(eq(paperPositions.accountId, accountId), eq(paperPositions.ticker, ticker)));
+
+    let cashAfter = cash;
+    let realizedPl: number | null = null;
+
+    if (side === 'buy') {
+      cashAfter = cash - notionalUsd;
+      const totalShares = (existing ? Number(existing.shares) : 0) + quantity;
+      const totalCost = (existing ? Number(existing.shares) * Number(existing.avgCost) : 0) + quantity * price.price;
+      const avgCost = totalShares > 0 ? totalCost / totalShares : 0;
+      if (existing) {
+        await this.db
+          .update(paperPositions)
+          .set({ shares: String(totalShares), avgCost: String(avgCost), updatedAt: new Date() })
+          .where(eq(paperPositions.id, existing.id));
+      } else {
+        await this.db.insert(paperPositions).values({
+          owner: userId,
+          accountId,
+          ticker,
+          market: price.market,
+          currency: price.currency,
+          company: price.company,
+          shares: String(totalShares),
+          avgCost: String(avgCost),
+        });
+      }
+    } else {
+      cashAfter = cash + notionalUsd;
+      realizedPl = (price.price - Number(existing.avgCost)) * quantity;
+      const remaining = Number(existing.shares) - quantity;
+      if (remaining > 0) {
+        await this.db
+          .update(paperPositions)
+          .set({ shares: String(remaining), updatedAt: new Date() })
+          .where(eq(paperPositions.id, existing.id));
+      } else {
+        await this.db.delete(paperPositions).where(eq(paperPositions.id, existing.id));
+      }
+    }
+
+    await this.db
+      .update(paperAccounts)
+      .set({ cashBalance: cashAfter.toFixed(2), updatedAt: new Date() })
+      .where(eq(paperAccounts.id, accountId));
+
+    await this.db.insert(paperTrades).values({
+      owner: userId,
+      accountId,
+      orderId,
+      ticker,
+      market: price.market,
+      side,
+      quantity: String(quantity),
+      price: String(price.price),
+      fee: '0',
+      realizedPl: realizedPl === null ? null : realizedPl.toFixed(2),
+      cashAfter: cashAfter.toFixed(2),
+    });
   }
 
   /** Update guardrail thresholds. */

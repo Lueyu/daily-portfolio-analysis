@@ -1,14 +1,10 @@
 /**
  * @file pages/Auth/RegisterPage.tsx
- * @description Registration page for the first-party account system.
- *
- * Username / password / confirm-password form with the same brand card as
- * the login page. On success the issued session is stored and the user is
- * taken straight into the app (empty portfolio onboarding is handled by the
- * dashboard empty states).
+ * @description Registration page. Bilingual via react-i18next.
  */
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
@@ -17,13 +13,13 @@ import { Label } from '@/components/ui/label';
 import { apiRegister } from '@/api';
 import { tokenStore } from '@/api/http';
 
-/** Extract a readable error message from an axios-ish error. */
 function errorMessage(error: unknown): string {
   const e = error as { response?: { data?: { message?: string } }; message?: string };
-  return e?.response?.data?.message ?? e?.message ?? '注册失败，请稍后再试';
+  return e?.response?.data?.message ?? e?.message ?? '';
 }
 
 function RegisterPage() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [username, setUsername] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -34,25 +30,21 @@ function RegisterPage() {
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!username.trim() || !password) {
-      toast.warning('请输入用户名和密码');
+      toast.warning(t('auth.enterCredentials'));
       return;
     }
     if (password !== confirm) {
-      toast.warning('两次输入的密码不一致');
+      toast.warning(t('auth.passwordMismatch'));
       return;
     }
     try {
       setSubmitting(true);
-      const result = await apiRegister({
-        username: username.trim(),
-        password,
-        displayName: displayName.trim() || undefined,
-      });
+      const result = await apiRegister({ username: username.trim(), password, displayName: displayName.trim() || undefined });
       tokenStore.save(result.accessToken, result.refreshToken);
-      toast.success(`欢迎加入吵股，${result.user.displayName ?? result.user.username}`);
+      toast.success(`${t('auth.welcomeJoin')}, ${result.user.displayName ?? result.user.username}`);
       navigate('/', { replace: true });
     } catch (error) {
-      toast.error(errorMessage(error));
+      toast.error(errorMessage(error) || t('auth.registerFailed'));
     } finally {
       setSubmitting(false);
     }
@@ -63,71 +55,42 @@ function RegisterPage() {
       <div className="w-full max-w-sm">
         <div className="rounded-xl border border-border bg-card p-8 shadow-lg">
           <div className="flex flex-col items-center text-center">
-            <img src="/logo.svg" alt="吵股 Squabble" className="h-16 w-16" />
+            <img src="/logo.svg" alt="Squabble" className="h-16 w-16" />
             <h1 className="mt-4 font-serif text-2xl font-semibold tracking-wide text-foreground">
-              注册吵股账号
+              {t('auth.registerTitle')}
             </h1>
-            <p className="mt-1 text-sm text-muted-foreground">只要用户名和密码，别的都不要。</p>
+            <p className="mt-1 text-sm text-muted-foreground">{t('auth.registerTagline')}</p>
           </div>
 
           <form className="mt-8 space-y-4" onSubmit={handleSubmit}>
             <div className="space-y-2">
-              <Label htmlFor="username">用户名</Label>
-              <Input
-                id="username"
-                autoComplete="username"
-                placeholder="2-32 位字母、数字或 . _ -"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-              />
+              <Label htmlFor="username">{t('auth.username')}</Label>
+              <Input id="username" autoComplete="username" placeholder={t('auth.usernamePlaceholder')} value={username} onChange={(e) => setUsername(e.target.value)} />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="displayName">昵称（可选）</Label>
-              <Input
-                id="displayName"
-                placeholder="怎么称呼你"
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
-              />
+              <Label htmlFor="displayName">{t('auth.displayName')}</Label>
+              <Input id="displayName" placeholder={t('auth.nicknamePlaceholder')} value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="password">密码</Label>
-              <Input
-                id="password"
-                type="password"
-                autoComplete="new-password"
-                placeholder="至少 6 位"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
+              <Label htmlFor="password">{t('auth.password')}</Label>
+              <Input id="password" type="password" autoComplete="new-password" placeholder={t('auth.passwordPlaceholder')} value={password} onChange={(e) => setPassword(e.target.value)} />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="confirm">确认密码</Label>
-              <Input
-                id="confirm"
-                type="password"
-                autoComplete="new-password"
-                placeholder="再输一次"
-                value={confirm}
-                onChange={(e) => setConfirm(e.target.value)}
-              />
+              <Label htmlFor="confirm">{t('auth.confirmPassword')}</Label>
+              <Input id="confirm" type="password" autoComplete="new-password" placeholder={t('auth.confirmPlaceholder')} value={confirm} onChange={(e) => setConfirm(e.target.value)} />
             </div>
             <Button type="submit" className="w-full" disabled={submitting}>
-              {submitting ? '创建中…' : '创建账号'}
+              {submitting ? t('auth.creating') : t('auth.createAccount')}
             </Button>
           </form>
 
           <div className="mt-6 text-center text-sm text-muted-foreground">
-            已经有账号了？
+            {t('auth.hasAccount')}
             <Link to="/login" className="ml-1 font-medium text-foreground underline-offset-4 hover:underline">
-              去登录
+              {t('auth.login')}
             </Link>
           </div>
         </div>
-
-        <p className="mt-4 px-2 text-center text-xs leading-relaxed text-muted-foreground">
-          不收手机号、不收邮箱验证、零埋点——注册只创建一个用户名和 bcrypt 密码哈希。
-        </p>
       </div>
     </div>
   );

@@ -778,6 +778,10 @@ import type {
   ImportHistoryItem,
   OcrExtractDto,
   OcrExtractResult,
+  AgentSession,
+  CreateAgentSessionDto,
+  AgentPermission,
+  AgentApprovalMode,
 } from '@shared/api.interface';
 
 /**
@@ -933,5 +937,55 @@ export async function extractScreenshot(
  */
 export async function fetchImportHistory(): Promise<ImportHistoryItem[]> {
   const response = await http({ url: '/api/import/history', method: 'GET' });
+  return response.data;
+}
+
+/**
+ * MCP: list agent sessions.
+ */
+export async function fetchAgentSessions(): Promise<AgentSession[]> {
+  const response = await http({ url: '/api/mcp/sessions', method: 'GET' });
+  return response.data;
+}
+
+/**
+ * MCP: create an agent session (token returned once).
+ */
+export async function createAgentSession(dto: CreateAgentSessionDto): Promise<AgentSession> {
+  const response = await http({ url: '/api/mcp/sessions', method: 'POST', data: dto });
+  return response.data;
+}
+
+/**
+ * MCP: update a session's limits/mode.
+ */
+export async function updateAgentSession(
+  id: string,
+  patch: { dailyLimitUsd?: number; permission?: AgentPermission; approvalMode?: AgentApprovalMode },
+): Promise<AgentSession> {
+  const response = await http({ url: `/api/mcp/sessions/${id}`, method: 'PUT', data: patch });
+  return response.data;
+}
+
+/**
+ * MCP: revoke an agent session.
+ */
+export async function revokeAgentSession(id: string): Promise<void> {
+  await http({ url: `/api/mcp/sessions/${id}/revoke`, method: 'POST' });
+}
+
+/**
+ * Paper trading: approve a pending agent order.
+ */
+export async function approvePaperOrder(orderId: string): Promise<PaperOrder> {
+  const response = await http({ url: `/api/paper/orders/${orderId}/approve`, method: 'POST' });
+  return response.data;
+}
+
+/**
+ * Paper trading: reject a pending agent order.
+ */
+export async function rejectPaperOrder(orderId: string): Promise<PaperOrder> {
+  const response = await http({ url: `/api/paper/orders/${orderId}/reject`, method: 'POST' });
   return response.data;
 }

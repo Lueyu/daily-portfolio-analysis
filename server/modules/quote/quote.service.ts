@@ -116,14 +116,16 @@ export class QuoteService {
 
     // Pure numeric detection.
     if (/^\d+$/.test(upper)) {
-      // 5-digit -> HK (e.g. 00700).
-      if (upper.length === 5) {
-        const displayCode = upper.startsWith('0') ? upper.slice(1) : upper;
+      // 4-digit -> HK (e.g. 0700, the app's holdings storage form).
+      // 5-digit -> HK (e.g. 00700, provider-native form).
+      if (upper.length === 4 || upper.length === 5) {
+        const padded = upper.padStart(5, '0');
+        const displayCode = padded.startsWith('0') ? padded.slice(1) : padded;
         return {
           market: 'HK',
           currency: 'HKD',
           displaySymbol: `${displayCode}.HK`,
-          symbolNative: upper,
+          symbolNative: padded,
         };
       }
       // 6-digit -> CN A-share; leading digit selects the exchange.
@@ -441,6 +443,13 @@ export class QuoteService {
       }
     }
 
+    // Fallback chain: Sina, then Yahoo.
+    if (!primary) {
+      primary = await this.fetchHkQuoteSina(symbol);
+    }
+    if (!primary) {
+      primary = await this.fetchHkQuoteYahoo(symbol);
+    }
     return primary;
   }
 
@@ -506,6 +515,40 @@ export class QuoteService {
       };
     } catch (error) {
       this.logger.warn(`fetchHkQuoteSina failed for ${symbol}: ${error instanceof Error ? error.message : String(error)}`);
+      return null;
+    }
+  }
+
+  /**
+   * Third-tier HK quote fallback: Yahoo Finance. Used when both Tencent and
+   * Sina fail (e.g. 503s from CDN-level rate limiting).
+   */
+  async fetchHkQuoteYahoo(symbol: string): Promise<QuoteResponse | null> {
+    try {
+      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}.HK?interval=1d&range=1d`;
+      const response = await firstValueFrom(
+        this.httpService.get(url, { timeout: 8000 }),
+      );
+      const result = response.data?.chart?.result?.[0];
+      if (!result?.meta) return null;
+      const meta = result.meta;
+      const price = meta.regularMarketPrice;
+      const prevClose = meta.chartPreviousClose ?? meta.previousClose;
+      if (!price || price <= 0) return null;
+      const change = prevClose ? price - prevClose : 0;
+      const changePercent = prevClose ? (change / prevClose) * 100 : 0;
+      return {
+        symbol: `${symbol}.HK`,
+        price: price.toFixed(2),
+        change: change.toFixed(2),
+        changePercent: changePercent.toFixed(2),
+        currency: 'HKD',
+        market: 'HK',
+        timestamp: Date.now(),
+        delayed: true,
+      };
+    } catch (error) {
+      this.logger.warn(`fetchHkQuoteYahoo failed for ${symbol}: ${error instanceof Error ? error.message : String(error)}`);
       return null;
     }
   }

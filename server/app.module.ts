@@ -35,6 +35,7 @@ import { MultiAgentModule } from './modules/multi-agent/multi-agent.module';
 import { NotificationModule } from './modules/notifications/notification.module';
 import { PaperTradingModule } from './modules/paper-trading/paper-trading.module';
 import { ImportModule } from './modules/import/import.module';
+import { McpModule } from './modules/mcp/mcp.module';
 
 /**
  * Root Nest module. Aggregates feature modules and installs the global
@@ -66,6 +67,7 @@ import { ImportModule } from './modules/import/import.module';
     NotificationModule,
     PaperTradingModule,
     ImportModule,
+    McpModule,
     // ====== @route-section: business-modules END ======
 
     // ⚠️ @route-order: last

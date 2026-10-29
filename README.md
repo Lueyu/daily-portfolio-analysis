@@ -37,9 +37,9 @@ Self-hosted. No phone number, no email verification, zero telemetry — see
 
 | | |
 |---|---|
-| 🗣️ **AI 吵架出研报** | Pick any stock. A bull and a bear argue over it — every point must cite evidence — a critic overturns the weak claims, your risk rules run as hard gates, and a PM rolls it into a **14-section research report**. Re-run it and you can see how the view changed, and *why*. Daily health checks, watchlist scans, journals and realized P&L included. |
-| 🤖 **AI 全天候模拟盘** | A fully isolated paper account where an AI agent watches the markets around the clock, trades on the signals from your own research ratings, and pushes a notification (Webhook / Bark / Server酱 / 邮件 / Telegram) every time it fills. Hard guardrails: daily-loss circuit breaker, per-order caps, per-day caps — and no real-broker code path exists anywhere. |
-| 🔒 **不碰你的个人数据** | Self-hosted, zero telemetry, username+password only (no phone number, no email verification). The only outbound calls are the ones you make with **your own API keys**. |
+| 🗣️ **AI-Debated Research Reports** | Pick any stock. A bull and a bear argue over it — every point must cite evidence — a critic overturns the weak claims, your risk rules run as hard gates, and a PM rolls it into a **14-section research report**. Re-run it and you can see how the view changed, and *why*. Daily health checks, watchlist scans, journals and realized P&L included. |
+| 🤖 **24/7 AI Paper Trading** | A fully isolated paper account where an AI agent watches the markets around the clock, trades on the signals from your own research ratings, and pushes a notification (Webhook / Bark / Server酱 / SMTP / Telegram) every time it fills. Hard guardrails: daily-loss circuit breaker, per-order caps, per-day caps — and no real-broker code path exists anywhere. Connect your own AI assistant (Claude / ChatGPT) via MCP with per-agent spending limits and approval modes. |
+| 🔒 **Zero Personal Data** | Self-hosted, zero telemetry, username+password only (no phone number, no email verification). The only outbound calls are the ones you make with **your own API keys**. |
 
 ## Try it in 5 minutes
 
@@ -70,8 +70,8 @@ quotes. Details: [self-hosting guide](docs/self-hosting.md).
 - ✅ Multi-agent research reports (bull/bear debate, critic, risk gates, versioned)
 - ✅ One-command Docker demo with fictional data
 - ✅ **First-party accounts** — username + password (bcrypt), JWT sessions, no phone number, no email verification, registration toggle via env
-- ✅ **AI paper trading** — signal-driven watchbot with hard guardrails (daily-loss circuit breaker, per-order/per-day caps), market-clock aware, and push notifications on fills (Webhook / Bark / Server酱 / SMTP / Telegram)
-- ✅ **Portfolio import** — generic CSV with auto column mapping + GBK support, a Robinhood CSV preset, and broker-screenshot OCR powered by your own multimodal key (同花顺 / 东方财富 / 雪球 / 富途 / Robinhood …)
+- ✅ **AI paper trading** — signal-driven watchbot with hard guardrails (daily-loss circuit breaker, per-order/per-day caps), market-clock aware, and push notifications on fills (Webhook / Bark / Server酱 / SMTP / Telegram); **MCP server** for connecting external AI agents (Claude / ChatGPT) with per-agent spending limits, read/trade permissions and approval modes
+- ✅ **Portfolio import** — generic CSV with auto column mapping + GBK support, broker presets (Robinhood / Futu / Tiger / Xueqiu), and broker-screenshot OCR powered by your own multimodal key
 - 🔜 **Desktop app** — one-click installer; download counts via GitHub Releases, no telemetry
 
 ## FAQ

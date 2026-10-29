@@ -7,6 +7,7 @@ import {
   Body,
   Controller,
   Get,
+  Param,
   Post,
   Put,
   Req,
@@ -46,6 +47,20 @@ export class PaperTradingController {
   @Post('orders')
   async placeOrder(@Req() req: Request, @Body() dto: CreatePaperOrderDto) {
     return this.paper.placeOrder(req.userContext.userId, dto, 'manual');
+  }
+
+  /** Approve a pending agent order. */
+  @NeedLogin()
+  @Post('orders/:id/approve')
+  async approveOrder(@Req() req: Request, @Param('id') id: string) {
+    return this.paper.approveOrder(req.userContext.userId, id);
+  }
+
+  /** Reject a pending agent order. */
+  @NeedLogin()
+  @Post('orders/:id/reject')
+  async rejectOrder(@Req() req: Request, @Param('id') id: string) {
+    return this.paper.rejectOrder(req.userContext.userId, id);
   }
 
   /** Enable/disable the watchbot for the caller's account. */

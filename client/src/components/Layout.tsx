@@ -13,11 +13,14 @@
 import { Outlet, NavLink, useLocation, useNavigate, Navigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { fetchMyProfile } from '@/api';
 import { hasSession, tokenStore } from '@/api/http';
+import { setLanguage } from '@/i18n';
 import {
   FlaskConical,
   Upload,
+  Languages,
   LayoutDashboard,
   Briefcase,
   Eye,
@@ -43,15 +46,15 @@ import { Skeleton } from '@/components/ui/skeleton';
  * active on the exact path rather than on every child route.
  */
 const navItems = [
-  { path: '/', label: '仪表盘', icon: LayoutDashboard, end: true },
-  { path: '/holdings', label: '持仓', icon: Briefcase },
-  { path: '/import', label: '持仓导入', icon: Upload },
-  { path: '/watchlist', label: '关注', icon: Eye },
-  { path: '/analysis', label: '每日分析', icon: BarChart3 },
-  { path: '/paper', label: 'AI 模拟盘', icon: FlaskConical },
-  { path: '/journal', label: '日志', icon: BookOpen },
-  { path: '/transactions', label: '交易记录', icon: Receipt },
-  { path: '/settings/rules', label: '策略规则', icon: Settings },
+  { path: '/', label: 'nav.dashboard', icon: LayoutDashboard, end: true },
+  { path: '/holdings', label: 'nav.holdings', icon: Briefcase },
+  { path: '/import', label: 'nav.import', icon: Upload },
+  { path: '/watchlist', label: 'nav.watchlist', icon: Eye },
+  { path: '/analysis', label: 'nav.analysis', icon: BarChart3 },
+  { path: '/paper', label: 'nav.paper', icon: FlaskConical },
+  { path: '/journal', label: 'nav.journal', icon: BookOpen },
+  { path: '/transactions', label: 'nav.transactions', icon: Receipt },
+  { path: '/settings/rules', label: 'nav.rules', icon: Settings },
 ];
 
 /** Profile shape used by the sidebar user block. */
@@ -68,9 +71,15 @@ interface SidebarProfile {
  */
 function Layout() {
   const { theme, toggleTheme } = useTheme();
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
   const location = useLocation();
+
+  const toggleLang = () => {
+    const next = i18n.language === 'zh-CN' ? 'en' : 'zh-CN';
+    setLanguage(next);
+  };
 
   useEffect(() => {
     setMobileOpen(false);
@@ -119,7 +128,7 @@ function Layout() {
                 }
               >
                 <item.icon size={18} />
-                <span>{item.label}</span>
+                <span>{t(item.label)}</span>
               </NavLink>
             ))}
           </nav>
@@ -132,6 +141,13 @@ function Layout() {
             >
               {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
               <span>{theme === 'dark' ? '浅色模式' : '深色模式'}</span>
+            </button>
+            <button
+              onClick={toggleLang}
+              className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
+            >
+              <Languages size={18} />
+              <span>{i18n.language === 'zh-CN' ? 'English' : '中文'}</span>
             </button>
             <LogoutButton />
           </div>
@@ -158,10 +174,13 @@ function Layout() {
               <Menu size={20} />
             </button>
             <div className="font-serif text-lg font-semibold">
-              {navItems.find((item) => {
-                if (item.end) return location.pathname === item.path;
-                return location.pathname.startsWith(item.path);
-              })?.label || '吵股'}
+              {(() => {
+                const match = navItems.find((item) => {
+                  if (item.end) return location.pathname === item.path;
+                  return location.pathname.startsWith(item.path);
+                });
+                return match ? t(match.label) : t('layout.appName');
+              })()}
             </div>
           </div>
           <MarketStatusIndicator />
@@ -182,6 +201,7 @@ function Layout() {
  * otherwise "休市". Also exposes a refresh button that forces a quote refetch.
  */
 function MarketStatusIndicator() {
+  const { t } = useTranslation();
   const [anyTrading, setAnyTrading] = useState(false);
 
   useEffect(() => {
@@ -194,7 +214,7 @@ function MarketStatusIndicator() {
     return () => clearInterval(timer);
   }, []);
 
-  const statusLabel = anyTrading ? '交易中' : '休市';
+  const statusLabel = anyTrading ? t('layout.trading') : t('layout.closed');
   const statusColor = anyTrading ? 'text-success' : 'text-muted-foreground';
 
   return (

@@ -736,6 +736,8 @@ export const paperOrders = pgTable("paper_orders", {
   riskCheck: jsonb("risk_check"),
   filledPrice: numeric("filled_price"),
   filledAt: customTimestamptz("filled_at", { precision: 3 }),
+  sessionId: uuid("session_id"),
+  agentName: varchar("agent_name", { length: 64 }),
   createdAt: customTimestamptz("created_at", { precision: 3 }).default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 export const paperOrdersTable = paperOrders;
@@ -815,3 +817,23 @@ export const importLogs = pgTable("import_logs", {
   createdAt: customTimestamptz("created_at", { precision: 3 }).default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 export const importLogsTable = importLogs;
+
+/**
+ * AI agent sessions (Robinhood-style agent access).
+ * Each external AI assistant gets its own token, daily spending
+ * limit, permission scope and approval mode.
+ */
+export const agentSessions = pgTable("agent_sessions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  owner: userProfile("owner").notNull(),
+  name: varchar("name", { length: 64 }).notNull(),
+  token: varchar("token", { length: 128 }).notNull(),
+  dailyLimitUsd: numeric("daily_limit_usd").default("500").notNull(),
+  permission: varchar("permission", { length: 10 }).default("trade").notNull(),
+  approvalMode: varchar("approval_mode", { length: 20 }).default("require_approval").notNull(),
+  status: varchar("status", { length: 10 }).default("active").notNull(),
+  lastUsedAt: customTimestamptz("last_used_at", { precision: 3 }),
+  createdAt: customTimestamptz("created_at", { precision: 3 }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+  updatedAt: customTimestamptz("updated_at", { precision: 3 }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+export const agentSessionsTable = agentSessions;

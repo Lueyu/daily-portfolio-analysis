@@ -956,7 +956,7 @@ export interface RegisterDto {
  * Paper trading (AI 模拟盘) — fully isolated from real records.
  */
 export type PaperSide = 'buy' | 'sell';
-export type PaperOrderStatus = 'pending' | 'filled' | 'rejected_risk' | 'cancelled' | 'failed';
+export type PaperOrderStatus = 'pending' | 'pending_approval' | 'filled' | 'rejected_risk' | 'cancelled' | 'failed';
 export type PaperOrderSource = 'agent' | 'manual';
 export type PaperEventType =
   | 'bot_started'
@@ -1143,4 +1143,38 @@ export interface OcrExtractDto {
 export interface OcrExtractResult {
   broker: string | null;
   rows: ImportRowCandidate[];
+}
+
+/**
+ * AI agent sessions (Robinhood-style agent access via MCP).
+ */
+export type AgentPermission = 'read' | 'trade';
+export type AgentApprovalMode = 'auto' | 'require_approval';
+
+export interface AgentSession {
+  id: string;
+  name: string;
+  dailyLimitUsd: string;
+  permission: AgentPermission;
+  approvalMode: AgentApprovalMode;
+  status: 'active' | 'revoked';
+  lastUsedAt: string | null;
+  createdAt: string;
+  /** Only populated on creation; never returned afterwards. */
+  token?: string;
+}
+
+export interface CreateAgentSessionDto {
+  name: string;
+  dailyLimitUsd?: number;
+  permission?: AgentPermission;
+  approvalMode?: AgentApprovalMode;
+}
+
+/** Extended paper order status for the approval flow. */
+export type PaperOrderStatusWithApproval = PaperOrderStatus | 'pending_approval';
+
+export interface AgentOrderInfo {
+  sessionId: string | null;
+  agentName: string | null;
 }
