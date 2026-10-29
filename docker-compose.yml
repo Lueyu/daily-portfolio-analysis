@@ -1,0 +1,51 @@
+services:
+  db:
+    # Override for firewalled networks, e.g. via .env:
+    #   DB_IMAGE=docker.m.daocloud.io/library/postgres:16-alpine
+    image: ${DB_IMAGE:-postgres:16-alpine}
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: portfolio
+    volumes:
+      # Schema, tables, roles and the fictional demo dataset, applied in
+      # lexical order on first start (postgres entrypoint initdb).
+      - ./scripts/db/01_init.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
+      - ./scripts/db/02_tables.sql:/docker-entrypoint-initdb.d/02_tables.sql:ro
+      - ./scripts/db/03_roles.sql:/docker-entrypoint-initdb.d/03_roles.sql:ro
+      - ./scripts/db/04_demo_seed.sql:/docker-entrypoint-initdb.d/04_demo_seed.sql:ro
+      - dpa-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d portfolio"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  app:
+    build: .
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      SERVER_HOST: 0.0.0.0
+      SERVER_PORT: 3000
+      # Local PostgreSQL started by the db service; same recipe as
+      # scripts/dev-local-db.ps1 (see README "Full offline mode").
+      SUDA_DATABASE_URL: "postgres://postgres:postgres@db:5432/portfolio?schema=workspace_aadkwdme7deas"
+      # Demo identity: the local-dev auth middleware (inert when unset)
+      # injects this user so @NeedLogin() and owner-scoped isolation work.
+      LOCAL_DEV_USER_ID: demo-user
+      DISABLE_CSRF: "true"
+      FORCE_AUTHN_INNERAPI_DOMAIN: http://127.0.0.1:9999
+      FORCE_AUTHN_ACCESS_KEY: localdev
+      FORCE_AUTHN_ACCESS_SECRET: localdev
+      # The Python agent service is not part of the demo container.
+      AGENT_GATEWAY_ENABLED: "false"
+    ports:
+      - "3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  dpa-data:

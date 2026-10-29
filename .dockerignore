@@ -1,0 +1,13 @@
+node_modules
+dist
+.git
+.githooks
+.env
+logs
+db
+backups
+agent
+docs
+.github
+*.tsbuildinfo
+screenshots

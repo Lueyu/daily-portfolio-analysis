@@ -164,6 +164,13 @@ try {
     }
     Write-Host "已覆盖根配置文件（$($RootFiles.Count) 个候选）" -ForegroundColor DarkGray
 
+    # ---- 4.1 重新应用仓库自有的跨环境补丁 ----
+    # 云端的 package.json / lint.js / run-precommit.js 含平台专用写法
+    # （fullstack-cli、bash-only 脚本、无 shell 的 spawn），会让外部用户
+    # npm install / pre-commit 直接失败。scripts/apply-local-patches.js
+    # 在覆盖后统一改写为跨环境版本。
+    node (Join-Path $RepoRoot "scripts\apply-local-patches.js")
+
     # ---- 5. 审查并提交 ----
     Write-Host "`n>> 本次同步带来的 git 变更:" -ForegroundColor Cyan
     git status --short

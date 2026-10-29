@@ -27,10 +27,13 @@ function failAndExit(step, body) {
 
 function runLint() {
   const cwd = process.cwd();
-  const res = spawnSync('npm', ['run', 'lint'], {
+  // String command + shell: cross-platform. With an argv array Node cannot
+  // resolve npm on Windows (spawn EINVAL / ENOENT for .cmd since CVE-2024-27980).
+  const res = spawnSync('npm run lint', {
     cwd,
     stdio: ['ignore', 'pipe', 'pipe'],
     env: process.env,
+    shell: true,
   });
   if (res.error) {
     failAndExit('lint', String(res.error.message || res.error));

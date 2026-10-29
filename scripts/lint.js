@@ -26,12 +26,22 @@ function getBinName(name) {
   return process.platform === 'win32' ? `${name}.cmd` : name;
 }
 
+// Quote an argument for a shell command line. Windows cmd treats "" as an
+// escaped quote; POSIX shells keep the argument whole when wrapped in quotes.
+function quoteArg(arg) {
+  return /[\s"^]/.test(arg) ? `"${arg.replace(/"/g, '""')}"` : arg;
+}
+
 function runCommand(command, args) {
+  // Node >= 20.12.2 refuses to spawn .cmd/.bat files without a shell
+  // (CVE-2024-27980) and throws spawn EINVAL on Windows, so pass a single
+  // command line through the shell instead of an argv array.
+  const commandLine = [command, ...args.map(quoteArg)].join(' ');
   return new Promise((resolve) => {
-    const child = spawn(command, args, {
+    const child = spawn(commandLine, {
       cwd,
       stdio: 'inherit',
-      shell: false,
+      shell: true,
     });
 
     child.on('close', (code) => resolve(code || 0));

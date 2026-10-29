@@ -2,11 +2,62 @@
 
 # Daily Portfolio Analysis（每日持仓分析）
 
-Daily Portfolio Analysis 是一个全栈股票持仓管理终端。每个交易日收盘后，系统对全部持仓进行逐一体检，扫描关注列表中的交易机会，并记录当日净值快照与投资日志。针对单只股票，可运行多智能体深度分析，输出包含多空辩论与风控检查的深度研究报告。
+**自托管的投资组合终端：一支 AI 分析师团队——多头、空头、批评者、风控闸、基金经理——为你的持仓辩论，并输出 14 节深度研报。**
 
-系统采用前后端分离架构，所有业务数据存储于后端 PostgreSQL，并按账号行级隔离；在电脑或手机上登录同一账号即可访问同一份数据，历史评级、交易记录与深度报告均长期保留。
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Node.js](https://img.shields.io/badge/Node.js-22+-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
+[![React](https://img.shields.io/badge/React-19-61dafb?logo=react&logoColor=white)](https://react.dev/)
+[![NestJS](https://img.shields.io/badge/NestJS-10-e0234e?logo=nestjs&logoColor=white)](https://nestjs.com/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169e1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![Docker](https://img.shields.io/badge/Docker-ready-2496ed?logo=docker&logoColor=white)](docker-compose.yml)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
-系统由两部分组成。一个是全栈交易终端（NestJS + React + PostgreSQL），负责账户、交易、评级与报告的权威落库；另一个是位于 `agent/` 的独立 Python 智能体服务，承担行情查询、研究与分析等推理任务。后端是唯一的业务编排者和数据出口，通过受保护的 HTTP 接口把推理任务委托给智能体；智能体与模型厂商解耦，可切换火山方舟、DeepSeek 或任意 OpenAI 兼容接口，并且不直接访问业务数据库。
+![仪表盘](docs/screenshots/dashboard.png)
+
+<details>
+<summary><b>更多截图</b>（每日分析 · 深度研报）</summary>
+
+![每日分析](docs/screenshots/daily-analysis.png)
+![深度研报](docs/screenshots/deep-report.png)
+
+</details>
+
+## 与其他持仓管理工具不一样的地方
+
+大多数持仓工具止步于「展示」数字，这个项目会为你的数字「吵架」。
+
+对任意一只持仓或关注股，**五阶段多智能体流水线**会执行一套结构化研究流程：
+
+| 阶段 | 发生什么 |
+|---|---|
+| ① 证据采集 | 汇总行情、财务、新闻与你的组合上下文，形成带引用的证据条目 |
+| ② 多空辩论 | 多头研究员与空头研究员各写一份立场——**每条论点必须引用证据** |
+| ③ Critic 批判 | 批评者向双方发难——且必须至少推翻一条既有论断 |
+| ④ 风控闸 | 你配置的策略规则（单一公司上限、行业上限、现金缓冲、止损线…）作为**硬门**执行，违规则约束最终评级 |
+| ⑤ PM 汇总 | PM 角色合并辩论与风控结果，输出评级、置信度、目标价与操作方案 |
+
+产出是一份 **14 节深度研究报告**（核心论点、财务、SOTP 分部估值、多空论点、Critic 修正、催化剂时间线、风险矩阵、PM 决策等）。每次运行**保留版本**：重跑一只股票就能对比观点如何变化、以及**为什么**变——demo 数据里内置了一段 NVDA `Hold` → `Buy` 的上调记录，包括被推翻的空头论点原文。
+
+持仓终端该有的也都在：每日逐持仓体检、关注列表买卖信号扫描、净值快照与投资日志、已实现盈亏、多币种分账（USD/HKD/CNY）、页面上可配置的风控规则。
+
+## 快速开始（Docker，约 5 分钟，无需任何 API Key）
+
+```bash
+git clone https://github.com/Lueyu/daily-portfolio-analysis.git
+cd daily-portfolio-analysis
+docker compose up --build
+```
+
+打开 **http://localhost:3000**，会自动加载一个虚构的演示账户：
+
+- 6 只持仓，覆盖美股 / 港股 / A 股三个市场，含评级、目标价与分析卡片
+- 关注列表（买入/观望/回避信号）、交易记录、已实现盈亏、近 5 周净值曲线
+- **3 次已完成的 Agent 运行，其中 NVDA 研报保留了两个版本**（Hold → Buy 上调，含完整辩论、Critic 与风控记录）——入口在 **每日分析 → 深度研报**
+- 一条被触发的风控规则（半导体行业敞口 31% > 30% 上限），可以直观看到违例如何浮出水面
+
+> Demo 不需要 Finnhub / 大模型 Key——行情回退到预置价格，预生成的研报自己会说话。Key 只在你开始对自己组合跑分析时才需要（见[配置说明](#配置说明)）。
+>
+> **网络受限？** 若 Docker Hub 不可达，先通过镜像源拉取基础镜像：`docker compose build --build-arg BASE_REGISTRY=docker.m.daocloud.io/library`，并在 `.env` 中设置 `DB_IMAGE=docker.m.daocloud.io/library/postgres:16-alpine` 后再 `docker compose up`。
 
 ## 功能特性
 
@@ -26,7 +77,9 @@ Daily Portfolio Analysis 是一个全栈股票持仓管理终端。每个交易�
 
 ### 总体架构
 
-前端为 React SPA，后端为 NestJS，数据库为 PostgreSQL。行情数据由浏览器直接向 Finnhub 请求，API Token 仅存储于本地设备；多智能体分析中的推理由后端调用火山方舟（豆包）大模型完成；汇率数据由后端 FX 模块统一获取。
+系统由两部分组成：全栈交易终端（NestJS + React + PostgreSQL）作为账户、交易、评级与报告的权威落库层；`agent/` 下的独立 Python 智能体服务承担行情查询、研究与分析等推理任务。后端是唯一的业务编排者和数据出口，通过受保护的 HTTP 接口把推理任务委托给智能体；智能体与模型厂商解耦，可切换火山方舟、DeepSeek 或任意 OpenAI 兼容接口，且不直接访问业务数据库。
+
+行情数据由浏览器直接向 Finnhub 请求，API Token 仅存储于本地设备；汇率数据由后端 FX 模块统一获取。
 
 先看系统边界（总览）：
 
@@ -203,13 +256,15 @@ flowchart TB
 │   └── modules/            # 业务模块（controller + service + module）
 ├── shared/
 │   └── api.interface.ts    # 前后端共享类型
+├── scripts/
+│   ├── db/                 # 建库/建表/角色 + demo 种子数据（docker compose 使用）
+│   ├── dev-local-*.ps1     # Windows 本地一键启动（minimal / db / full / client）
+│   └── sync-from-miaoda.ps1# 妙搭 -> GitHub 同步
 ├── db/
 │   └── snapshot/           # 本地真实数据快照（*.sql 已 gitignore，仅本地）
 ├── drizzle/                # drizzle-kit 生成的建表 migration
-└── scripts/
-    ├── db/                 # 本地 PostgreSQL：建库/建表/角色 + start/stop/rebuild
-    ├── dev-local-*.ps1     # Windows 本地一键启动（minimal / db / full / client）
-    └── sync-from-miaoda.ps1# 妙搭 -> GitHub 同步
+├── Dockerfile              # 自托管镜像（build + runtime 双阶段）
+└── docker-compose.yml      # PostgreSQL + 应用 + 虚构演示数据
 ```
 
 ## 数据模型
@@ -226,15 +281,51 @@ flowchart TB
 
 ## 本地开发
 
-环境要求：Node.js >= 22、npm >= 10。提供三种运行模式，按需选择：
+环境要求：Node.js >= 22、npm >= 10（Windows 下 shell 脚本需经 Git Bash 运行）。按需选择模式：
 
 | 模式 | 启动方式 | 数据库 | 登录态 | 适用场景 |
 | --- | --- | --- | --- | --- |
+| **Docker 演示（推荐）** | `docker compose up --build` | 容器化 PostgreSQL + 演示数据 | 注入 demo 用户 | 约 5 分钟体验完整产品，无需任何 Key |
 | 官方云端模式 | `npm run dev` | 妙搭托管 PostgreSQL | 需要 `lark-cli` + 账号登录 | 与线上完全一致的完整环境 |
 | 最小离线模式 | `scripts/dev-local-minimal.ps1` | 不连库（跳过） | 无 | 只调公开行情端点（Agent 开发早期） |
-| **全栈离线模式（推荐）** | `scripts/dev-local-full.ps1` | **本地 PostgreSQL + 真实数据快照** | 本地注入固定用户 | 完整页面、完整数据，做 Agent 开发与演示 |
+| 全栈离线模式 | `scripts/dev-local-full.ps1` | 本地 PostgreSQL + 真实数据快照 | 本地注入固定用户 | 完整页面、完整数据，做 Agent 开发与演示 |
 
-### 全栈离线模式：本地 PostgreSQL + 真实数据（推荐）
+### Docker 演示模式细节
+
+`docker compose up --build` 启动两个容器：
+
+- **db**——PostgreSQL 16。首次启动时，initdb 按顺序执行 `scripts/db/01_init.sql`（schema 与复合类型）、`02_tables.sql`（20 张表）、`03_roles.sql`（datapaas 三角色）、`04_demo_seed.sql`（虚构演示数据）。数据持久化在 `dpa-data` 卷中；`docker compose down -v` 可完全重置。
+- **app**——NestJS 服务，同时在 3000 端口提供 API 与构建后的 SPA。它以与离线开发模式相同的 `SUDA_DATABASE_URL` 配方连接 db 服务，本地开发中间件注入 `demo-user` 身份，登录守卫与 owner 行级隔离的行为与云端完全一致。
+
+若要对真实股票跑分析，把你的 Key 加进 app 容器环境（例如写一个 `docker-compose.override.yml`）：内置流水线用 `DOUBAO_API_KEY`，实时行情用 Finnhub Token（在页面中配置）。详见[配置说明](#配置说明)。
+
+### 官方云端模式
+
+```bash
+# 安装依赖
+npm install
+
+# 复制环境变量模板并按需填写
+cp .env.example .env
+#   未填写 DOUBAO_API_KEY 时应用可正常运行，仅多智能体的 LLM 推理不可用
+
+# 同时启动后端（NestJS）与前端（Vite）；需要 lark-cli 拉取云端环境变量
+npm run dev
+
+# 也可分别启动
+npm run dev:server   # http://localhost:3000
+npm run dev:client   # http://localhost:8080
+```
+
+`npm run dev` 执行 `scripts/dev.js`，统一管理前后端进程：进程异常退出时自动重启，短时间内反复崩溃则采用指数退避；日志按进程分别写入 `logs/`；退出时按进程组清理并释放占用端口。
+
+生产构建：
+
+```bash
+npm run build:prod   # nest build + vite build
+```
+
+### 全栈离线模式：本地 PostgreSQL + 真实数据
 
 该模式在本机完整复刻平台运行时，**无需登录、无需联网到妙搭**，就能看到自己的真实持仓，适合离线开发 Agent 与面试演示。它做了四件事：
 
@@ -265,33 +356,6 @@ powershell -ExecutionPolicy Bypass -File scripts\dev-local-full.ps1
 
 `LOCAL_DEV_USER_ID` 默认取快照里的属主用户 ID，只展示该账号的数据（例如同一快照里属于另一账号的持仓会被 `owner` 条件正确过滤掉）；要切换成其他账号，在启动前设置该环境变量即可。该中间件在不设置 `LOCAL_DEV_USER_ID` 时完全不生效，也不会覆盖真实网关头，因此对线上零影响。
 
-### 官方云端模式
-
-```bash
-# 安装依赖
-npm install
-
-# 复制环境变量模板并按需填写
-cp .env.example .env
-#   未填写 DOUBAO_API_KEY 时应用可正常运行，仅多智能体的 LLM 推理不可用
-
-# 同时启动后端（NestJS）与前端（Vite）；需要 lark-cli 拉取云端环境变量
-npm run dev
-
-# 也可分别启动
-npm run dev:server   # http://localhost:3000
-npm run dev:client   # http://localhost:8080
-```
-
-`npm run dev` 执行 `scripts/dev.js`，统一管理前后端进程：进程异常退出时自动重启，短时间内反复崩溃则采用指数退避；日志按进程分别写入 `logs/`；退出时按进程组清理并释放占用端口。
-
-生产构建与启动：
-
-```bash
-npm run build
-npm start
-```
-
 ### Python 智能体（`agent/`）
 
 智能体使用 Python 3.12 与 [uv](https://docs.astral.sh/uv/)。
@@ -316,13 +380,17 @@ powershell -ExecutionPolicy Bypass -File scripts\sync-from-miaoda.ps1 -DryRun   
 powershell -ExecutionPolicy Bypass -File scripts\sync-from-miaoda.ps1           # 同步 + 提交 + 推送
 ```
 
-脚本会镜像 `client/`、`server/`、`shared/`、`.githooks/`、`.spark/` 及根配置文件，但绝不触碰 `agent/`、`docs/`、`README*`、`.gitignore`、`.env`、`*.sql`；覆盖前会先自动提交一个本地安全快照，因此本地改动不会丢失。云端沙箱里未提交的改动不会被导出，请先在妙搭里提交/发布。
+脚本会镜像 `client/`、`server/`、`shared/`、`.githooks/`、`.spark/` 及根配置文件，但绝不触碰 `agent/`、`docs/`、`README*`、`.gitignore`、`.env`、`*.sql`；覆盖前会先自动提交一个本地安全快照（本地改动不丢失），并在同步后重新应用仓库的跨环境补丁（`scripts/apply-local-patches.js`）。云端沙箱里未提交的改动不会被导出，请先在妙搭里提交/发布。
 
 ## 配置说明
 
 - **Finnhub Token**：不入库、不经过服务端。在页面界面中配置后存储于当前设备浏览器的 `localStorage`，更换设备需重新配置。
 - **豆包 LLM**：在 `.env` 中设置 `DOUBAO_API_KEY`，模型与 base URL 均可通过环境变量覆盖，详见 `.env.example`。
-- **平台依赖**：项目依赖 `@lark-apaas/*` 系列包完成托管、登录与数据库注入。若需完全脱离平台独立部署，需将登录、数据库连接与构建配置替换为自有实现，业务模块代码可原样保留。
+- **平台依赖**：Webapp 在妙搭（aPaaS）平台上开发，依赖 `@lark-apaas/*` 系列包完成托管、登录与数据库注入。Docker / 自托管路径用本地开发身份中间件替代平台网关，同一份业务代码即可独立运行；自部署时所需的环境变量见 docker-compose.yml。
+
+## 参与贡献
+
+欢迎 Issue 与 PR——见 [CONTRIBUTING.md](CONTRIBUTING.md)。带 `good first issue` 标签的是新手友好的切入点。
 
 ## 免责声明
 

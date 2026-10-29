@@ -2,11 +2,63 @@ English | [简体中文](README.zh-CN.md)
 
 # Daily Portfolio Analysis
 
-Daily Portfolio Analysis is a full-stack stock portfolio management terminal. After each trading day closes, the system performs a health check on every holding, scans the watchlist for trading opportunities, and records the day's net-value snapshot and investment journal. For an individual stock, a multi-agent deep analysis can be run to produce a research report that includes a bull/bear debate and risk-control checks.
+**A self-hosted portfolio terminal where an AI analyst team — bull, bear, critic, risk gate, PM — debates your holdings and writes 14-section research reports.**
 
-The system uses a decoupled front-end/back-end architecture. All business data is stored in a backend PostgreSQL database with row-level isolation per account. Logging in with the same account on desktop or mobile accesses the same data; historical ratings, transactions and deep reports are retained long term.
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Node.js](https://img.shields.io/badge/Node.js-22+-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
+[![React](https://img.shields.io/badge/React-19-61dafb?logo=react&logoColor=white)](https://react.dev/)
+[![NestJS](https://img.shields.io/badge/NestJS-10-e0234e?logo=nestjs&logoColor=white)](https://nestjs.com/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169e1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![Docker](https://img.shields.io/badge/Docker-ready-2496ed?logo=docker&logoColor=white)](docker-compose.yml)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
-The system has two parts: a full-stack trading terminal (NestJS + React + PostgreSQL) that is the system of record for accounts, transactions, ratings and reports, and a standalone Python agent service under `agent/` that handles reasoning tasks such as market queries, research and analysis. The backend is the sole orchestrator and data gateway, delegating reasoning to the agent over a protected HTTP API. The agent is model-agnostic — it can switch between Volcengine Ark, DeepSeek or any OpenAI-compatible endpoint — and never touches the business database directly.
+![Dashboard](docs/screenshots/dashboard.png)
+
+<details>
+<summary><b>More screenshots</b> (daily analysis · deep research report)</summary>
+
+![Daily analysis](docs/screenshots/daily-analysis.png)
+![Deep research report](docs/screenshots/deep-report.png)
+
+</details>
+
+## The part that is different from every other portfolio tracker
+
+Most portfolio trackers stop at *showing* your numbers. This one argues about them.
+
+For any stock you hold or watch, a **five-stage multi-agent pipeline** runs a structured research process:
+
+| Stage | What happens |
+|---|---|
+| ① Evidence | Gathers quotes, financials, news and your portfolio context as evidence items |
+| ② Bull/Bear Debate | A bull analyst and a bear analyst write opposing cases — **every point must cite evidence** |
+| ③ Critic Review | A critic challenges both sides — and must overturn at least one prior claim |
+| ④ Risk Gate | Your strategy rules (single-company cap, sector cap, cash buffer, stop-loss…) run as **hard gates**; violations constrain the final rating |
+| ⑤ PM Aggregation | A PM role merges debate + risk results into a rating, confidence, target price and action plan |
+
+The output is a **14-section research report** (core thesis, financials, SOTP valuation, bull/bear points, critic revisions, catalysts timeline, risk matrix, PM decision…). Every run is **versioned**: re-run a stock and you can diff how the view changed and *why* — see the v1 `Hold` → v2 `Buy` upgrade in the demo data, including which bear argument got overturned.
+
+Everything else you expect from a portfolio terminal is here too: daily health checks on every holding, watchlist scans with buy/sell signals, net-value snapshots and journal, realized P&L, multi-currency sub-accounts (USD/HKD/CNY), strategy rules configurable in the UI.
+
+## Quick start (Docker, ~5 minutes, no API keys)
+
+```bash
+git clone https://github.com/Lueyu/daily-portfolio-analysis.git
+cd daily-portfolio-analysis
+docker compose up --build
+```
+
+Then open **http://localhost:3000** — a fictional demo account is loaded automatically:
+
+- 6 holdings across US / HK / CN markets with ratings, target prices and analysis cards
+- A watchlist with buy / wait / avoid signals, transactions, realized P&L and a 5-week net-value curve
+- **3 completed agent runs, including a 2-version NVDA research report** (Hold → Buy upgrade with full debate, critic and risk-gate records) — explore them under **每日分析 → 深度研报**
+- One triggered risk gate (semiconductor sector exposure 31% > 30% cap) so you can see how violations surface
+
+> No Finnhub / LLM keys are needed for the demo — quotes fall back to the seeded prices, and the pre-generated reports speak for themselves. Keys are only needed when you start running analyses against your own portfolio (see [Configuration](#configuration)).
+>
+> **Behind a firewall?** If Docker Hub is unreachable, pull the base images through a mirror first:
+> `docker compose build --build-arg BASE_REGISTRY=docker.m.daocloud.io/library` and set `DB_IMAGE=docker.m.daocloud.io/library/postgres:16-alpine` in a `.env` file before `docker compose up`.
 
 ## Features
 
@@ -16,7 +68,7 @@ The system has two parts: a full-stack trading terminal (NestJS + React + Postgr
 - **Daily Analysis**: one analysis card per holding and watchlist item, containing rating, action, target price, catalysts and risks.
 - **Multi-Agent Deep Reports**: research reports with 14 sections (core thesis, financials, SOTP valuation, bull/bear debate, critic review, risk gates, PM decision, etc.); every run is retained as a new version with its generation time.
 - **Standalone Python Agent service** (`agent/`): a model-agnostic service (Volcengine Ark / DeepSeek / any OpenAI-compatible API) with tool calling, planning, checkpoints, replayable runs and multi-agent orchestration; it reaches business data only through the backend HTTP API, never the database directly.
-- **Realized P&L**: a Robinhood-style realized P&L summary on the transactions page, aggregated by stock and currency, replacing the former closed-positions list.
+- **Realized P&L**: a Robinhood-style realized P&L summary on the transactions page, aggregated by stock and currency.
 - **Strategy Rules**: risk-control rules (single-company exposure cap, leverage-ETF cap, cash buffer, stop-loss lines) configurable in the UI and enforced as hard gates during analysis.
 - **Journal & Snapshots**: auto-generated five-part investment journals, with the net-value curve based on daily snapshots.
 - **Multi-currency**: USD / HKD / CNY tracked in separate sub-accounts and consolidated via FX conversion.
@@ -26,7 +78,9 @@ The system has two parts: a full-stack trading terminal (NestJS + React + Postgr
 
 ### Overall Architecture
 
-The front-end is a React SPA, the backend is NestJS, and the database is PostgreSQL. Market data is requested directly from Finnhub in the browser, and the API token is stored only on the local device. Reasoning in the multi-agent analysis is performed by the backend through the Volcengine Ark (Doubao) LLM; FX rates are fetched centrally by the backend FX module.
+The system has two parts: a full-stack trading terminal (NestJS + React + PostgreSQL) that is the system of record for accounts, transactions, ratings and reports, and a standalone Python agent service under `agent/` that handles reasoning tasks such as market queries, research and analysis. The backend is the sole orchestrator and data gateway, delegating reasoning to the agent over a protected HTTP API. The agent is model-agnostic — it can switch between Volcengine Ark, DeepSeek or any OpenAI-compatible endpoint — and never touches the business database directly.
+
+Market data is requested directly from Finnhub in the browser, and the API token is stored only on the local device; FX rates are fetched centrally by the backend FX module.
 
 The system boundary at a glance:
 
@@ -203,13 +257,15 @@ The deep report contains 14 sections rendered by `client/src/components/MultiAge
 │   └── modules/            # business modules (controller + service + module)
 ├── shared/
 │   └── api.interface.ts    # types shared by front-end and backend
+├── scripts/
+│   ├── db/                 # schema + roles + demo seed used by docker compose
+│   ├── dev-local-*.ps1     # Windows one-click local launch (minimal / db / full / client)
+│   └── sync-from-miaoda.ps1# Miaoda -> GitHub sync
 ├── db/
 │   └── snapshot/           # local real-data snapshot (*.sql gitignored, local only)
 ├── drizzle/                # drizzle-kit generated table migrations
-└── scripts/
-    ├── db/                 # local PostgreSQL: schema/roles + start/stop/rebuild
-    ├── dev-local-*.ps1     # Windows one-click local launch (minimal / db / full / client)
-    └── sync-from-miaoda.ps1# Miaoda -> GitHub sync
+├── Dockerfile              # self-hosted image (build + runtime stages)
+└── docker-compose.yml      # PostgreSQL + app + fictional demo dataset
 ```
 
 ## Data Model
@@ -226,15 +282,51 @@ The table structure is defined in `server/database/schema.ts`. This file is auto
 
 ## Local Development
 
-Requirements: Node.js >= 22 and npm >= 10. Three modes are available:
+Requirements: Node.js >= 22 and npm >= 10. Pick the mode that matches what you want to do:
 
 | Mode | How to start | Database | Auth | Best for |
-| --- | --- | --- | --- | --- |
+|---|---|---|---|---|
+| **Docker demo (recommended)** | `docker compose up --build` | containerized PostgreSQL + demo seed | injected demo user | Trying the full product in ~5 minutes, no keys needed |
 | Official cloud mode | `npm run dev` | Miaoda-managed PostgreSQL | `lark-cli` + account login | An environment identical to production |
 | Minimal offline mode | `scripts/dev-local-minimal.ps1` | skipped (no DB) | none | Public market-data endpoints only (early agent work) |
-| **Full offline mode (recommended)** | `scripts/dev-local-full.ps1` | **local PostgreSQL + real data snapshot** | injected local user | Full UI with real data, agent development & demos |
+| Full offline mode | `scripts/dev-local-full.ps1` | local PostgreSQL + real data snapshot | injected local user | Full UI with real data, agent development & demos |
 
-### Full offline mode: local PostgreSQL with real data (recommended)
+### Docker demo in detail
+
+`docker compose up --build` starts two containers:
+
+- **db** — PostgreSQL 16. On first start the entrypoint applies `scripts/db/01_init.sql` (schema + composite types), `02_tables.sql` (20 tables), `03_roles.sql` (datapaas roles) and `04_demo_seed.sql` (the fictional demo dataset) in order. Data persists in the `dpa-data` volume; `docker compose down -v` resets everything.
+- **app** — the NestJS server serving both the API and the built SPA on port 3000. It connects to the db service with the same `SUDA_DATABASE_URL` recipe as the offline dev mode, and the local-dev middleware injects the `demo-user` identity so login guards and owner-scoped isolation behave exactly as in the cloud.
+
+To run analyses against real stocks, add your keys to the app environment (e.g. a `docker-compose.override.yml`): `DOUBAO_API_KEY` for the built-in pipeline, and a Finnhub token entered in the UI for live quotes. See [Configuration](#configuration).
+
+### Official cloud mode
+
+```bash
+# Install dependencies
+npm install
+
+# Copy the environment template and fill in as needed
+cp .env.example .env
+#   The app runs without DOUBAO_API_KEY; only the multi-agent LLM reasoning is disabled
+
+# Start backend (NestJS) and front-end (Vite) together; needs lark-cli for env pull
+npm run dev
+
+# Or start them separately
+npm run dev:server   # http://localhost:3000
+npm run dev:client   # http://localhost:8080
+```
+
+`npm run dev` runs `scripts/dev.js`, which supervises the front-end and backend processes: crashed processes restart automatically, with exponential backoff under repeated failures; logs are written per process under `logs/`; on exit, process groups are cleaned up and occupied ports are released. On Windows the shell-based scripts run through Git Bash.
+
+Production build and start:
+
+```bash
+npm run build:prod   # nest build + vite build
+```
+
+### Full offline mode: local PostgreSQL with real data
 
 This mode reproduces the platform runtime entirely on your machine, so you can see your **real holdings without logging in or reaching the Miaoda cloud** — ideal for offline agent development and interviews. It does four things:
 
@@ -265,33 +357,6 @@ powershell -ExecutionPolicy Bypass -File scripts\dev-local-full.ps1
 
 `LOCAL_DEV_USER_ID` defaults to the owner id in the snapshot, so only that account's data is shown (a holding owned by another account in the same snapshot is correctly filtered out by the `owner` condition). Set the variable before launch to switch accounts. The middleware is completely inert when `LOCAL_DEV_USER_ID` is unset and never overrides a real gateway header, so it has zero effect on production.
 
-### Official cloud mode
-
-```bash
-# Install dependencies
-npm install
-
-# Copy the environment template and fill in as needed
-cp .env.example .env
-#   The app runs without DOUBAO_API_KEY; only the multi-agent LLM reasoning is disabled
-
-# Start backend (NestJS) and front-end (Vite) together; needs lark-cli for env pull
-npm run dev
-
-# Or start them separately
-npm run dev:server   # http://localhost:3000
-npm run dev:client   # http://localhost:8080
-```
-
-`npm run dev` runs `scripts/dev.js`, which supervises the front-end and backend processes: crashed processes restart automatically, with exponential backoff under repeated failures; logs are written per process under `logs/`; on exit, process groups are cleaned up and occupied ports are released.
-
-Production build and start:
-
-```bash
-npm run build
-npm start
-```
-
 ### Python Agent (`agent/`)
 
 The agent uses Python 3.12 and [uv](https://docs.astral.sh/uv/).
@@ -316,13 +381,17 @@ powershell -ExecutionPolicy Bypass -File scripts\sync-from-miaoda.ps1 -DryRun   
 powershell -ExecutionPolicy Bypass -File scripts\sync-from-miaoda.ps1           # sync + commit + push
 ```
 
-It mirrors `client/`, `server/`, `shared/`, `.githooks/`, `.spark/` and the root config files, but never touches `agent/`, `docs/`, `README*`, `.gitignore`, `.env` or `*.sql`. It takes a local safety-net commit before overwriting, so no local work is lost. Uncommitted cloud sandbox edits are not exported — publish/commit in Miaoda first.
+It mirrors `client/`, `server/`, `shared/`, `.githooks/`, `.spark/` and the root config files, but never touches `agent/`, `docs/`, `README*`, `.gitignore`, `.env` or `*.sql`. It takes a local safety-net commit before overwriting, so no local work is lost, and re-applies the repository's cross-environment patches (`scripts/apply-local-patches.js`) after each sync. Uncommitted cloud sandbox edits are not exported — publish/commit in Miaoda first.
 
 ## Configuration
 
 - **Finnhub token**: never stored in the database or sent to the server. After configuration in the UI it is kept in the current device's browser `localStorage`; it must be configured again on another device.
 - **Doubao LLM**: set `DOUBAO_API_KEY` in `.env`; the model and base URL can also be overridden via environment variables, see `.env.example`.
-- **Platform dependency**: the project relies on the `@lark-apaas/*` packages for hosting, auth and database injection. To run fully standalone, replace auth, database connection and build configuration with your own implementations; the business module code can be kept as-is.
+- **Platform dependency**: the webapp is developed on the Miaoda (aPaaS) platform and relies on the `@lark-apaas/*` packages for hosting, auth and database injection. The Docker/self-hosted path replaces the platform gateway with the local-dev identity middleware, so the same business code runs standalone; for your own hosting see the docker-compose environment variables.
+
+## Contributing
+
+Issues and pull requests are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md). `good first issue` labels mark beginner-friendly entry points.
 
 ## Disclaimer
 

@@ -53,5 +53,11 @@ export function localDevAuth(
   req.headers['x-larkgw-suda-webuser'] = encodeURIComponent(
     JSON.stringify(webuser),
   );
+  // Local/offline mode implies a custom (non-platform) host: the platform
+  // view-context middleware then resolves the SPA basename to "/" instead of
+  // the platform prefix /app/<appId> (resolveBasename in the platform core).
+  if (req.headers['x-miaoda-custom-host'] === undefined) {
+    req.headers['x-miaoda-custom-host'] = 'local-dev';
+  }
   next();
 }
