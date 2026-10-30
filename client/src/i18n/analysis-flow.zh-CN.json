@@ -45,7 +45,7 @@
   "debate": "分析观点摘要",
   "round": "第 {{round}} 轮",
   "missingSettings": "无法读取 API 配置，请刷新后再启动分析。",
-  "keyUnavailable": "保存的模型密钥不可用，请在 API 设置重新填写后运行 AI 分析。",
+  "keyUnavailable": "保存的模型密钥不可用，请在设置中重新填写后运行 AI 分析。",
   "report": "分析报告",
   "reportCount": "{{count}} 份报告"
 }

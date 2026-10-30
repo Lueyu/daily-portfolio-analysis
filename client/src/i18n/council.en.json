@@ -43,7 +43,7 @@
   "loadFailed": "Could not load research data.",
   "saveFailed": "Could not save your changes.",
   "actionFailed": "The action could not be completed.",
-  "apiSettings": "Model & API settings",
+  "apiSettings": "Settings",
   "noModel": "No language model is available. Research returns a basic wait conclusion without AI member discussion. Connect a model to activate a council profile, or choose rules-only mode for deterministic price rules.",
   "discussionHint": "This room is for research. Only a later scan of the active Builder profile can submit a matching candidate to the paper-trading risk checks.",
   "conversation": "Chat",
@@ -150,9 +150,13 @@
     "executionHint": "An approval is a research conclusion. A later active-profile scan must still pass freshness, cadence, budget and paper-trading risk checks. Real trades remain manual."
   },
   "budget": {
+    "enabled": "Research budget",
+    "enabledHint": "Limits are on. Usage is checked before each model request.",
+    "disabledHint": "Limits are off. Model calls still count toward usage and may incur provider charges. Per-request model parameters still apply.",
+    "unlimited": "No limit",
     "title": "Research budget",
     "open": "View budget & usage",
-    "intro": "One shared allowance for model-assisted research. Hard limits keep each discussion and the whole day bounded.",
+    "intro": "Track model usage and choose whether to enforce shared research limits.",
     "edit": "Edit limits",
     "today": "Tokens today",
     "month": "Tokens this month",

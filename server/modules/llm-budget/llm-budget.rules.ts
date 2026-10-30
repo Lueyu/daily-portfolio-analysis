@@ -2,6 +2,7 @@ import { BadRequestException, HttpException, HttpStatus } from '@nestjs/common';
 import type { LlmBudgetSettings } from '@shared/council.interface';
 
 export const DEFAULT_LLM_BUDGET: Readonly<LlmBudgetSettings> = Object.freeze({
+  enabled: true,
   dailyTokenLimit: 60_000,
   monthlyTokenLimit: 600_000,
   perTaskTokenLimit: 24_000,
@@ -65,6 +66,7 @@ export function normalizeBudgetSettings(value: unknown): LlmBudgetSettings {
     return number;
   };
   const result: LlmBudgetSettings = {
+    enabled: input.enabled === undefined ? true : input.enabled as boolean,
     dailyTokenLimit: integer('dailyTokenLimit', 1_000_000_000),
     monthlyTokenLimit: integer('monthlyTokenLimit', 1_000_000_000),
     perTaskTokenLimit: integer('perTaskTokenLimit', 1_000_000_000),
@@ -75,6 +77,7 @@ export function normalizeBudgetSettings(value: unknown): LlmBudgetSettings {
     inputUsdPerMillion: rate('inputUsdPerMillion'),
     outputUsdPerMillion: rate('outputUsdPerMillion'),
   };
+  if (typeof result.enabled !== 'boolean') throw new BadRequestException('Budget enabled must be a boolean');
   if (result.perTaskTokenLimit > result.dailyTokenLimit
     || result.dailyTokenLimit > result.monthlyTokenLimit
     || result.maxInputTokens + result.maxOutputTokens > result.perTaskTokenLimit

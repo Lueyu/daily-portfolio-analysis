@@ -12,7 +12,7 @@ import {
 
 type Transaction = Parameters<Parameters<PostgresJsDatabase['transaction']>[0]>[0];
 type SettingsRow = typeof llmBudgetSettings.$inferSelect;
-export interface BudgetReservation extends TokenReservation { id: string; taskId: string }
+export interface BudgetReservation extends TokenReservation { id: string; taskId: string; omitOutputLimit?: boolean }
 export interface ReserveBudgetRequest {
   taskId?: string;
   purpose?: string;
@@ -28,6 +28,7 @@ export class LlmBudgetService {
   private settingsFromRow(row?: SettingsRow): LlmBudgetSettings {
     if (!row) return { ...DEFAULT_LLM_BUDGET };
     return normalizeBudgetSettings({
+      enabled: row.enabled,
       dailyTokenLimit: row.dailyTokenLimit, monthlyTokenLimit: row.monthlyTokenLimit,
       perTaskTokenLimit: row.perTaskTokenLimit, maxInputTokens: row.maxInputTokens,
       maxOutputTokens: row.maxOutputTokens, maxCallsPerTask: row.maxCallsPerTask,
@@ -98,8 +99,11 @@ export class LlmBudgetService {
       await this.ownerLock(tx, userId);
       const [row] = await tx.select().from(llmBudgetSettings).where(eq(llmBudgetSettings.owner, userId));
       const settings = this.settingsFromRow(row);
-      if (inputTokens > settings.maxInputTokens) throw new BudgetExceededException('input_tokens', taskId);
-      const maxOutputTokens = Math.min(input.maxOutputTokens ?? settings.maxOutputTokens, settings.maxOutputTokens);
+      if (settings.enabled && inputTokens > settings.maxInputTokens) throw new BudgetExceededException('input_tokens', taskId);
+      // Keep a finite usage estimate for providers that omit accounting. It is not sent as a cap when limits are off.
+      const maxOutputTokens = settings.enabled
+        ? Math.min(input.maxOutputTokens ?? settings.maxOutputTokens, settings.maxOutputTokens)
+        : input.maxOutputTokens ?? 4096;
       const reservedTokens = inputTokens + maxOutputTokens;
       const used = await this.totals(tx, userId, taskId);
       const checks: Array<[BudgetReason, boolean]> = [
@@ -110,13 +114,14 @@ export class LlmBudgetService {
         ['task_tokens', used.taskTokens + reservedTokens > settings.perTaskTokenLimit],
       ];
       const blocked = checks.find(([, exceeded]) => exceeded);
-      if (blocked) throw new BudgetExceededException(blocked[0], taskId);
+      if (settings.enabled && blocked) throw new BudgetExceededException(blocked[0], taskId);
       const id = randomUUID();
       await tx.insert(llmBudgetUsage).values({
         id, owner: userId, taskId, purpose, model, inputTokens, outputTokens: maxOutputTokens,
         maxOutputTokens, reservedTokens, chargedTokens: reservedTokens, status: 'reserved',
       });
-      return { id, taskId, inputTokens, maxOutputTokens, reservedTokens };
+      return { id, taskId, inputTokens, maxOutputTokens, reservedTokens,
+        omitOutputLimit: !settings.enabled && input.maxOutputTokens === undefined };
     });
   }
 

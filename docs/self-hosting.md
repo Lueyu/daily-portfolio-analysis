@@ -72,7 +72,7 @@ instance. Do not expose the demo port through a router or cloud security group.
 
 1. Open the portfolio and existing research reports to inspect the fictional holdings and saved results.
 2. Open **Daily Analysis**, choose a stock or your portfolio, and start an analysis. With no model configured, it uses free basic mode: local rules plus available public quotes. Reports identify missing evidence and retain a conservative Watch/low result.
-3. To try AI analysis, open **API Settings**. Enter your provider's key, OpenAI-compatible Base URL, and fast/slow model IDs, save, then use **Test connection**. The built-in instructions link to provider setup pages. This is optional; provider usage may incur charges.
+3. To try AI analysis, open **Settings**. Enter your provider's key, OpenAI-compatible Base URL, and fast/slow model IDs, save, then use **Test connection**. The built-in instructions link to provider setup pages. This is optional; provider usage may incur charges.
 
 Personal model settings take precedence over a host-wide model. Configured
 model failures are shown as failures; they do not silently become basic
@@ -156,7 +156,7 @@ services:
 Then run `docker compose up -d app`. This closes new registration and disables
 the paper scheduler; it does **not** remove the existing demo account. Other
 server settings, such as host-wide `DOUBAO_API_KEY`, also require an explicit
-Compose `environment` entry. Prefer personal API Settings for the usual setup,
+Compose `environment` entry. Prefer personal Settings for the usual setup,
 and never commit a file containing secrets.
 
 ## Back up before changing data or upgrading

@@ -78,12 +78,12 @@ instance server without an LLM call; quotes and FX can still use the network.
 **Deleting your personal model configuration can reactivate the operator's
 model.** It is not an “all AI off” switch. The current app has no separate
 per-user consent control for that fallback. Check the active configuration in
-API Settings before running analysis. A broken saved key stops analysis and
+Settings before running analysis. A broken saved key stops analysis and
 asks for re-entry; it does not silently switch to the operator's model.
 
 ## Controls available today
 
-- **API Settings:** view the active integration source; replace or remove saved
+- **Settings:** view the active integration source; replace or remove saved
   LLM/Finnhub settings. Removing Finnhub returns research to public sources.
   Revoking a key at its provider is a separate action.
 - **Notifications and agents:** disable or delete notification channels; pause
