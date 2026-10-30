@@ -30,6 +30,7 @@ platform gateway entirely.
 ```bash
 npm run lint          # eslint + stylelint + full typecheck (also runs in CI)
 npm run test:server   # offline Nest service and Agent Builder rule tests
+npm run test:client   # appearance store, cross-tab sync and startup preferences
 npm run type:check    # typecheck only
 ```
 
@@ -63,11 +64,15 @@ endpoint) and the tool layer (market · web · finance · workflow).
 
 ## Design tokens & theming
 
-All colors, fonts, radii and shadows live as CSS variables in
-`client/src/tailwind-theme.css`. Pages consume semantic tokens
-(`bg-background`, `text-muted-foreground`, …) — re-theming the app does not
-require touching page components. Bull-green / bear-red are the brand's
-market-semantic colors; keep them reserved for market up/down semantics.
+Base colors, fonts, radii and shadows live in `client/src/tailwind-theme.css`;
+`client/src/themes.css` supplies the four visual styles and their dark variants.
+Pages consume semantic tokens (`bg-background`, `text-muted-foreground`, …).
+Use `useTheme` for shared preferences and `useChartTheme` for canvas colors.
+Card defaults live in the components layer so explicit border, shadow and ring
+utilities can still communicate selection, errors and drag targets. Financial
+profit/loss colors stay green/red independently of decorative brand accents.
+See the [appearance guide](appearance.md) for storage keys, components and
+the complete visual verification checklist.
 
 ## Database schema
 
