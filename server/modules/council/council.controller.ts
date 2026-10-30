@@ -2,6 +2,7 @@ import { Body, Controller, Get, Param, Post, Req } from '@nestjs/common';
 import type { Request } from 'express';
 import { NeedLogin } from '../../common/platform/need-login.decorator';
 import { CouncilService } from './council.service';
+import type { CreateCouncilSession } from '@shared/council.interface';
 
 @Controller('api/council/sessions')
 export class CouncilController {
@@ -15,7 +16,7 @@ export class CouncilController {
 
   @NeedLogin()
   @Post()
-  create(@Req() request: Request, @Body() body: { profileId: string; ticker: string; language?: 'zh-CN' | 'en' }) {
+  create(@Req() request: Request, @Body() body: CreateCouncilSession) {
     return this.council.createSession(request.userContext.userId, body);
   }
 

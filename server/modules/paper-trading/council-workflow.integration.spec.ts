@@ -19,7 +19,7 @@ import { PaperTradingService } from './paper-trading.service';
 import { normalizeBuilderConfig, normalizeCouncil } from './agent-builder.rules';
 import type { SettingsService } from '../settings/settings.service';
 
-test('a full Builder scan uses three budgeted council calls, fills once, and reuses no approval on rescan', {
+test('a full Builder scan uses four budgeted council calls, fills once, and reuses no approval on rescan', {
   skip: !process.env.COUNCIL_TEST_DATABASE_URL,
 }, async (t) => {
   const connection = process.env.COUNCIL_TEST_DATABASE_URL!;
@@ -35,7 +35,7 @@ test('a full Builder scan uses three budgeted council calls, fills once, and reu
     await admin`CREATE SCHEMA ${admin(namespace)}`;
     createdSchema = true;
     for (const file of ['01_schema.sql', '03_agent_builder.sql', '07_llm_budget.sql',
-      '08_investment_council.sql', '09_builder_cadence.sql']) {
+      '08_investment_council.sql', '09_builder_cadence.sql', '12_council_dialogue.sql']) {
       await client.unsafe(readFileSync(`scripts/db/${file}`, 'utf8'));
     }
     // JS time fixes the US market-open window. Align report freshness in this
@@ -100,20 +100,20 @@ test('a full Builder scan uses three budgeted council calls, fills once, and reu
         messages: Array<{ role: string; content: string }> };
       assert.equal(body.max_tokens, 900);
       const system = body.messages.filter(message => message.role === 'system').map(message => message.content).join('\n');
-      assert.match(system, /Write all reader-facing text in English/);
-      const role = system.match(/Your role is (researcher|challenger|manager)/u)?.[1];
-      assert.ok(role);
+      assert.match(system, /Write for the reader in English/);
       const data = JSON.parse(body.messages.find(message => message.role === 'user')!.content) as {
         candidate: { ticker: string; side: string; price: number; quantity: number };
-        ruleOnly: boolean; evidence: Array<{ id: string }>; publishedOpinions: unknown[];
+        ruleOnly: boolean; evidence: Array<{ id: string }>; conversation: unknown[]; member: { role: string }; phase: string;
       };
+      const role = data.member.role;
+      assert.ok(['researcher', 'challenger', 'manager'].includes(role));
       assert.equal(data.candidate.ticker, 'AAPL');
       assert.equal(data.candidate.side, 'buy');
       assert.equal(data.candidate.quantity, 5);
       assert.equal(data.candidate.price, 100);
       assert.equal(data.ruleOnly, true);
       assert.ok(data.evidence.length >= 2);
-      assert.equal(data.publishedOpinions.length, role === 'manager' ? 2 : 0);
+      assert.equal(data.conversation.length, calls.length);
       const evidenceIds = data.evidence.slice(0, 2).map(item => item.id);
       calls.push({ role, model: body.model, evidenceIds });
       return { status: 200, statusText: 'OK', headers: {}, config: request, data: {
@@ -129,7 +129,7 @@ test('a full Builder scan uses three budgeted council calls, fills once, and reu
     assert.equal(scan.scanned, 1);
     assert.equal(scan.placed, 1);
     assert.equal(scan.rejected, 0);
-    assert.equal(calls.length, 3);
+    assert.equal(calls.length, 4);
     assert.deepEqual(new Set(calls.map(call => call.role)), new Set(['researcher', 'challenger', 'manager']));
     assert.equal(calls.find(call => call.role === 'manager')?.model, 'workflow-slow');
 
@@ -137,8 +137,8 @@ test('a full Builder scan uses three budgeted council calls, fills once, and reu
     assert.equal(session.status, 'completed');
     assert.equal(session.language, 'en');
     const messages = await db.select().from(councilMessages).where(eq(councilMessages.owner, owner));
-    assert.equal(messages.length, 3);
-    assert.equal(messages.reduce((sum, message) => sum + message.tokensUsed, 0), 450);
+    assert.equal(messages.length, 4);
+    assert.equal(messages.reduce((sum, message) => sum + message.tokensUsed, 0), 600);
     const [report] = await db.select().from(councilReports).where(eq(councilReports.owner, owner));
     const [order] = await db.select().from(paperOrders).where(eq(paperOrders.owner, owner));
     const [position] = await db.select().from(paperPositions).where(eq(paperPositions.owner, owner));
@@ -146,7 +146,7 @@ test('a full Builder scan uses three budgeted council calls, fills once, and reu
     const [proposal] = await db.select().from(builderProposals).where(eq(builderProposals.owner, owner));
     const [balance] = await db.select().from(paperAccounts).where(eq(paperAccounts.owner, owner));
     assert.equal(report.decision, 'approve'); assert.equal(report.engine, 'llm');
-    assert.equal(report.tokensUsed, 450); assert.equal(report.paperOrderId, order.id);
+    assert.equal(report.tokensUsed, 600); assert.equal(report.paperOrderId, order.id);
     assert.equal(order.status, 'filled'); assert.equal(order.source, 'agent');
     assert.equal(Number(order.quantity), 5); assert.equal(Number(order.filledPrice), 100);
     assert.equal(Number(balance.cashBalance), 9500);
@@ -154,18 +154,18 @@ test('a full Builder scan uses three budgeted council calls, fills once, and reu
     assert.equal(trade.orderId, order.id); assert.equal(Number(trade.cashAfter), 9500);
     assert.equal(proposal.paperOrderId, order.id);
     const usageRows = await db.select().from(llmBudgetUsage).where(eq(llmBudgetUsage.owner, owner));
-    assert.equal(usageRows.length, 3);
+    assert.equal(usageRows.length, 4);
     assert.ok(usageRows.every(row => row.taskId === session.taskId && row.status === 'completed'));
-    assert.equal(usageRows.reduce((sum, row) => sum + row.chargedTokens, 0), 450);
+    assert.equal(usageRows.reduce((sum, row) => sum + row.chargedTokens, 0), 600);
     const usage = await budget.getUsage(owner);
-    assert.equal(usage.dayCalls, 3); assert.equal(usage.dayTokens, 450); assert.equal(usage.reservedTokens, 0);
+    assert.equal(usage.dayCalls, 4); assert.equal(usage.dayTokens, 600); assert.equal(usage.reservedTokens, 0);
 
     const repeated = await paper.runBotScan(owner);
     assert.equal(repeated.placed, 0);
-    assert.equal(calls.length, 3, 'rescan must not repeat paid council work');
+    assert.equal(calls.length, 4, 'rescan must not repeat paid council work');
     assert.equal((await db.select().from(paperOrders).where(eq(paperOrders.owner, owner))).length, 1);
     assert.equal((await db.select().from(councilReports).where(eq(councilReports.owner, owner))).length, 1);
-    assert.equal((await budget.getUsage(owner)).dayCalls, 3);
+    assert.equal((await budget.getUsage(owner)).dayCalls, 4);
   } finally {
     axios.defaults.adapter = originalAdapter;
     t.mock.timers.reset();

@@ -96,7 +96,12 @@ export class AgentBuilderService {
   }
 
   async assertCanActivate(userId: string, config: BuilderConfig): Promise<void> {
-    if ((config.customPrompt || config.council?.enabled) && !(await this.llm.isConfigured(userId))) {
+    if (config.council?.enabled) {
+      const members = config.council.members;
+      await this.llm.validateConnectionIds(userId, members.flatMap((member) => member.connectionId ? [member.connectionId] : []));
+      const configured = await Promise.all(members.map((member) => this.llm.isConfigured(userId, member.connectionId)));
+      if (configured.some((value) => !value)) throw new BadRequestException('Configure a model connection for every council member');
+    } else if (config.customPrompt && !(await this.llm.isConfigured(userId))) {
       throw new BadRequestException('Configure a model for the council, or select basic rules mode');
     }
   }

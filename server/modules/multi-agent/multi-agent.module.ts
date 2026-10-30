@@ -31,6 +31,9 @@ import { MultiAgentService } from './multi-agent.service';
 import { LlmService } from './llm.service';
 import { EvidenceService } from './evidence.service';
 import { FinnhubEvidenceService } from './finnhub-evidence.service';
+import { SecEvidenceService } from './sec-evidence.service';
+import { ResearchWebService } from './research-web.service';
+import { ResearchToolsBudgetService } from './research-tools-budget.service';
 import { PipelineService } from './pipeline.service';
 import { PortfolioContextService } from './portfolio-context.service';
 import { BatchService } from './batch.service';
@@ -45,6 +48,9 @@ import { FxModule } from '@server/modules/fx/fx.module';
     LlmService,
     EvidenceService,
     FinnhubEvidenceService,
+    SecEvidenceService,
+    ResearchWebService,
+    ResearchToolsBudgetService,
     PipelineService,
     PortfolioContextService,
     BatchService,

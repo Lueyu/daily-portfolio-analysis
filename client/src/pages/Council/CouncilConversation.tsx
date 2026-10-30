@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { ArrowDown, Lightbulb, Loader2, MessageCircle, Scale, Send, ShieldCheck, UserRound } from 'lucide-react';
+import { ArrowDown, Loader2, MessageCircle, Send } from 'lucide-react';
 import { toast } from 'sonner';
 import type { CouncilMessage, CouncilSession } from '@shared/council.interface';
 import type { useCouncilActions } from '@/hooks/use-council';
@@ -10,7 +10,9 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { errorMessage } from '@/pages/AgentBuilder/errorMessage';
-import { councilMessageDisplayContent, shouldSendCouncilMessage, shouldStartCouncilAfterMessage } from '@/utils/council-state';
+import { shouldSendCouncilMessage, shouldStartCouncilAfterMessage } from '@/utils/council-state';
+import CouncilChatMessage from './CouncilChatMessage';
+import CouncilResearchProgress from './CouncilResearchProgress';
 
 interface CouncilConversationProps {
   session: CouncilSession;
@@ -18,17 +20,12 @@ interface CouncilConversationProps {
   profileChanged: boolean;
 }
 
-const MEMBER_ICONS = { researcher: Lightbulb, challenger: ShieldCheck, manager: Scale, user: UserRound };
-const MEMBER_COLORS = {
-  researcher: 'bg-primary/15 text-primary', challenger: 'bg-secondary text-secondary-foreground',
-  manager: 'bg-muted text-foreground', user: 'bg-primary text-primary-foreground',
-};
-
 export default function CouncilConversation({ session, actions, profileChanged }: CouncilConversationProps) {
   const { t } = useTranslation();
   const [content, setContent] = useState('');
   const [unread, setUnread] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const stickToBottom = useRef(true);
   const sending = useRef(false);
   const composing = useRef(false);
@@ -71,6 +68,7 @@ export default function CouncilConversation({ session, actions, profileChanged }
   };
 
   return <>
+    <CouncilResearchProgress session={session} />
     <div className="relative flex min-h-0 flex-1 flex-col bg-muted/25">
       <div ref={scrollRef} role="log" aria-live="polite" aria-relevant="additions" aria-label={t('council.conversation')}
         className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-3 py-5 sm:px-6"
@@ -80,14 +78,17 @@ export default function CouncilConversation({ session, actions, profileChanged }
           stickToBottom.current = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 96;
           if (stickToBottom.current) setUnread(false);
         }}>
-        <p className="mx-auto max-w-md text-center text-[11px] leading-5 text-muted-foreground">{t('council.roomHint')}</p>
+        <p className="mx-auto max-w-md text-center text-[11px] leading-5 text-muted-foreground [overflow-wrap:anywhere]">{session.members?.length
+          ? t('council.members.roomHint', { names: session.members.map((member) => member.name).join(' · ') }) : t('council.roomHint')}</p>
         {profileChanged && <p className="mx-auto max-w-xl rounded-lg bg-card p-3 text-center text-xs leading-5 text-muted-foreground">{t('council.profileChanged')}</p>}
         {session.messages.length === 0 && <div className="mx-auto flex max-w-sm flex-col items-center gap-3 py-12 text-center text-muted-foreground">
           <MessageCircle className="size-8 text-primary/60" />
           <p className="text-sm leading-6">{t(session.status === 'running' ? 'council.startingHint'
             : session.reports.some((report) => report.engine === 'basic') ? 'council.noMessagesBasic' : 'council.noMessages')}</p>
         </div>}
-        {session.messages.map((message: CouncilMessage) => <ChatMessage key={message.id} message={message} />)}
+        {session.messages.map((message: CouncilMessage) => <CouncilChatMessage key={message.id} message={message} session={session} onQuestion={(question: string) => {
+          setContent((current) => current ? `${current}\n${question}`.slice(0, 2000) : question.slice(0, 2000)); inputRef.current?.focus();
+        }} />)}
         {session.status === 'running' && <div role="status" className="flex items-center gap-3 px-1 text-xs text-muted-foreground">
           <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-card"><Loader2 className="size-4 animate-spin text-primary" /></span>
           {t('council.runningHint')}
@@ -106,7 +107,7 @@ export default function CouncilConversation({ session, actions, profileChanged }
     <form className="shrink-0 border-t border-border bg-card p-3 sm:px-5 sm:py-4" onSubmit={(event) => { event.preventDefault(); void submit(); }}>
       <Label htmlFor="council-message" className="sr-only">{t('council.composerLabel')}</Label>
       <div className="flex items-end gap-2 rounded-xl border border-input bg-background p-1.5 focus-within:ring-2 focus-within:ring-ring/20">
-        <Textarea id="council-message" value={content} onChange={(event) => setContent(event.target.value)}
+        <Textarea ref={inputRef} id="council-message" value={content} onChange={(event) => setContent(event.target.value)}
           rows={2} maxLength={2000} disabled={messageLimitReached} aria-describedby="council-composer-hint"
           className="min-h-[52px] max-h-32 resize-none border-0 bg-transparent text-sm shadow-none focus-visible:ring-0 dark:bg-transparent"
           placeholder={t('council.composerPlaceholder')} onCompositionStart={() => { composing.current = true; }}
@@ -130,28 +131,4 @@ export default function CouncilConversation({ session, actions, profileChanged }
       </div>
     </form>
   </>;
-}
-
-function ChatMessage({ message }: { message: CouncilMessage }) {
-  const { t, i18n } = useTranslation();
-  if (message.role === 'system') return <article className="mx-auto max-w-xl text-center text-xs leading-6 text-muted-foreground">
-    <p className="whitespace-pre-wrap break-words">{message.content}</p>
-  </article>;
-  const isUser = message.role === 'user';
-  const Icon = MEMBER_ICONS[message.role];
-  const name = isUser ? t('council.you') : message.memberName;
-  return <article className={`flex items-start gap-2.5 ${isUser ? 'flex-row-reverse' : ''}`}>
-    <div aria-hidden="true" className={`mt-1 flex size-9 shrink-0 items-center justify-center rounded-xl ${MEMBER_COLORS[message.role]}`}><Icon className="size-[18px]" /></div>
-    <div className={`min-w-0 max-w-[calc(100%-3rem)] sm:max-w-[84%] ${isUser ? 'items-end' : 'items-start'} flex flex-col`}>
-      <div className={`mb-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground ${isUser ? 'justify-end' : ''}`}>
-        <span className="font-medium text-foreground/80">{name}</span>
-        {!isUser && <span>{t(`council.roles.${message.role}`)}</span>}
-        <time dateTime={message.createdAt}>{new Date(message.createdAt).toLocaleTimeString(i18n.language, { hour: '2-digit', minute: '2-digit' })}</time>
-      </div>
-      <div className={`min-w-0 rounded-2xl px-4 py-3 shadow-sm ${isUser
-        ? 'rounded-tr-sm bg-primary/15 text-foreground' : 'rounded-tl-sm border border-border/60 bg-card text-card-foreground'}`}>
-        <p className="whitespace-pre-wrap break-words text-sm leading-7 [overflow-wrap:anywhere]">{councilMessageDisplayContent(message)}</p>
-      </div>
-    </div>
-  </article>;
 }

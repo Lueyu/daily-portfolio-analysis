@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import { cacheKey, isRuleCandidate, parseOpinion, eligibleApproval, councilPrompt, normalizeCandidate } from './council.rules';
 import type { BuilderConfig } from '../../../shared/api.interface';
 import type { CouncilCandidate } from '../../../shared/council.interface';
+import { normalizeCouncil } from '../paper-trading/agent-builder.rules';
 
 const candidate: CouncilCandidate = { ticker: 'AAPL', side: 'buy', quantity: 2, price: 100, reason: 'Investor price rule: 100 reached buy trigger 101' };
 const config: BuilderConfig = { name: 'test', template: 'balanced', tickers: ['AAPL'], minimumRating: 'Buy', customPrompt: '', maxOrderPct: 5, dailyLossLimitPct: 3, maxOrdersPerDay: 4, notifyOnProposal: false, priceRules: [{ ticker: 'AAPL', buyAtOrBelow: 101 }] };
@@ -52,4 +53,20 @@ test('candidate boundary rejects malformed tickers and unsafe numbers', () => {
   assert.throws(() => normalizeCandidate({ ...candidate, quantity: -1 }));
   assert.throws(() => normalizeCandidate({ ...candidate, price: Infinity }));
   assert.equal(normalizeCandidate({ ...candidate, ticker: ' aapl ' }).ticker, 'AAPL');
+});
+
+test('research teams accept two to six distinct people with exactly one moderator and preserve customization', () => {
+  const member = { id: 'fundamental', role: 'researcher' as const, name: 'Fundamental analyst', instructions: 'Check cash flow', model: 'fast' as const,
+    roleTitle: 'Fundamentals', personality: 'Skeptical and patient', researchFocus: ['financials' as const], speakingStyle: 'socratic' as const,
+    connectionId: '123e4567-e89b-42d3-a456-426614174000' };
+  const manager = { id: 'chair', role: 'manager' as const, name: 'Chair', instructions: '', model: 'slow' as const };
+  const team = normalizeCouncil({ enabled: true, webResearch: true, members: [member, { ...member, id: 'macro', name: 'Macro analyst' }, manager] });
+  assert.deepEqual(team.members[0], member);
+  assert.equal(team.webResearch, true);
+  assert.equal(normalizeCouncil({ enabled: true, members: [member, manager] }).members.length, 2);
+  for (const members of [[member], [member, member, manager], [member, manager, { ...manager, id: 'other-chair' }],
+    Array.from({ length: 7 }, (_, i) => ({ ...member, id: `m${i}`, role: i === 6 ? 'manager' as const : 'researcher' as const }))]) {
+    assert.throws(() => normalizeCouncil({ enabled: true, members }));
+  }
+  assert.throws(() => normalizeCouncil({ enabled: true, members: [{ ...member, connectionId: 'not-a-uuid' }, manager] }));
 });

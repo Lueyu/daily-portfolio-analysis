@@ -106,7 +106,7 @@ test('safe provider and completion errors identify the remedy and survive persis
     const zh = safeAnalysisError(new Error(`LLM provider returned HTTP ${status}`), 'zh-CN');
     assert.equal(safeAnalysisError(zh, 'zh-CN'), zh);
   }
-  for (const [code, pattern] of [['LLM_OUTPUT_LIMIT', /output.*limit|truncated/], ['LLM_EMPTY_RESPONSE', /empty/], ['LLM_INVALID_JSON', /JSON/]]) {
+  for (const [code, pattern] of [['LLM_REQUEST_TIMEOUT', /timed out/], ['LLM_OUTPUT_LIMIT', /output.*limit|truncated/], ['LLM_EMPTY_RESPONSE', /empty/], ['LLM_INVALID_JSON', /JSON/]]) {
     const error = Object.assign(new Error('secret private provider URL'), { code });
     const en = safeAnalysisError(error, 'en');
     assert.match(en, pattern);

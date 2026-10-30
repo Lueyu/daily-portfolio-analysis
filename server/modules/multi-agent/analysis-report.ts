@@ -38,6 +38,10 @@ const BUDGET_ERRORS: Record<string, SafeErrorText> = {
   ],
 };
 const MODEL_ERRORS: Record<string, SafeErrorText> = {
+  LLM_REQUEST_TIMEOUT: [
+    'The model response timed out. Its reserved usage remains counted because the provider may have processed the request. Completed discussion turns are retained; check provider status before explicitly continuing.',
+    '模型响应超时；供应商可能已处理请求，因此保留本次预留用量。已完成的讨论发言仍会保留，请检查供应商状态后再手动继续。',
+  ],
   LLM_OUTPUT_LIMIT: [
     'The model reply reached its output limit and was truncated. No incomplete decision was accepted. Choose a model that can return a final answer within the limit, or review the output cap in Research budget; no automatic retry was made.',
     '模型回复达到输出上限而被截断，未采纳不完整决策。请选择能在限额内返回最终答案的模型，或在研究预算中检查输出上限；系统未自动重试。',

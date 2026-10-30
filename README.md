@@ -63,7 +63,7 @@ Page not loading? Run `docker compose ps` and `docker compose logs --tail=80 app
 1. **Meet your portfolio.** Explore the demo or create your own account. Save the one-time recovery code. Add holdings manually or [import a CSV](docs/import.md).
 2. **Run an analysis.** In **Daily Analysis**, choose a stock or portfolio. If neither you nor the server operator has configured a model, you get a clearly labelled basic report with available prices, exposure checks and data gaps.
 3. **Build your agent.** In **Agent Builder**, choose a guard, scout or balanced template. Set price triggers and position limits, preview the rules, then activate a profile. Run a scan when its market is open and a usable quote is available.
-4. **Bring your view to the team.** With a model configured, choose three council members and open the **Research room**. Add concerns, pause research and compare report versions. Discussion messages never place orders.
+4. **Bring your view to the team.** Open the **Research room**, choose 2–6 AI members from seven role templates, and mix your saved models. Customize their personality and research focus. They research, challenge and respond; you can join at any time. Reports stay in the sidebar. Discussion messages never place orders.
 5. **Review the outcome.** Follow paper orders in **AI Paper Trading** and your investing notes in **Trade Review**. An active Builder scan can use a current council approval for its exact candidate, subject to paper risk checks. Real trades remain your decision and your action at your broker.
 
 Builder preview explains rules; it is not a historical backtest. Manually recording a real fill creates a comparison record and does not automatically update holdings or transaction history.
@@ -75,7 +75,7 @@ These options describe the default local setup. On a hosted instance, a shared m
 | Setup | What becomes available |
 |---|---|
 | **No API keys** | Public quotes, portfolio tracking, basic rule-based analysis and explicit price/risk rules for paper trading. Basic reports use a Watch/low-confidence conclusion, without an AI debate or a predicted target price. |
-| **Your model API key** | Bull/bear research and a bounded three-member investment council. Join the discussion and keep reports; members can approve, wait or reject a candidate, but cannot change its direction or size or override hard limits. |
+| **Your model API key** | Bull/bear research and a customizable 2–6 member team with sequential discussion, cited sources and saved reports. Optional web research uses a saved DeepSeek connection and has a separate request cap. |
 | **Optional Finnhub key** | Available US-company metrics and news for research. Coverage depends on the provider and your plan. |
 
 Open **API Settings** for provider instructions and a connection test. The personal model connection supports public HTTPS endpoints compatible with OpenAI Chat Completions. OpenRouter's free-model preset still requires your own key; providers may impose limits or charge for usage. An operator can also configure a shared model — see [how defaults work](docs/self-hosting.md).

@@ -34,10 +34,12 @@ function loadService(name) {
     'drizzle-orm': { eq: () => true, and: () => true },
     '@server/database/schema': { holdings, watchlist, agentRuns: {} },
     '../settings/settings.service': { SettingsService: class {} },
+    './research-tools-budget.service': { ResearchToolsBudgetService: class {} },
   };
   const localRequire = (id) => {
     if (Object.hasOwn(dependencies, id)) return dependencies[id];
-    if (['./analysis-report', './evidence-language', './finnhub-evidence.service', './finnhub-financials'].includes(id)) {
+    if (['./analysis-report', './evidence-language', './finnhub-evidence.service', './finnhub-financials',
+      './sec-evidence.service', './sec-financials', './research-web.service'].includes(id)) {
       return loadService(`${id.slice(2)}.ts`);
     }
     throw new Error(`Unexpected import in test: ${id}`);
@@ -59,6 +61,15 @@ function fakeDb(holdingRows = [], watchRows = []) {
       }),
     }),
   };
+}
+
+function createEvidenceService(db, quotes, finnhub, sec) {
+  const { EvidenceService } = loadService('evidence.service.ts');
+  const { SecEvidenceError } = loadService('sec-evidence.service.ts');
+  const { ResearchWebService } = loadService('research-web.service.ts');
+  return new EvidenceService(db, quotes, finnhub, sec ?? {
+    getFinancials: async () => { throw new SecEvidenceError('no_data'); },
+  }, new ResearchWebService({}, {}));
 }
 
 const quote = {
@@ -102,7 +113,7 @@ function pipelineWith({ llm, multi } = {}) {
 
 test('missing news, valuation, and historical data are gaps, not research facts', async () => {
   const { EvidenceService } = loadService('evidence.service.ts');
-  const service = new EvidenceService(fakeDb(), {
+  const service = createEvidenceService(fakeDb(), {
     getQuote: async () => quote,
   }, { getFinancials: async () => ({ items: [], hasStatements: false, missingFields: [] }), getMetrics: async () => null, getNews: async () => null });
 
@@ -123,7 +134,7 @@ test('missing news, valuation, and historical data are gaps, not research facts'
 test('verified Finnhub valuation is cited while missing statements remain a gap', async () => {
   const { EvidenceService } = loadService('evidence.service.ts');
   const seen = [];
-  const service = new EvidenceService(fakeDb(), { getQuote: async () => quote }, {
+  const service = createEvidenceService(fakeDb(), { getQuote: async () => quote }, {
     getFinancials: async () => ({ items: [], hasStatements: false, missingFields: [] }),
     getMetrics: async (userId, ticker) => {
       seen.push([userId, ticker]);
@@ -148,7 +159,7 @@ test('verified Finnhub valuation is cited while missing statements remain a gap'
 
 test('configured Finnhub news is preserved as sourced evidence', async () => {
   const { EvidenceService } = loadService('evidence.service.ts');
-  const service = new EvidenceService(fakeDb(), { getQuote: async () => quote }, {
+  const service = createEvidenceService(fakeDb(), { getQuote: async () => quote }, {
     getFinancials: async () => ({ items: [], hasStatements: false, missingFields: [] }), getMetrics: async () => null,
     getNews: async () => [{
       role: 'news', evidenceType: 'news', title: 'AAPL company update',
@@ -160,6 +171,59 @@ test('configured Finnhub news is preserved as sourced evidence', async () => {
   const items = await service.collectEvidence('AAPL', 'user-1', { totalValue: 1000 });
   assert.ok(items.some((item) => item.title === 'AAPL company update'));
   assert.ok(!items.some((item) => item.title.includes('新闻与情绪缺失')));
+});
+
+test('public SEC fallback fills a provider gap and reports the real acquisition sequence', async () => {
+  const events = [];
+  const service = createEvidenceService(fakeDb(), { getQuote: async () => quote }, {
+    getFinancials: async () => ({ items: [{ role: 'fundamental', evidenceType: 'financial',
+      title: 'Partial Finnhub statement', content: 'Income only', sourceName: 'Finnhub API', relevanceScore: 0.9 }],
+    hasStatements: false, missingFields: ['Liabilities'] }),
+  }, { getFinancials: async () => ({ hasStatements: true, missingFields: [], cacheHit: true,
+    items: [{ role: 'fundamental', evidenceType: 'financial', title: 'Complete SEC statement',
+      content: 'Liabilities: USD 275746000000 as of 2026-06-27', sourceName: 'SEC EDGAR', relevanceScore: 0.95 }] }) });
+  assert.equal(typeof service.collectResearch, 'function', 'Council needs a bounded read-only research entry point');
+  const items = await service.collectResearch('AAPL', 'alice', 'financials', 'en', {
+    onAcquisition: async (event) => { events.push(event); }, shouldContinue: async () => true,
+  });
+  assert.ok(items.some((item) => item.sourceName === 'SEC EDGAR'));
+  assert.ok(!items.some((item) => item.sourceName === 'Data Unavailable'));
+  assert.deepEqual(events.map((event) => [event.source, event.status]), [
+    ['Finnhub', 'started'], ['Finnhub', 'partial'], ['SEC EDGAR', 'started'], ['SEC EDGAR', 'cache_hit'],
+  ]);
+  assert.ok(events.every((event) => event.kind === 'financials'));
+});
+
+test('research cancellation prevents provider requests and disabling web prevents paid acquisition', async () => {
+  let requested = false;
+  const service = createEvidenceService(fakeDb(), {}, {
+    getFinancials: async () => { requested = true; throw new Error('must not call'); },
+  });
+  assert.equal(typeof service.collectResearch, 'function');
+  await assert.rejects(service.collectResearch('AAPL', 'alice', 'financials', 'en', {
+    shouldContinue: async () => false,
+  }), /stopped/i);
+  assert.equal(requested, false);
+  const events = [];
+  const items = await service.collectResearch('AAPL', 'alice', 'web', 'en', {
+    onAcquisition: (event) => { events.push(event); }, webResearch: false,
+  });
+  assert.deepEqual(items, []);
+  assert.equal(events.at(-1).status, 'skipped');
+});
+
+test('partial SEC statements keep their source attribution and name only the missing field', async () => {
+  const service = createEvidenceService(fakeDb(), {}, {
+    getFinancials: async () => ({ items: [], hasStatements: false, missingFields: [] }),
+  }, { getFinancials: async () => ({ hasStatements: false, missingFields: ['Liabilities'], cacheHit: false,
+    items: [{ role: 'fundamental', evidenceType: 'financial', title: 'Partial SEC statement',
+      content: 'Revenue and earnings for the reported period', sourceName: 'SEC EDGAR', relevanceScore: 0.95 }] }) });
+  const items = await service.collectResearch('AAPL', 'alice', 'financials', 'en');
+  const gap = items.find((item) => item.sourceName === 'Data Unavailable');
+  assert.match(gap.content, /SEC successfully returned partial verified financial statements/);
+  assert.match(gap.content, /Missing concepts or units: Liabilities/);
+  assert.doesNotMatch(gap.content, /Finnhub successfully returned/);
+  assert.match(gap.content, /not evidence of financial weakness/);
 });
 
 test('Finnhub requests use only the caller key and keep unsupported markets out', async () => {
@@ -290,7 +354,7 @@ test('reported statements retain actual values, periods, filing provenance and r
   };
   try {
     const provider = new FinnhubEvidenceService({ getFinnhubKey: async () => 'alice-secret' });
-    const service = new EvidenceService(fakeDb(), { getQuote: async () => quote }, provider);
+    const service = createEvidenceService(fakeDb(), { getQuote: async () => quote }, provider);
     const items = await service.collectEvidence('AAPL', 'alice', { totalValue: 1000 }, 'en');
     const statements = items.find((item) => item.title.includes('reported financial statements'));
     assert.ok(statements, 'Configured Finnhub statements must reach the evidence snapshot');
@@ -330,7 +394,7 @@ test('the latest incomplete statement stays a gap instead of using an older comp
     ? Response.json(latest) : Response.json({ metric: {} });
   try {
     const provider = new FinnhubEvidenceService({ getFinnhubKey: async () => 'key' });
-    const service = new EvidenceService(fakeDb(), { getQuote: async () => quote }, provider);
+    const service = createEvidenceService(fakeDb(), { getQuote: async () => quote }, provider);
     const items = await service.collectEvidence('AAPL', 'alice', { totalValue: 1000 }, 'en');
     const gap = items.find((item) => item.title.includes('Financial statements incomplete'));
     assert.ok(gap);
@@ -437,7 +501,7 @@ test('provider gap reasons distinguish missing key, market, authentication, perm
       };
       const provider = new FinnhubEvidenceService({ getFinnhubKey: async () =>
         Object.hasOwn(scenario, 'key') ? scenario.key : 'alice-secret' });
-      const service = new EvidenceService(fakeDb(), { getQuote: async () => quote }, provider);
+      const service = createEvidenceService(fakeDb(), { getQuote: async () => quote }, provider);
       const items = await service.collectEvidence(scenario.ticker ?? 'AAPL', 'alice', { totalValue: 1000 }, 'en');
       const gaps = items.filter((item) => item.sourceName === 'Data Unavailable'
         && item.role !== 'technical');
@@ -451,7 +515,7 @@ test('provider gap reasons distinguish missing key, market, authentication, perm
 
 test('quote failure keeps portfolio facts and reports the missing price', async () => {
   const { EvidenceService } = loadService('evidence.service.ts');
-  const service = new EvidenceService(
+  const service = createEvidenceService(
     fakeDb([{ ticker: 'AAPL', shares: '10', buyPrice: '80', currentPrice: '90' }]),
     { getQuote: async () => { throw new Error('provider down'); } },
     { getFinancials: async () => ({ items: [], hasStatements: false, missingFields: [] }), getMetrics: async () => null, getNews: async () => null },
@@ -477,7 +541,7 @@ test('HK portfolio evidence uses native currency and the USD-normalized weight',
     high: '121',
     low: '118',
   };
-  const service = new EvidenceService(fakeDb([{
+  const service = createEvidenceService(fakeDb([{
     ticker: '0700.HK', shares: '10', buyPrice: '100', currency: 'HKD', sector: 'Technology',
   }]), { getQuote: async () => hkQuote },
   { getFinancials: async () => ({ items: [], hasStatements: false, missingFields: [] }), getMetrics: async () => null, getNews: async () => null });
@@ -725,7 +789,7 @@ test('an explicitly configured model failure remains failed and never falls back
 
 test('English evidence localizes built-in price and missing-data statements', async () => {
   const { EvidenceService } = loadService('evidence.service.ts');
-  const service = new EvidenceService(fakeDb(), { getQuote: async () => quote },
+  const service = createEvidenceService(fakeDb(), { getQuote: async () => quote },
     { getFinancials: async () => ({ items: [], hasStatements: false, missingFields: [] }), getMetrics: async () => null, getNews: async () => null });
   const items = await service.collectEvidence('AAPL', 'user-1', { totalValue: 1000 }, 'en');
   assert.ok(items.some(item => item.title.includes('Financial statements unavailable')));

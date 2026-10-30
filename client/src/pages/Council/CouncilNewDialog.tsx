@@ -1,13 +1,17 @@
-import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Loader2, MessageCircle, X } from 'lucide-react';
+import { ChevronDown, Loader2, MessageCircle, X } from 'lucide-react';
 import type { BuilderProfile } from '@shared/api.interface';
+import type { CouncilConfig, CreateCouncilSession } from '@shared/council.interface';
+import { createCouncilPreset } from '@shared/council-templates';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { validateCouncilSettings } from '@/utils/council-state';
 import { errorMessage } from '@/pages/AgentBuilder/errorMessage';
+import CouncilTeamEditor from './CouncilTeamEditor';
 
 interface CouncilNewDialogProps {
   open: boolean;
@@ -18,50 +22,81 @@ interface CouncilNewDialogProps {
   pending: boolean;
   initialProfileId: string;
   initialTicker: string;
-  onCreate: (profileId: string, ticker: string) => Promise<void>;
+  initialTeam?: CouncilConfig;
+  onCreate: (request: CreateCouncilSession) => Promise<void>;
 }
 
 export default function CouncilNewDialog({ open, onOpenChange, profiles, loading, error, pending,
-  initialProfileId, initialTicker, onCreate }: CouncilNewDialogProps) {
-  const { t } = useTranslation();
+  initialProfileId, initialTicker, initialTeam, onCreate }: CouncilNewDialogProps) {
+  const { t, i18n } = useTranslation();
   const [profileId, setProfileId] = useState(initialProfileId);
   const [ticker, setTicker] = useState(initialTicker);
+  const [team, setTeam] = useState<CouncilConfig>(() => initialTeam ?? {
+    enabled: true, members: createCouncilPreset('balanced', i18n.language), webResearch: false,
+  });
   const [formError, setFormError] = useState<string | null>(null);
+  const initializedProfile = useRef(Boolean(initialTeam) || !initialProfileId);
+  useEffect(() => {
+    if (initializedProfile.current) return;
+    const profile = profiles.find((item: BuilderProfile) => item.id === initialProfileId);
+    if (!profile) return;
+    if (profile.config.council?.members.length) setTeam({ enabled: true, webResearch: false,
+      members: profile.config.council.members.map((member) => ({ ...member, researchFocus: member.researchFocus?.filter((focus) => focus !== 'web') })) });
+    initializedProfile.current = true;
+  }, [profiles, initialProfileId]);
+  const changeTeam = (value: CouncilConfig) => { initializedProfile.current = true; setTeam(value); setFormError(null); };
   const create = async () => {
     if (pending) return;
-    const owner = profileId || profiles[0]?.id;
     const symbol = ticker.trim().toUpperCase();
-    if (!owner || !profiles.some((profile: BuilderProfile) => profile.id === owner)
-      || !/^[A-Z0-9.^-]{1,20}$/u.test(symbol)) {
+    if (!/^[A-Z0-9][A-Z0-9.^-]{0,19}$/u.test(symbol)
+      || (profileId && !profiles.some((profile: BuilderProfile) => profile.id === profileId))) {
       setFormError(t('council.newInvalid')); return;
     }
+    const invalid = validateCouncilSettings(team, undefined);
+    if (invalid) { setFormError(t(`council.${invalid}`)); return; }
     setFormError(null);
-    try { await onCreate(owner, symbol); }
+    try { await onCreate({ ticker: symbol, ...(profileId ? { profileId } : {}), members: team.members,
+      webResearch: Boolean(team.webResearch), language: i18n.language.startsWith('zh') ? 'zh-CN' : 'en' }); }
     catch (cause) { setFormError(errorMessage(cause, t('council.actionFailed'))); }
   };
 
   return <Dialog open={open} onOpenChange={onOpenChange}>
-    <DialogContent className="max-h-[90dvh] overflow-y-auto" showCloseButton={false}>
-      <DialogHeader className="pr-6 text-left"><DialogTitle>{t('council.newTitle')}</DialogTitle>
+    <DialogContent className="flex max-h-[92dvh] max-w-2xl flex-col gap-0 overflow-hidden p-0" showCloseButton={false}>
+      <DialogHeader className="shrink-0 border-b border-border p-5 pr-14 text-left"><DialogTitle>{t('council.newTitle')}</DialogTitle>
         <DialogDescription>{t('council.newHint')}</DialogDescription></DialogHeader>
-      <DialogClose asChild><Button variant="ghost" size="icon" className="absolute right-3 top-3" aria-label={t('council.close')}><X className="size-4" /></Button></DialogClose>
-      {error ? <p role="alert" className="text-sm text-destructive">{errorMessage(error, t('council.loadFailed'))}</p>
-        : loading ? <p className="text-sm text-muted-foreground">{t('council.loading')}</p>
-          : profiles.length === 0 ? <div className="space-y-4"><p className="text-sm text-muted-foreground">{t('council.noProfiles')}</p>
-            <Button asChild><Link to="/agent-builder">{t('council.createTeam')}</Link></Button></div>
-            : <form className="space-y-5" onSubmit={(event) => { event.preventDefault(); void create(); }}>
-              <div className="space-y-2"><Label htmlFor="council-ticker">{t('council.ticker')}</Label>
-                <Input autoFocus id="council-ticker" value={ticker} maxLength={20} placeholder="AAPL / 0700.HK / 600519.SS"
-                  onChange={(event) => setTicker(event.target.value)} /></div>
-              <div className="space-y-2"><Label htmlFor="council-profile">{t('council.profile')}</Label>
-                <select id="council-profile" value={profileId || profiles[0]?.id} onChange={(event) => setProfileId(event.target.value)}
-                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                  {profiles.map((profile: BuilderProfile) => <option key={profile.id} value={profile.id}>{profile.config.name}</option>)}
-                </select></div>
-              {formError && <p role="alert" className="text-sm text-destructive">{formError}</p>}
-              <Button type="submit" className="w-full" disabled={pending}>
-                {pending ? <Loader2 className="size-4 animate-spin" /> : <MessageCircle className="size-4" />}{t('council.startChat')}</Button>
-            </form>}
+      <div className="absolute right-3 top-3"><DialogClose asChild><Button type="button" variant="ghost" size="icon" aria-label={t('council.close')}><X className="size-4" /></Button></DialogClose></div>
+      <form className="flex min-h-0 flex-1 flex-col" onSubmit={(event) => { event.preventDefault(); void create(); }}>
+        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-5">
+          <div className="space-y-2"><Label htmlFor="council-ticker">{t('council.ticker')}</Label>
+            <Input autoFocus id="council-ticker" value={ticker} maxLength={20} placeholder="AAPL / 0700.HK / 600519.SS"
+              onChange={(event) => setTicker(event.target.value)} /></div>
+          <CouncilTeamEditor value={team} onChange={changeTeam} />
+          <Collapsible defaultOpen={Boolean(initialProfileId)} className="rounded-xl border border-border">
+            <CollapsibleTrigger asChild><Button type="button" variant="ghost" className="h-auto min-h-9 w-full justify-between py-2 text-left text-xs">
+              <span className="min-w-0 whitespace-normal">{t('council.members.profileOptional')}</span><ChevronDown className="size-3.5" /></Button></CollapsibleTrigger>
+            <CollapsibleContent className="space-y-2 px-3 pb-3">
+              <Label htmlFor="council-profile" className="sr-only">{t('council.profile')}</Label>
+              <select id="council-profile" value={profileId} disabled={loading}
+                onChange={(event) => {
+                  setProfileId(event.target.value);
+                  const profile = profiles.find((item: BuilderProfile) => item.id === event.target.value);
+                  if (profile?.config.council?.members.length) changeTeam({ ...team, members: profile.config.council.members.map((member) => ({
+                    ...member, researchFocus: member.researchFocus?.filter((focus) => focus !== 'web' || team.webResearch),
+                  })) });
+                }} className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                <option value="">{t('council.members.standalone')}</option>
+                {profiles.map((profile: BuilderProfile) => <option key={profile.id} value={profile.id}>{profile.config.name}</option>)}
+              </select>
+              <p className="text-xs leading-5 text-muted-foreground">{t('council.members.profileHint')}</p>
+              {error ? <p role="alert" className="text-xs text-muted-foreground">{t('council.members.profilesLoadFailed')}</p> : null}
+            </CollapsibleContent>
+          </Collapsible>
+        </div>
+        <div className="shrink-0 space-y-3 border-t border-border p-4">
+          {formError && <p role="alert" className="break-words text-sm text-destructive">{formError}</p>}
+          <Button type="submit" className="w-full" disabled={pending}>
+          {pending ? <Loader2 className="size-4 animate-spin" /> : <MessageCircle className="size-4" />}{t('council.startChat')}</Button></div>
+      </form>
     </DialogContent>
   </Dialog>;
 }

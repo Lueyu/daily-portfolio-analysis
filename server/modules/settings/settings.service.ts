@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, Optional } from '@nestjs/common';
 import { Inject } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
 import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '../../common/platform';
@@ -15,6 +15,7 @@ import {
   encryptSecret,
   normalizePublicLlmBaseUrl,
 } from './settings-security';
+import { ModelConnectionsService } from './model-connections.service';
 
 export interface ResolvedLlmConfig {
   source: 'user' | 'server';
@@ -68,6 +69,7 @@ export class SettingsService {
   constructor(
     @Inject(DRIZZLE_DATABASE) private readonly db: PostgresJsDatabase,
     private readonly quotes: QuoteService,
+    @Optional() private readonly connections?: ModelConnectionsService,
   ) {}
 
   private encryptionSecret(): string {
@@ -140,7 +142,11 @@ export class SettingsService {
     };
   }
 
-  async getLlmConfig(userId: string): Promise<ResolvedLlmConfig | null> {
+  async getLlmConfig(userId: string, connectionId?: string): Promise<ResolvedLlmConfig | null> {
+    if (connectionId) {
+      if (!this.connections) throw new BadRequestException('Model connections are unavailable');
+      return this.connections.resolve(userId, connectionId);
+    }
     const row = await this.rowFor(userId);
     if (row?.llmApiKeyEnc) {
       const userKey = this.tryDecrypt(row.llmApiKeyEnc);
@@ -167,6 +173,18 @@ export class SettingsService {
   async getFinnhubKey(userId: string): Promise<string | null> {
     const row = await this.rowFor(userId);
     return this.tryDecrypt(row?.finnhubApiKeyEnc);
+  }
+
+  async getResearchSearchConfig(userId: string): Promise<ResolvedLlmConfig | null> {
+    const current = await this.getLlmConfig(userId);
+    const supportsSearch = (url: string): boolean => {
+      try { const parsed = new URL(url); return parsed.protocol === 'https:' && parsed.hostname === 'api.deepseek.com'; }
+      catch { return false; }
+    };
+    if (current && supportsSearch(current.baseUrl)) return current;
+    if (!this.connections) return null;
+    const available = (await this.connections.list(userId)).find(item => item.available && supportsSearch(item.baseUrl));
+    return available ? this.connections.resolve(userId, available.id) : null;
   }
 
   async saveLlm(userId: string, input: UpdateLlmIntegrationRequest): Promise<IntegrationSettings> {
