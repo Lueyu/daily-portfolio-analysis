@@ -19,12 +19,12 @@ import { BrowserRouter } from 'react-router-dom';
 import { ErrorBoundary } from 'react-error-boundary';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
-import { Button } from '@client/src/components/ui/button';
+import { Button } from '@/components/ui/button';
 import RoutesComponent from './app.tsx';
 import './index.css';
 import './i18n'; // i18n must load before any page renders
 import { createPortal } from 'react-dom';
-import { Toaster } from '@client/src/components/ui/sonner';
+import { Toaster } from '@/components/ui/sonner';
 import { useTheme } from './hooks/use-theme';
 import { useTranslation } from 'react-i18next';
 
