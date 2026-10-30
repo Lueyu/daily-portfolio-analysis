@@ -49,7 +49,7 @@ export async function createDatabase(connectionString?: string): Promise<Squabbl
     max: Number(process.env.DB_POOL_MAX ?? 10),
   });
   try {
-    for (const name of ['03_agent_builder.sql', '04_user_api_settings.sql', '05_analysis_language.sql', '06_account_recovery.sql']) {
+    for (const name of ['03_agent_builder.sql', '04_user_api_settings.sql', '05_analysis_language.sql', '06_account_recovery.sql', '07_llm_budget.sql', '08_investment_council.sql', '09_builder_cadence.sql']) {
       const migrationPath = resolve(process.cwd(), 'scripts/db', name);
       const migration = readFileSync(migrationPath, 'utf8');
       for (const statement of migration.split(';').map((item) => item.trim()).filter(Boolean)) {

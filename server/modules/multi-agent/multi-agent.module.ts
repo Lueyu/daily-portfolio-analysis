@@ -49,5 +49,6 @@ import { FxModule } from '@server/modules/fx/fx.module';
     PortfolioContextService,
     BatchService,
   ],
+  exports: [LlmService, EvidenceService, PortfolioContextService, MultiAgentService],
 })
 export class MultiAgentModule {}

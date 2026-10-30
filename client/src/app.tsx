@@ -25,6 +25,7 @@ import StrategyRulesPage from './pages/StrategyRules/StrategyRulesPage';
 import SettingsPage from './pages/Settings/SettingsPage';
 import PaperPage from './pages/Paper/PaperPage';
 import AgentBuilderPage from './pages/AgentBuilder/AgentBuilderPage';
+import CouncilPage from './pages/Council/CouncilPage';
 import ImportPage from './pages/Import/ImportPage';
 import LoginPage from './pages/Auth/LoginPage';
 import RegisterPage from './pages/Auth/RegisterPage';
@@ -60,6 +61,7 @@ const RoutesComponent = () => {
         <Route path="analysis" element={<AnalysisPage />} />
         <Route path="paper" element={<PaperPage />} />
         <Route path="agent-builder" element={<AgentBuilderPage />} />
+        <Route path="council" element={<CouncilPage />} />
         <Route path="analysis/deep-report/:runId" element={<DeepReportPage />} />
         <Route path="journal" element={<JournalPage />} />
         <Route path="transactions" element={<TransactionsPage />} />

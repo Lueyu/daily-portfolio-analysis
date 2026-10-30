@@ -33,6 +33,7 @@ Squabble gives individual investors one workspace to **understand their holdings
 | Understand your whole portfolio | Track US/HK/CN holdings, cash and P&L together, with USD/HKD/CNY conversion and a market overview. |
 | Build an agent without coding | Choose a template, set symbols, price triggers and risk limits, then preview and activate your paper strategy. |
 | See the case on both sides | With a model configured, read bullish and bearish arguments, evidence, critique and risk checks in one report. Missing inputs stay visible. |
+| Discuss a decision with your team | Configure a researcher, challenger and portfolio manager; add your own notes in the Research room and keep versioned conclusions with evidence. |
 | Keep the final decision | Test in an isolated paper account. Receive optional trade proposals, execute real trades yourself, and record what actually happened. |
 
 ## Start locally
@@ -62,7 +63,8 @@ Page not loading? Run `docker compose ps` and `docker compose logs --tail=80 app
 1. **Meet your portfolio.** Explore the demo or create your own account. Save the one-time recovery code. Add holdings manually or [import a CSV](docs/import.md).
 2. **Run an analysis.** In **Daily Analysis**, choose a stock or portfolio. If neither you nor the server operator has configured a model, you get a clearly labelled basic report with available prices, exposure checks and data gaps.
 3. **Build your agent.** In **Agent Builder**, choose a guard, scout or balanced template. Set price triggers and position limits, preview the rules, then activate a profile. Run a scan when its market is open and a usable quote is available.
-4. **Review the outcome.** Follow paper orders in **AI Paper Trading** and your investing notes in **Trade Review**. Optional notifications can bring proposals to you. Real trades remain your decision and your action at your broker.
+4. **Bring your view to the team.** With a model configured, choose three council members and open the **Research room**. Add concerns, pause research and compare report versions. Discussion messages never place orders.
+5. **Review the outcome.** Follow paper orders in **AI Paper Trading** and your investing notes in **Trade Review**. An active Builder scan can use a current council approval for its exact candidate, subject to paper risk checks. Real trades remain your decision and your action at your broker.
 
 Builder preview explains rules; it is not a historical backtest. Manually recording a real fill creates a comparison record and does not automatically update holdings or transaction history.
 
@@ -73,10 +75,12 @@ These options describe the default local setup. On a hosted instance, a shared m
 | Setup | What becomes available |
 |---|---|
 | **No API keys** | Public quotes, portfolio tracking, basic rule-based analysis and explicit price/risk rules for paper trading. Basic reports use a Watch/low-confidence conclusion, without an AI debate or a predicted target price. |
-| **Your model API key** | Bull/bear debate, critique and report synthesis; optional review of agent candidates against your custom prompt. The prompt can veto a candidate, but cannot override hard limits or change an order. |
+| **Your model API key** | Bull/bear research and a bounded three-member investment council. Join the discussion and keep reports; members can approve, wait or reject a candidate, but cannot change its direction or size or override hard limits. |
 | **Optional Finnhub key** | Available US-company metrics and news for research. Coverage depends on the provider and your plan. |
 
 Open **API Settings** for provider instructions and a connection test. The personal model connection supports public HTTPS endpoints compatible with OpenAI Chat Completions. OpenRouter's free-model preset still requires your own key; providers may impose limits or charge for usage. An operator can also configure a shared model — see [how defaults work](docs/self-hosting.md).
+
+**Research has a budget; trading has a cadence.** Defaults allow 60,000 tokens/day, 600,000/month and 24,000/task, with 6,000 input and 1,000 output tokens/call, 8 calls/task and 30/day. Day/month periods use UTC. Builder defaults review every 5 weekdays, allow 2 orders per rolling 7 days, require a 3-weekday same-stock cooldown and cap 7-day turnover at 10%. Exchange holidays are not excluded. [Council, budget and execution guide](docs/investment-council.md) explains conservative accounting, pause/restart behavior and the separate OCR path. This is not free, unlimited agent chat.
 
 **Current research boundary:** the built-in collector does not yet supply verified financial statements. Missing fundamental or news evidence keeps live AI reports at Watch/low confidence without a target price. The demo's saved Buy ratings and targets are fictional examples. Explicit price rules let you experiment in paper trading while research coverage grows.
 
@@ -114,6 +118,7 @@ The server configuration supports a **single-instance public beta**. It is not a
 [All documentation →](docs/README.md)
 
 - [Portfolio import](docs/import.md) — CSV and optional screenshot extraction.
+- [Investment council](docs/investment-council.md) — team configuration, research discussions, budgets and low-frequency paper trading.
 - [Architecture](docs/architecture.md) — the web app, analysis pipeline and optional Python agent.
 - [Contributing](CONTRIBUTING.md) — help improve onboarding, data coverage, agent rules or translations.
 - [Security](SECURITY.md) — report a vulnerability privately.

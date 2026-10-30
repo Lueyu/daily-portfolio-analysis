@@ -5,6 +5,11 @@ import type { QuoteService } from '../quote/quote.service';
 import { LlmService } from '../multi-agent/llm.service';
 import { SettingsService } from './settings.service';
 import { encryptSecret } from './settings-security';
+import type { LlmBudgetService } from '../llm-budget/llm-budget.service';
+
+const unusedBudgets = {
+  reserve: async () => { throw new Error('Unconfigured models must not reserve budget'); },
+} as unknown as LlmBudgetService;
 
 function testSettings(row: Record<string, unknown> | null, price: string | null = '100') {
   const db = { select: () => ({ from: () => ({ where: async () => row ? [row] : [] }) }) };
@@ -26,8 +31,8 @@ test('empty configuration enables honest basic analysis and public financial dat
     assert.equal(settings.financial.source, 'builtin');
     assert.equal(settings.financial.hasApiKey, false);
     assert.equal(await service.getLlmConfig('alice'), null);
-    assert.equal(await new LlmService(service).isConfigured('alice'), false);
-    assert.equal(await new LlmService(service).getExecutionInfo('alice'), null);
+    assert.equal(await new LlmService(service, unusedBudgets).isConfigured('alice'), false);
+    assert.equal(await new LlmService(service, unusedBudgets).getExecutionInfo('alice'), null);
     assert.equal((await service.testFinancial('alice')).ok, true);
   } finally {
     if (previous === undefined) delete process.env.DOUBAO_API_KEY;
@@ -51,8 +56,8 @@ test('unreadable personal model key remains configured and cannot silently fall 
     assert.equal(settings.llm.engine, 'llm');
     assert.equal(settings.llm.available, false);
     assert.equal(settings.llm.needsReentry, true);
-    assert.equal(await new LlmService(service).isConfigured('alice'), true);
-    await assert.rejects(() => new LlmService(service).chatFast([], 'alice'), /No LLM API key/u);
+    assert.equal(await new LlmService(service, unusedBudgets).isConfigured('alice'), true);
+    await assert.rejects(() => new LlmService(service, unusedBudgets).chatFast([], 'alice'), /No LLM API key/u);
   } finally {
     if (previous === undefined) delete process.env.SETTINGS_ENCRYPTION_KEY;
     else process.env.SETTINGS_ENCRYPTION_KEY = previous;

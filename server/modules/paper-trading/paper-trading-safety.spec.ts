@@ -21,6 +21,8 @@ test('Builder order refuses stored-price fallback when the quote source is unava
     {} as never,
     {} as never,
     {} as never,
+    {} as never,
+    {} as never,
   );
   Reflect.set(service, 'requireAccount', async () => account);
   Reflect.set(service, 'resolvePrice', async () => {
@@ -47,6 +49,8 @@ test('Builder accepts a recently fetched delayed quote but rejects an old fetch'
     { convert: async () => 1 } as never,
     {} as never,
     {} as never,
+    {} as never,
+    {} as never,
   );
   Reflect.set(service, 'requireAccount', async () => account);
   Reflect.set(service, 'equityOf', async () => 1000);
@@ -68,6 +72,8 @@ test('paper order enters a database transaction before writing the order ledger'
   let transactionEntered = false;
   const service = new PaperTradingService(
     { transaction: async () => { transactionEntered = true; throw new Error('transaction aborted'); } } as never,
+    {} as never,
+    {} as never,
     {} as never,
     {} as never,
     {} as never,
@@ -103,6 +109,8 @@ test('approving a pending paper order enters a transaction before filling it', a
     {} as never,
     {} as never,
     {} as never,
+    {} as never,
+    {} as never,
   );
   Reflect.set(service, 'requireAccount', async () => account);
   Reflect.set(service, 'resolvePrice', async () => ({
@@ -121,6 +129,8 @@ test('first daily-loss baseline uses current equity when an account has no snaps
         from: () => ({ where: () => ({ orderBy: async () => [] }) }),
       }),
     } as never,
+    {} as never,
+    {} as never,
     {} as never,
     {} as never,
     {} as never,
@@ -156,6 +166,8 @@ test('updating a daily snapshot keeps its original opening equity', async () => 
         },
       }),
     } as never,
+    {} as never,
+    {} as never,
     {} as never,
     {} as never,
     {} as never,

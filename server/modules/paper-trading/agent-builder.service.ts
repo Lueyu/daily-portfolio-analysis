@@ -96,8 +96,8 @@ export class AgentBuilderService {
   }
 
   async assertCanActivate(userId: string, config: BuilderConfig): Promise<void> {
-    if (config.customPrompt && !(await this.llm.isConfigured(userId))) {
-      throw new BadRequestException('Configure the LLM before activating custom AI instructions');
+    if ((config.customPrompt || config.council?.enabled) && !(await this.llm.isConfigured(userId))) {
+      throw new BadRequestException('Configure a model for the council, or select basic rules mode');
     }
   }
 
@@ -237,7 +237,7 @@ export class AgentBuilderService {
           role: 'user',
           content: `Ticker: ${ticker}\nCandidate: ${reason}\nInvestor instructions: ${config.customPrompt}`,
         },
-      ], userId);
+      ], userId, { taskId: `builder:${ticker}:${Date.now()}`, purpose: 'builder-review' });
       const data = response.data;
       if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
       const decision = (data as Record<string, unknown>).decision;
@@ -263,7 +263,7 @@ export class AgentBuilderService {
   private mapProfile(row: typeof builderProfiles.$inferSelect): BuilderProfile {
     return {
       id: row.id,
-      config: row.config as BuilderConfig,
+      config: normalizeBuilderConfig(row.config as BuilderConfig),
       status: row.status as BuilderProfile['status'],
       version: row.version,
       createdAt: row.createdAt.toISOString(),

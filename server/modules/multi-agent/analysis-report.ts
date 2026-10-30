@@ -9,6 +9,11 @@ export function normalizeAnalysisLanguage(value: unknown): AnalysisLanguage {
 /** Only known provider status codes cross the boundary; SQL, payloads and credentials never do. */
 export function safeAnalysisError(error: unknown, language: AnalysisLanguage): string {
   const message = error instanceof Error ? error.message : typeof error === 'string' ? error : '';
+  const budgetEn = 'Analysis stopped at an LLM budget limit. Review token and call limits in API Settings before retrying.';
+  const budgetZh = '分析已达到模型预算上限，请在 API 设置中检查 Token 和调用次数额度后再重试。';
+  if (analysisErrorCode(error) === 'LLM_BUDGET_EXCEEDED' || message === budgetEn || message === budgetZh) {
+    return language === 'en' ? budgetEn : budgetZh;
+  }
   const status = message.match(/^LLM provider returned HTTP (\d{3})$/u)?.[1];
   if (status) return language === 'en'
     ? `Model provider request failed (HTTP ${status}). Check API Settings and retry.`

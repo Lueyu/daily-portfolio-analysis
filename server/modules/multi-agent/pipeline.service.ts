@@ -342,8 +342,10 @@ ${missingText || '（无）'}
 
     // Opening round: run bull and bear in parallel via the "slow" (pro) model.
     const [bullResult, bearResult] = await Promise.all([
-      this.llmService.chatSlowJSON([{ role: 'system', content: languageInstruction(language) }, { role: 'user', content: bullPrompt }], userId),
-      this.llmService.chatSlowJSON([{ role: 'system', content: languageInstruction(language) }, { role: 'user', content: bearPrompt }], userId),
+      this.llmService.chatSlowJSON([{ role: 'system', content: languageInstruction(language) }, { role: 'user', content: bullPrompt }], userId,
+        { taskId: `analysis:${runId}`, purpose: 'analysis-bull-opening', maxOutputTokens: 1000 }),
+      this.llmService.chatSlowJSON([{ role: 'system', content: languageInstruction(language) }, { role: 'user', content: bearPrompt }], userId,
+        { taskId: `analysis:${runId}`, purpose: 'analysis-bear-opening', maxOutputTokens: 1000 }),
     ]);
 
     totalTokens += bullResult.tokens + bearResult.tokens;
@@ -430,8 +432,10 @@ ${bearArgs.map((a, i) => `${i + 1}. ${a.point}`).join('\n')}
 
     try {
       const [bullRebuttal, bearRebuttal] = await Promise.all([
-        this.llmService.chatSlowJSON([{ role: 'system', content: languageInstruction(language) }, { role: 'user', content: bullRebuttalPrompt }], userId),
-        this.llmService.chatSlowJSON([{ role: 'system', content: languageInstruction(language) }, { role: 'user', content: bearRebuttalPrompt }], userId),
+        this.llmService.chatSlowJSON([{ role: 'system', content: languageInstruction(language) }, { role: 'user', content: bullRebuttalPrompt }], userId,
+          { taskId: `analysis:${runId}`, purpose: 'analysis-bull-rebuttal', maxOutputTokens: 1000 }),
+        this.llmService.chatSlowJSON([{ role: 'system', content: languageInstruction(language) }, { role: 'user', content: bearRebuttalPrompt }], userId,
+          { taskId: `analysis:${runId}`, purpose: 'analysis-bear-rebuttal', maxOutputTokens: 1000 }),
       ]);
 
       totalTokens += bullRebuttal.tokens + bearRebuttal.tokens;
@@ -470,6 +474,7 @@ ${bearArgs.map((a, i) => `${i + 1}. ${a.point}`).join('\n')}
         }),
       ]);
     } catch (rebuttalErr) {
+      if (analysisErrorCode(rebuttalErr) === 'LLM_BUDGET_EXCEEDED') throw rebuttalErr;
       // Rebuttal is best-effort; opening round is the required minimum.
       this.logger.warn(`Debate round 2 failed: ${analysisErrorCode(rebuttalErr)}`);
     }
@@ -523,7 +528,7 @@ ${bearArgs || '（无）'}`;
 
     const result = await this.llmService.chatSlow([
       { role: 'system', content: languageInstruction(language) }, { role: 'user', content: critiquePrompt },
-    ], userId);
+    ], userId, { taskId: `analysis:${runId}`, purpose: 'analysis-critique', maxOutputTokens: 1000 });
 
     await this.multiAgentService.addDebateRecord(userId, runId, {
       round: 3,
@@ -647,7 +652,7 @@ ${riskSummary}
 
     const result = await this.llmService.chatSlowJSON([
       { role: 'system', content: languageInstruction(language) }, { role: 'user', content: ratingPrompt },
-    ], userId);
+    ], userId, { taskId: `analysis:${runId}`, purpose: 'analysis-rating', maxOutputTokens: 1000 });
 
     const data = result.data as Record<string, unknown>;
 

@@ -26,7 +26,8 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { and, desc, eq, gte } from 'drizzle-orm';
+import { and, desc, eq, gte, or } from 'drizzle-orm';
+import { createHash } from 'node:crypto';
 import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '../../common/platform';
 import {
   holdings,
@@ -48,8 +49,14 @@ import { NotificationService, type NotificationPayload } from '../notifications/
 import { isMarketOpen } from '../../common/market-clock';
 import { AgentBuilderService } from './agent-builder.service';
 import { decideBuilderSignal } from './agent-builder.rules';
+import { BuilderCadenceService } from './builder-cadence.service';
+import { cadenceRejection, normalizeCadence } from './trading-cadence';
+import { CouncilService } from '../council/council.service';
+import { councilReports, councilSessions } from '../../database/council.schema';
+import type { CouncilCandidate } from '@shared/council.interface';
 import type {
   BuilderProfile,
+  Market,
   CreatePaperOrderDto,
   PaperAccount,
   PaperGuardrails,
@@ -104,6 +111,8 @@ export class PaperTradingService {
     private readonly fxService: FxService,
     private readonly notifications: NotificationService,
     private readonly builder: AgentBuilderService,
+    private readonly cadence: BuilderCadenceService,
+    private readonly council: CouncilService,
   ) {}
 
   /** Get (or lazily create) the caller's paper account. */
@@ -139,6 +148,7 @@ export class PaperTradingService {
       await tx.update(builderProposals)
         .set({ paperOrderId: null })
         .where(eq(builderProposals.owner, userId));
+      await tx.update(councilReports).set({ paperOrderId: null }).where(eq(councilReports.owner, userId));
       await tx.delete(paperTrades).where(eq(paperTrades.accountId, account.id));
       await tx.delete(paperOrders).where(eq(paperOrders.accountId, account.id));
       await tx.delete(paperEvents).where(eq(paperEvents.accountId, account.id));
@@ -271,6 +281,7 @@ export class PaperTradingService {
     suppressNotification = false,
     strictQuote = false,
     builderProfile?: BuilderProfile,
+    councilApproval?: { sessionId: string; reportId: string; candidate: CouncilCandidate },
   ): Promise<PaperOrder> {
     const initialAccount = await this.requireAccount(userId);
     if (dto.orderType && dto.orderType !== 'market') {
@@ -328,6 +339,11 @@ export class PaperTradingService {
       if (source === 'agent' && !lockedAccount.botEnabled) {
         throw new BadRequestException('Bot is not enabled');
       }
+      if (source === 'agent' && !builderProfile) {
+        const [configured] = await tx.select({ id: builderProfiles.id }).from(builderProfiles)
+          .where(and(eq(builderProfiles.owner, userId), eq(builderProfiles.status, 'active')));
+        if (configured) throw new BadRequestException('Use the active Builder scan to review this order');
+      }
       if (builderProfile) {
         const [active] = await tx.select({ version: builderProfiles.version })
           .from(builderProfiles)
@@ -335,9 +351,32 @@ export class PaperTradingService {
             eq(builderProfiles.id, builderProfile.id),
             eq(builderProfiles.owner, userId),
             eq(builderProfiles.status, 'active'),
-          ));
+          )).for('update');
         if (!active || active.version !== builderProfile.version) {
           throw new BadRequestException('Agent configuration changed during the scan');
+        }
+      }
+      if (builderProfile?.config.council?.enabled && !councilApproval) {
+        throw new BadRequestException('A current council approval is required');
+      }
+      if (councilApproval) {
+        // Serialize with user steering/pause and consume approval with the fill.
+        const [session] = await tx.select().from(councilSessions).where(and(
+          eq(councilSessions.id, councilApproval.sessionId), eq(councilSessions.owner, userId),
+        )).for('update');
+        const [report] = await tx.select().from(councilReports).where(and(
+          eq(councilReports.id, councilApproval.reportId), eq(councilReports.owner, userId),
+        )).for('update');
+        const candidate = report?.candidate;
+        if (!session || !report || !builderProfile || session.profileId !== builderProfile.id
+          || session.profileVersion !== builderProfile.version || session.status !== 'completed'
+          || report.sessionId !== session.id || report.revision !== session.revision
+          || report.decision !== 'approve' || report.paperOrderId || !candidate
+          || candidate.ticker !== dto.ticker.toUpperCase() || candidate.side !== dto.side
+          || candidate.quantity !== quantity || candidate.price !== councilApproval.candidate.price
+          || Date.now() - report.createdAt.getTime() > 30 * 60000
+          || Math.abs(price.price / candidate.price - 1) > 0.005) {
+          throw new BadRequestException('Council approval is obsolete, already used, or price moved; review again');
         }
       }
       if (strictQuote && (quoteTimestamp === null
@@ -370,6 +409,25 @@ export class PaperTradingService {
           rejection = `单笔金额 ${(notionalUsd / equity * 100).toFixed(1)}% 超过上限 ${guardrails.maxOrderPct}%`;
         } else if (todayBotCount >= guardrails.maxOrdersPerDay) {
           rejection = `今日 bot 订单已达 ${guardrails.maxOrdersPerDay} 笔上限`;
+        }
+        const recentOrders = await tx.select().from(paperOrders).where(and(
+          eq(paperOrders.accountId, account.id), or(gte(paperOrders.createdAt, new Date(Date.now() - 100 * 86400000)), eq(paperOrders.status, 'pending_approval')),
+        ));
+        const cadenceReason = cadenceRejection(normalizeCadence(builderProfile?.config.cadence), {
+          ticker: dto.ticker, market: price.market, notionalUsd, equityUsd: equity,
+          orders: recentOrders.map((order) => ({ ticker: order.ticker, market: order.market as Market,
+            createdAt: order.createdAt, status: order.status,
+            notionalUsd: Number((order.riskCheck as RiskCheck | null)?.notionalUsd ?? 0) })),
+        });
+        rejection ??= cadenceReason ?? undefined;
+        const rule = builderProfile?.config.priceRules?.find((item) => item.ticker === dto.ticker.toUpperCase());
+        if (dto.side === 'buy' && rule?.buyAtOrBelow !== undefined && price.price > rule.buyAtOrBelow) {
+          rejection ??= 'Price is above the investor buy threshold';
+        }
+        const originalReason = councilApproval?.candidate.reason ?? dto.reason ?? '';
+        if (dto.side === 'sell' && rule?.sellAtOrAbove !== undefined
+          && originalReason.includes('Investor price rule:') && price.price < rule.sellAtOrAbove) {
+          rejection ??= 'Price is below the investor sell threshold';
         }
       }
 
@@ -553,6 +611,10 @@ export class PaperTradingService {
           expiresAt: new Date(now.getTime() + 24 * 60 * 60 * 1000),
         }).onConflictDoNothing().returning({ id: builderProposals.id });
         if (!proposal) throw new BadRequestException('Signal already processed today');
+      }
+      if (councilApproval) {
+        await tx.update(councilReports).set({ paperOrderId: order.id })
+          .where(and(eq(councilReports.id, councilApproval.reportId), eq(councilReports.owner, userId)));
       }
 
       return { order, notification: suppressNotification ? null : {
@@ -809,10 +871,14 @@ export class PaperTradingService {
         throw new BadRequestException('An agent scan is already running');
       }
       this.activeBuilderScans.add(userId);
+      let lease: string | null = null;
       try {
+        lease = await this.cadence.claimScan(userId);
+        if (!lease) throw new BadRequestException('An agent scan is already running');
         return await this.runConfiguredScan(userId, this.mapAccount(account), activeProfile);
       } finally {
         this.activeBuilderScans.delete(userId);
+        if (lease) await this.cadence.releaseScan(userId, lease);
       }
     }
 
@@ -1063,19 +1129,41 @@ export class PaperTradingService {
         tradedToday: tradedToday.has(ticker),
       });
       if (!signal || await this.builder.hasDailyProposal(profile.id, ticker, signal.side)) continue;
-      const reviewed = await this.builder.reviewSignal(
-        userId,
-        profile.config,
-        ticker,
-        `${signal.side.toUpperCase()} ${signal.quantity}; ${signal.reason}`,
-      );
-      if (!reviewed) continue;
-      const reason = `${reviewed}. Public quote may be delayed; verify live broker price before any real action.`;
-      result.signals.push({ ticker, side: signal.side, reason });
+      // Cheap ledger gates precede every model call, including denied ideas.
+      const recentOrders = await this.db.select().from(paperOrders).where(and(
+        eq(paperOrders.accountId, account.id), or(gte(paperOrders.createdAt, new Date(Date.now() - 100 * 86400000)), eq(paperOrders.status, 'pending_approval')),
+      ));
+      if (cadenceRejection(normalizeCadence(profile.config.cadence), {
+        ticker, market: quote.market, notionalUsd: signal.quantity * Number(quote.price) * fxToUsd, equityUsd,
+        orders: recentOrders.map((order) => ({ ticker: order.ticker, market: order.market as Market, createdAt: order.createdAt,
+          status: order.status, notionalUsd: Number((order.riskCheck as RiskCheck | null)?.notionalUsd ?? 0) })),
+      })) continue;
+      const inputHash = createHash('sha256').update(JSON.stringify({
+        version: profile.version, ticker, side: signal.side, heldShares, research: rating?.createdAt,
+        rating: rating?.rating, priceRule,
+      })).digest('hex');
+      if (!(await this.cadence.claimReview(userId, profile, ticker, quote.market, inputHash))) continue;
       try {
+        let approval: { sessionId: string; reportId: string; candidate: CouncilCandidate } | undefined;
+        let reviewed: string | null;
+        if (profile.config.council?.enabled) {
+          const candidate: CouncilCandidate = { ticker, side: signal.side, quantity: signal.quantity,
+            price: Number(quote.price), reason: signal.reason };
+          const review = await this.council.reviewCandidate(userId, profile, candidate);
+          reviewed = review.approved && review.reportId ? review.reason : null;
+          if (review.approved && review.reportId) approval = { sessionId: review.sessionId, reportId: review.reportId, candidate };
+          await this.cadence.finishReview(userId, profile.id, ticker, reviewed ? 'approve' : 'wait', review.reason);
+        } else {
+          reviewed = await this.builder.reviewSignal(userId, profile.config, ticker,
+            `${signal.side.toUpperCase()} ${signal.quantity}; ${signal.reason}`);
+          await this.cadence.finishReview(userId, profile.id, ticker, reviewed ? 'approve' : 'wait', reviewed ?? 'Review declined');
+        }
+        if (!reviewed) continue;
+        const reason = `${reviewed}. Public quote may be delayed; verify live broker price before any real action.`;
+        result.signals.push({ ticker, side: signal.side, reason });
         const order = await this.placeOrder(userId, {
           ticker, side: signal.side, quantity: signal.quantity, orderType: 'market', reason,
-        }, 'agent', undefined, true, true, profile);
+        }, 'agent', undefined, true, true, profile, approval);
         if (order.status !== 'filled') {
           result.rejected += 1;
           continue;
@@ -1083,7 +1171,8 @@ export class PaperTradingService {
         result.placed += 1;
       } catch (error) {
         result.rejected += 1;
-        this.logger.warn(`configured scan order failed for ${ticker}: ${String(error)}`);
+        await this.cadence.finishReview(userId, profile.id, ticker, 'failed', 'Review or order could not complete; no automatic retry today');
+        this.logger.warn(`configured scan order failed for ${ticker}: ${error instanceof BadRequestException ? error.message : 'Review unavailable'}`);
       }
     }
 

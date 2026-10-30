@@ -1104,6 +1104,8 @@ export type BuilderStatus = 'draft' | 'active' | 'paused';
 export type BuilderProposalStatus = 'pending' | 'skipped' | 'recorded';
 
 export interface BuilderConfig {
+  /** Language for unattended reviews, captured when the investor saves the profile. */
+  language?: 'zh-CN' | 'en';
   name: string;
   template: BuilderTemplate;
   /** Empty means all of the user's holdings and watchlist. */
@@ -1121,6 +1123,9 @@ export interface BuilderConfig {
   dailyLossLimitPct: number;
   maxOrdersPerDay: number;
   notifyOnProposal: boolean;
+  /** Omitted legacy configurations use basic rules and conservative cadence. */
+  council?: import('./council.interface').CouncilConfig;
+  cadence?: import('./council.interface').TradingCadence;
 }
 
 export interface BuilderProfile {

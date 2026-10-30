@@ -14,7 +14,7 @@
  */
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   ChevronLeft,
   ChevronRight,
@@ -384,6 +384,13 @@ function AnalysisPage() {
         </Card>
 
         <AnalysisRunner onFinished={handleRunFinished} />
+        <Card className="border-primary/20 bg-primary/5">
+          <CardContent className="flex flex-wrap items-center justify-between gap-4 p-4">
+            <div className="min-w-0"><p className="text-sm font-semibold">{t('council.analysisEntry')}</p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">{t('council.analysisHint')}</p></div>
+            <Button asChild variant="outline" size="sm"><Link to="/council">{t('council.open')}<ArrowRight /></Link></Button>
+          </CardContent>
+        </Card>
         <Card>
           <CardContent className="flex flex-wrap items-center justify-between gap-3 p-3">
             <p className="max-w-lg text-xs leading-relaxed text-muted-foreground">{t('analysisFlow.reportHint')}</p>

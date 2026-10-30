@@ -63,3 +63,14 @@ test('failure messages and log classifications never expose SQL, credentials or 
   }
   assert.match(safeAnalysisError(new Error('LLM provider returned HTTP 401'), 'en'), /HTTP 401/);
 });
+
+test('budget failures retain a specific safe explanation without including provider payloads', () => {
+  const error = Object.assign(new Error('API key secret and prompt private'), { code: 'LLM_BUDGET_EXCEEDED' });
+  const en = safeAnalysisError(error, 'en');
+  const zh = safeAnalysisError(error, 'zh-CN');
+  assert.match(en, /budget/i);
+  assert.match(zh, /预算/);
+  assert.doesNotMatch(en + zh, /secret|private/);
+  assert.equal(safeAnalysisError(en, 'en'), en);
+  assert.equal(safeAnalysisError(zh, 'zh-CN'), zh);
+});

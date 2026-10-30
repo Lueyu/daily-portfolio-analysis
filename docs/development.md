@@ -63,7 +63,7 @@ The supervisor still attempts a legacy `fullstack-cli action-plugin init`
 step. If that CLI is absent, its initialization warning is non-blocking;
 the backend and frontend continue starting.
 
-The app applies additive migrations `03` through `06` on startup. They do not
+The app applies additive migrations `03` through `09` on startup. They do not
 create the base schema. The root demo Compose database has no published host
 port, so it is not reachable at `localhost:5432` without an explicit local
 port mapping.
@@ -72,10 +72,12 @@ port mapping.
 
 ```bash
 npm run lint          # eslint + stylelint + full typecheck (also runs in CI)
-npm run test:server   # offline Nest service and Agent Builder rule tests
+npm run test:server   # Nest service/rule tests; database suites need the variables below
 npm run test:client   # appearance store, cross-tab sync and startup preferences
 npm run type:check    # typecheck only
 ```
+
+Database integration suites use `BUDGET_TEST_DATABASE_URL` and `COUNCIL_TEST_DATABASE_URL`. Set both to a **disposable test database** initialized with `01_schema.sql` and additive migrations `03`–`09`; do not point them at personal or production data. Without these variables, database cases are explicitly skipped. CI provisions PostgreSQL and runs them, including concurrent reservations, user isolation, discussion revisions, and atomic paper execution.
 
 Agent service:
 

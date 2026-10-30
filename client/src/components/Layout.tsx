@@ -20,6 +20,7 @@ import { setLanguage } from '@/i18n';
 import {
   FlaskConical,
   Bot,
+  Users,
   Upload,
   Languages,
   LayoutDashboard,
@@ -57,6 +58,7 @@ const navItems = [
   { path: '/analysis', label: 'nav.analysis', icon: BarChart3 },
   { path: '/paper', label: 'nav.paper', icon: FlaskConical },
   { path: '/agent-builder', label: 'ui.builder.nav', icon: Bot },
+  { path: '/council', label: 'council.nav', icon: Users },
   { path: '/journal', label: 'nav.journal', icon: BookOpen },
   { path: '/transactions', label: 'nav.transactions', icon: Receipt },
   { path: '/settings', label: 'ui.settings.nav', icon: Settings, end: true },
@@ -84,8 +86,8 @@ function Layout() {
   const zh = i18n.language.startsWith('zh');
   const navGroups = [
     { label: zh ? '我的投资' : 'Portfolio', items: navItems.slice(0, 4) },
-    { label: zh ? '研究与实验' : 'Research & lab', items: navItems.slice(4, 9) },
-    { label: zh ? '偏好设置' : 'Preferences', items: navItems.slice(9) },
+    { label: zh ? '研究与实验' : 'Research & lab', items: navItems.slice(4, 10) },
+    { label: zh ? '偏好设置' : 'Preferences', items: navItems.slice(10) },
   ];
 
   const toggleLang = () => {

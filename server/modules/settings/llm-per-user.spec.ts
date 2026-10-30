@@ -3,6 +3,16 @@ import { test } from 'node:test';
 import axios from 'axios';
 import { LlmService } from '../multi-agent/llm.service';
 import type { SettingsService } from './settings.service';
+import type { LlmBudgetService } from '../llm-budget/llm-budget.service';
+
+// These tests isolate credential routing; budget enforcement has its own DB/HTTP suites.
+function budgetStub(): LlmBudgetService {
+  return {
+    reserve: async () => ({ id: 'test-reservation', taskId: 'test-task',
+      inputTokens: 100, maxOutputTokens: 1000, reservedTokens: 1100 }),
+    settle: async () => ({ inputTokens: 100, outputTokens: 1000, chargedTokens: 1100, known: false }),
+  } as unknown as LlmBudgetService;
+}
 
 test('LLM calls use each authenticated user configuration', async () => {
   const settings = {
@@ -14,7 +24,7 @@ test('LLM calls use each authenticated user configuration', async () => {
       apiKey: `secret-${userId}`,
     }),
   };
-  const service = new LlmService(settings as SettingsService);
+  const service = new LlmService(settings as SettingsService, budgetStub());
   const originalAdapter = axios.defaults.adapter;
   const calls: Array<{ url: string; authorization: string; model: string }> = [];
   axios.defaults.adapter = async (config) => {
@@ -61,7 +71,7 @@ test('LLM provider errors do not return an echoed API key', async () => {
       apiKey: 'sensitive-token',
     }),
   };
-  const service = new LlmService(settings as SettingsService);
+  const service = new LlmService(settings as SettingsService, budgetStub());
   const originalAdapter = axios.defaults.adapter;
   let calls = 0;
   axios.defaults.adapter = async (config) => {

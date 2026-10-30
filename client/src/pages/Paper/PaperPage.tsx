@@ -15,7 +15,8 @@
  *    telegram) with test-send
  *  - Manual order dialog (market orders, same solvency checks as the bot)
  */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
@@ -133,6 +134,9 @@ const eventLabel: Record<string, string> = {
 
 function PaperPage() {
   const { t } = useTranslation();
+  const [params] = useSearchParams();
+  const linkedOrderId = params.get('orderId');
+  const scrolledOrderId = useRef<string | null>(null);
   const queryClient = useQueryClient();
   const [orderOpen, setOrderOpen] = useState(false);
   const [guardrailsOpen, setGuardrailsOpen] = useState(false);
@@ -144,6 +148,13 @@ function PaperPage() {
     refetchInterval: 60_000,
   });
   const overview = overviewQuery.data;
+  useEffect(() => {
+    if (!linkedOrderId) scrolledOrderId.current = null;
+    if (linkedOrderId && overview && scrolledOrderId.current !== linkedOrderId) {
+      document.getElementById('paper-order-feed')?.scrollIntoView({ block: 'start' });
+      scrolledOrderId.current = linkedOrderId;
+    }
+  }, [linkedOrderId, overview]);
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['paper'] });
 
@@ -365,9 +376,13 @@ function PaperPage() {
       </div>
 
       {/* Orders feed */}
-      <Card>
+      <Card id="paper-order-feed" className="scroll-mt-5">
         <CardHeader className="pb-2"><CardTitle className="text-sm">{t('paper.orderFlow')}</CardTitle></CardHeader>
         <CardContent className="p-0">
+          {linkedOrderId && overview && <p className="break-all border-b border-border bg-primary/5 px-4 py-3 text-xs leading-6">
+            {t(overview.recentOrders.some((order) => order.id === linkedOrderId)
+              ? 'council.report.orderHighlighted' : 'council.report.olderOrder', { id: linkedOrderId })}
+          </p>}
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -384,7 +399,7 @@ function PaperPage() {
               </thead>
               <tbody>
                 {(overview?.recentOrders ?? []).map((o) => (
-                  <tr key={o.id} className="border-b last:border-0">
+                  <tr key={o.id} className={cn('border-b last:border-0', o.id === linkedOrderId && 'bg-primary/10')}>
                     <td className="px-4 py-2.5 whitespace-nowrap text-xs text-muted-foreground">
                       {new Date(o.createdAt).toLocaleString(undefined, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })}
                     </td>
