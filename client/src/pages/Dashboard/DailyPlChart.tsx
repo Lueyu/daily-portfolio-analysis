@@ -8,6 +8,7 @@
  */
 import { useMemo } from 'react';
 import ReactECharts from 'echarts-for-react';
+import { useTranslation } from 'react-i18next';
 
 /** Props for {@link DailyPlChart}. */
 interface DailyPlChartProps {
@@ -29,6 +30,7 @@ const CURRENCY_SYMBOL: Record<string, string> = {
  * @param props - See {@link DailyPlChartProps}.
  */
 export default function DailyPlChart({ data, baseCurrency = 'USD' }: DailyPlChartProps) {
+  const { t } = useTranslation();
   const symbol = CURRENCY_SYMBOL[baseCurrency.toUpperCase()] || '$';
 
   const option = useMemo(() => {
@@ -46,7 +48,7 @@ export default function DailyPlChart({ data, baseCurrency = 'USD' }: DailyPlChar
           if (!params || params.length === 0) return '';
           const parts = [`<strong>${params[0].name}</strong>`];
           for (const p of params) {
-            if (p.seriesName === '账户净值') {
+            if (p.seriesName === t('dash.accountNav')) {
               parts.push(`账户净值: <strong>${symbol}${p.value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>`);
             } else {
               const sign = p.value >= 0 ? '+' : '';
@@ -58,7 +60,7 @@ export default function DailyPlChart({ data, baseCurrency = 'USD' }: DailyPlChar
         },
       },
       legend: {
-        data: ['账户净值', '日盈亏'],
+        data: [t('dash.accountNav'), t('dash.dailyPlLabel')],
         top: 0,
         right: 10,
         textStyle: { fontSize: 11, color: '#64748b' },
@@ -74,7 +76,7 @@ export default function DailyPlChart({ data, baseCurrency = 'USD' }: DailyPlChar
       yAxis: [
         {
           type: 'value',
-          name: '净值',
+          name: t('dash.nav'),
           nameTextStyle: { fontSize: 10, color: '#94a3b8' },
           axisLabel: {
             fontSize: 10,
@@ -89,7 +91,7 @@ export default function DailyPlChart({ data, baseCurrency = 'USD' }: DailyPlChar
         },
         {
           type: 'value',
-          name: '日盈亏',
+          name: t('dash.dailyPlLabel'),
           nameTextStyle: { fontSize: 10, color: '#94a3b8' },
           axisLabel: {
             fontSize: 10,
@@ -104,7 +106,7 @@ export default function DailyPlChart({ data, baseCurrency = 'USD' }: DailyPlChar
       ],
       series: [
         {
-          name: '账户净值',
+          name: t('dash.accountNav'),
           type: 'line',
           yAxisIndex: 0,
           data: accountValues,
@@ -126,7 +128,7 @@ export default function DailyPlChart({ data, baseCurrency = 'USD' }: DailyPlChar
           },
         },
         {
-          name: '日盈亏',
+          name: t('dash.dailyPlLabel'),
           type: 'bar',
           yAxisIndex: 1,
           data: dailyPls.map((v) => ({

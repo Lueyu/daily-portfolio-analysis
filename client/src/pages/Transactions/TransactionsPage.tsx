@@ -84,10 +84,13 @@ import AddTransactionDialog from './AddTransactionDialog';
 import AddClosedDialog from './AddClosedDialog';
 import TransactionList from './TransactionList';
 
+import { useTranslation } from 'react-i18next';
+
 /**
  * Transactions page component.
  */
 export default function TransactionsPage() {
+  const { t } = useTranslation();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [closed, setClosed] = useState<ClosedPosition[]>([]);
   const [realizedPl, setRealizedPl] = useState<RealizedPlSummary | null>(null);
@@ -183,7 +186,7 @@ export default function TransactionsPage() {
         method: 'DELETE',
       });
       toast.success('已删除，持仓已同步更新');
-      setTransactions((prev) => prev.filter((t) => t.id !== deleteTarget));
+      setTransactions((prev) => prev.filter((tx) => tx.id !== deleteTarget));
       setDeleteTarget(null);
       loadClosed();
       loadRealizedPl();
@@ -223,21 +226,21 @@ export default function TransactionsPage() {
    */
   const txStats = useMemo(() => {
     const buyTotal = transactions
-      .filter((t) => t.txType === 'Buy')
+      .filter((tx) => tx.txType === 'Buy')
       .reduce(
-        (sum, t) =>
+        (sum, tx) =>
           sum +
-          parseFloat(t.shares) * parseFloat(t.price) +
-          parseFloat(t.fees || '0'),
+          parseFloat(tx.shares) * parseFloat(tx.price) +
+          parseFloat(tx.fees || '0'),
         0
       );
     const sellTotal = transactions
-      .filter((t) => t.txType === 'Sell')
+      .filter((tx) => tx.txType === 'Sell')
       .reduce(
-        (sum, t) =>
+        (sum, tx) =>
           sum +
-          parseFloat(t.shares) * parseFloat(t.price) -
-          parseFloat(t.fees || '0'),
+          parseFloat(tx.shares) * parseFloat(tx.price) -
+          parseFloat(tx.fees || '0'),
         0
       );
     return { buyTotal, sellTotal, count: transactions.length };
@@ -392,24 +395,24 @@ export default function TransactionsPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {transactions.map((t) => {
-                      const isBuy = t.txType === 'Buy';
-                      const isSell = t.txType === 'Sell';
-                      const isDeposit = t.txType === 'Deposit';
-                      const isWithdrawal = t.txType === 'Withdrawal';
-                      const isOpening = t.txType === 'Opening';
+                    {transactions.map((tx) => {
+                      const isBuy = tx.txType === 'Buy';
+                      const isSell = tx.txType === 'Sell';
+                      const isDeposit = tx.txType === 'Deposit';
+                      const isWithdrawal = tx.txType === 'Withdrawal';
+                      const isOpening = tx.txType === 'Opening';
                       const amount = isDeposit
-                        ? parseFloat(t.shares)
+                        ? parseFloat(tx.shares)
                         : isWithdrawal
-                          ? -parseFloat(t.shares)
+                          ? -parseFloat(tx.shares)
                           : isOpening
                             ? 0
-                            : parseFloat(t.shares) * parseFloat(t.price) +
+                            : parseFloat(tx.shares) * parseFloat(tx.price) +
                               (isBuy
-                                ? parseFloat(t.fees || '0')
-                                : -parseFloat(t.fees || '0'));
+                                ? parseFloat(tx.fees || '0')
+                                : -parseFloat(tx.fees || '0'));
                       const isOutflow = isBuy || isWithdrawal;
-                      const typeLabel = isBuy ? '买入' : isSell ? '卖出' : isDeposit ? '存入' : isWithdrawal ? '取款' : '期初';
+                      const typeLabel = isBuy ? t('tx.buy') : isSell ? t('tx.sell') : isDeposit ? '存入' : isWithdrawal ? '取款' : t('tx.opening');
                       const typeClass = isOpening
                         ? 'bg-slate-500/15 text-slate-300 border-slate-500/30'
                         : isBuy
@@ -420,9 +423,9 @@ export default function TransactionsPage() {
                               ? 'bg-warning/15 text-warning border-warning/20'
                               : 'bg-destructive/10 text-destructive border-destructive/20';
                       return (
-                        <TableRow key={t.id}>
+                        <TableRow key={tx.id}>
                           <TableCell className="font-mono-nums">
-                            {formatDate(t.txDate)}
+                            {formatDate(tx.txDate)}
                           </TableCell>
                           <TableCell>
                             <Badge className={cn(typeClass)} variant="outline">
@@ -430,21 +433,21 @@ export default function TransactionsPage() {
                             </Badge>
                           </TableCell>
                           <TableCell className="font-mono-nums font-semibold text-primary">
-                            {t.ticker}
+                            {tx.ticker}
                           </TableCell>
                           <TableCell>
                             <span className="text-xs text-muted-foreground font-mono">
-                              {t.currency || 'USD'}
+                              {tx.currency || 'USD'}
                             </span>
                           </TableCell>
                           <TableCell className="text-right font-mono-nums">
-                            {formatShares(t.shares)}
+                            {formatShares(tx.shares)}
                           </TableCell>
                           <TableCell className="text-right font-mono-nums">
-                            {isDeposit || isWithdrawal || isOpening ? '—' : formatPrice(t.price)}
+                            {isDeposit || isWithdrawal || isOpening ? '—' : formatPrice(tx.price)}
                           </TableCell>
                           <TableCell className="text-right font-mono-nums text-muted-foreground">
-                            {formatCurrency(t.fees || '0')}
+                            {formatCurrency(tx.fees || '0')}
                           </TableCell>
                           <TableCell
                              className={cn(
@@ -464,14 +467,14 @@ export default function TransactionsPage() {
                             )}
                           </TableCell>
                           <TableCell className="text-muted-foreground text-xs max-w-[200px] truncate">
-                            {t.notes ?? '—'}
+                            {tx.notes ?? '—'}
                           </TableCell>
                           <TableCell>
                             <Button
                               variant="ghost"
                               size="icon"
                               className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                              onClick={() => setDeleteTarget(t.id)}
+                              onClick={() => setDeleteTarget(tx.id)}
                             >
                               <Trash2 className="size-4" />
                             </Button>

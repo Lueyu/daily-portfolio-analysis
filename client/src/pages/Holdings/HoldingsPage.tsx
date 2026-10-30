@@ -57,6 +57,8 @@ import {
   AlertDescription,
 } from '@/components/ui/alert';
 
+import { useTranslation } from 'react-i18next';
+
 /** Columns that the holdings table can sort by. */
 type SortKey =
   | 'ticker'
@@ -101,6 +103,7 @@ function computeDerived(h: Holding): DerivedHolding {
  * multi-select, AI ratings map, and the pending-human run count.
  */
 export default function HoldingsPage() {
+  const { t } = useTranslation();
   const [holdings, setHoldings] = useState<DerivedHolding[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [loading, setLoading] = useState(true);
@@ -373,9 +376,9 @@ export default function HoldingsPage() {
       <div className="flex items-center gap-2 flex-wrap">
         {(['US', 'HK', 'CN'] as Market[]).map((m) => {
           const labels: Record<Market, string> = {
-            US: '美股',
-            HK: '港股',
-            CN: 'A股',
+            US: t('dash.us'),
+            HK: t('dash.hk'),
+            CN: t('dash.cn'),
           };
           const active = selectedMarkets.has(m);
           return (

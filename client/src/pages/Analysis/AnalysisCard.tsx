@@ -37,6 +37,7 @@ import {
   cn,
 } from '@/utils/format';
 import { inferMarket } from '@/hooks/use-market-quotes';
+import { useTranslation } from 'react-i18next';
 
 /**
  * Split a semicolon/newline-delimited string into a clean list, stripping
@@ -125,6 +126,7 @@ interface AnalysisCardProps {
  * portfolio card is always expanded.
  */
 function AnalysisCard({ analysis, companyName, deepReportRunId }: AnalysisCardProps) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [expanded, setExpanded] = useState(false);
   const catalysts = parseNumberedList(analysis.catalysts);
@@ -394,7 +396,7 @@ function AnalysisCard({ analysis, companyName, deepReportRunId }: AnalysisCardPr
             ) : (
               <ChevronDown className="mr-1 h-3.5 w-3.5" />
             )}
-            {expanded ? '收起' : '展开详情'}
+            {expanded ? '收起' : t('analysis.expandDetail')}
           </Button>
         </div>
       )}

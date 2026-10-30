@@ -33,6 +33,7 @@ import {
   EmptyTitle,
   EmptyDescription,
 } from '@/components/ui/empty';
+import { useTranslation } from 'react-i18next';
 
 /** Props for {@link DailyPnLBreakdown}. */
 interface DailyPnLBreakdownProps {
@@ -60,12 +61,14 @@ function displayCompany(
   return name;
 }
 
-/** Chinese labels per market for the row badges. */
-const MARKET_LABELS: Record<Market, string> = {
-  US: '美股',
-  HK: '港股',
-  CN: 'A股',
-};
+/** Market labels for the row badges (built inside the component for i18n). */
+function marketLabels(t: (k: string) => string): Record<Market, string> {
+  return {
+    US: t('dash.us'),
+    HK: t('dash.hk'),
+    CN: t('dash.cn'),
+  };
+}
 
 /**
  * Render the per-holding daily P/L breakdown table.
@@ -74,8 +77,10 @@ const MARKET_LABELS: Record<Market, string> = {
 export default function DailyPnLBreakdown({
   holdings,
   quotes,
-  loading = false,
+  baseCurrency,
+  loading,
 }: DailyPnLBreakdownProps) {
+  const { t } = useTranslation();
   const [showAll, setShowAll] = useState(false);
 
   const rows = useMemo(() => {
@@ -119,7 +124,7 @@ export default function DailyPnLBreakdown({
   if (loading || !hasQuotes) {
     return (
       <div className="py-8 text-center text-xs text-muted-foreground">
-        {holdings.length > 0 ? '行情加载中…' : '暂无持仓'}
+        {holdings.length > 0 ? '行情加载中…' : t('dash.noHoldings')}
       </div>
     );
   }
@@ -161,7 +166,7 @@ export default function DailyPnLBreakdown({
                     variant="outline"
                     className="h-4 px-1.5 text-[10px] font-normal text-muted-foreground"
                   >
-                    {MARKET_LABELS[r.market] || r.market}
+                    {marketLabels(t)[r.market] || r.market}
                   </Badge>
                   <span className="truncate text-xs text-muted-foreground">
                     {r.company || (

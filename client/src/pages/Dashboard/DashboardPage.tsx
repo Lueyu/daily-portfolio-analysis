@@ -88,6 +88,7 @@ import {
 import DailyPlChart from './DailyPlChart';
 import DailyPnLBreakdown from './DailyPnLBreakdown';
 import { Badge } from '@/components/ui/badge';
+import { useTranslation } from 'react-i18next';
 
 /**
  * Pick a display company name, returning null when the name is effectively
@@ -122,11 +123,14 @@ interface MetricCard {
 }
 
 /** Selectable base (reporting) currencies for converted amounts. */
-const CURRENCY_OPTIONS: { value: Currency; label: string }[] = [
-  { value: 'USD', label: 'USD / 美元' },
-  { value: 'HKD', label: 'HKD / 港币' },
-  { value: 'CNY', label: 'CNY / 人民币' },
-];
+/** Currency selector options (built inside the component for i18n). */
+function currencyOptions(t: (k: string) => string): { value: Currency; label: string }[] {
+  return [
+    { value: 'USD', label: t('common.usd') },
+    { value: 'HKD', label: t('common.hkd') },
+    { value: 'CNY', label: t('common.cny') },
+  ];
+}
 
 /** Props for {@link RealtimeBadge}. */
 interface RealtimeBadgeProps {
@@ -135,10 +139,11 @@ interface RealtimeBadgeProps {
 }
 
 /**
- * Show "实时" (live, pulsing green) when any held market is in pre/regular/post
+ * Show t('dash.realtime') (live, pulsing green) when any held market is in pre/regular/post
  * trading, otherwise "已收盘" (closed).
  */
 function RealtimeBadge({ marketStatus, holdings }: RealtimeBadgeProps) {
+  const { t } = useTranslation();
   const heldMarkets = new Set(holdings.map((h: Holding) => h.market));
   const heldActive = Array.from(heldMarkets).filter(
     (m) => marketStatus[m] === 'trading' || marketStatus[m] === 'pre' || marketStatus[m] === 'post'
@@ -158,7 +163,7 @@ function RealtimeBadge({ marketStatus, holdings }: RealtimeBadgeProps) {
         'mr-1 inline-block size-1.5 rounded-full',
         isRealtime ? 'bg-success animate-pulse' : 'bg-muted-foreground/50'
       )} />
-      {isRealtime ? '实时' : '已收盘'}
+      {isRealtime ? t('dash.realtime') : t('dash.closed')}
     </Badge>
   );
 }
@@ -170,6 +175,7 @@ function RealtimeBadge({ marketStatus, holdings }: RealtimeBadgeProps) {
  * currency, P/L window length, today's agent runs, and hard-rule failure count.
  */
 export default function DashboardPage() {
+  const { t } = useTranslation();
   const [dashboard, setDashboard] = useState<DashboardOverview | null>(null);
   const [holdings, setHoldings] = useState<Holding[]>([]);
   const [dailyPl, setDailyPl] = useState<
@@ -236,39 +242,39 @@ export default function DashboardPage() {
   const metricCards: MetricCard[] = useMemo(
     () => [
       {
-        label: '账户总值',
+        label: t('dash.accountValue'),
         icon: Wallet,
         key: 'accountValue',
         format: formatCurrencyWithCode,
         large: true,
       },
       {
-        label: '总市值',
+        label: t('dash.marketValue'),
         icon: TrendingUp,
         key: 'totalMv',
         format: formatCurrencyWithCode,
       },
       {
-        label: '总成本',
+        label: t('dash.totalCost'),
         icon: PiggyBank,
         key: 'cost',
         format: formatCurrencyWithCode,
       },
       {
-        label: '现金总额',
+        label: t('dash.cashTotal'),
         icon: DollarSign,
         key: 'cash',
         format: formatCurrencyWithCode,
       },
       {
-        label: '累计浮盈亏',
+        label: t('dash.totalPl'),
         icon: BarChart3,
         key: 'totalPl',
         format: formatCurrencyWithCode,
         pl: true,
       },
       {
-        label: '累计收益率',
+        label: t('dash.totalReturn'),
         icon: PieChart,
         key: 'totalPct',
         format: (v) => formatPercent(v),
@@ -439,7 +445,7 @@ export default function DashboardPage() {
               <SelectValue placeholder="选择本位币" />
             </SelectTrigger>
             <SelectContent>
-              {CURRENCY_OPTIONS.map((opt) => (
+              {currencyOptions(t).map((opt) => (
                 <SelectItem key={opt.value} value={opt.value}>
                   {opt.label}
                 </SelectItem>

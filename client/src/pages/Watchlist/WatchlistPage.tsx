@@ -64,14 +64,18 @@ import {
 import DetailDialog from './DetailDialog';
 import WatchForm, { type WatchFormData } from './WatchForm';
 
-/** Signal filter options for the toolbar. */
-const SIGNAL_FILTERS: Array<{ value: 'all' | Signal; label: string }> = [
-  { value: 'all', label: '全部信号' },
-  { value: '强烈买入', label: '强烈买入' },
-  { value: '买入', label: '买入' },
-  { value: '观望', label: '观望' },
-  { value: '回避', label: '回避' },
-];
+import { useTranslation } from 'react-i18next';
+
+/** Signal filter options (built inside the component for i18n). */
+function signalFilters(t: (k: string) => string): Array<{ value: 'all' | string; label: string }> {
+  return [
+    { value: 'all', label: t('watchlist.allSignals') },
+    { value: '强烈买入', label: '强烈买入' },
+    { value: '买入', label: '买入' },
+    { value: '观望', label: '观望' },
+    { value: '回避', label: '回避' },
+  ];
+}
 
 /** Blank watch-form state; `dateAdded` defaults to today. */
 const EMPTY_FORM: WatchFormData = {
@@ -116,6 +120,7 @@ function belowTargetPct(
  * dialog, add-dialog open state, and the create form.
  */
 function WatchlistPage() {
+  const { t } = useTranslation();
   const [items, setItems] = useState<WatchItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -256,7 +261,7 @@ function WatchlistPage() {
               <SelectValue placeholder="信号筛选" />
             </SelectTrigger>
             <SelectContent>
-              {SIGNAL_FILTERS.map((f) => (
+              {signalFilters(t).map((f) => (
                 <SelectItem key={f.value} value={f.value}>
                   {f.label}
                 </SelectItem>
@@ -545,7 +550,7 @@ function WatchlistPage() {
                 <EmptyTitle className="font-serif">
                   {search || signalFilter !== 'all'
                     ? '没有匹配的关注股票'
-                    : '暂无关注股票'}
+                    : t('watchlist.noItems')}
                 </EmptyTitle>
                 <EmptyDescription>
                   {search || signalFilter !== 'all'

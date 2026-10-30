@@ -38,6 +38,7 @@ import {
   EmptyTitle,
 } from '@/components/ui/empty';
 import { Trash2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 /** Props for {@link TransactionList}. */
 interface TransactionListProps {
@@ -58,22 +59,23 @@ export default function TransactionList({
   onAdd,
   onDelete,
 }: TransactionListProps) {
+  const { t } = useTranslation();
   const buyTotal = transactions
-    .filter((t) => t.txType === 'Buy')
+    .filter((tx) => tx.txType === 'Buy')
     .reduce(
-      (sum, t) =>
+      (sum, tx) =>
         sum +
-        parseFloat(t.shares) * parseFloat(t.price) +
-        parseFloat(t.fees || '0'),
+        parseFloat(tx.shares) * parseFloat(tx.price) +
+        parseFloat(tx.fees || '0'),
       0
     );
   const sellTotal = transactions
-    .filter((t) => t.txType === 'Sell')
+    .filter((tx) => tx.txType === 'Sell')
     .reduce(
-      (sum, t) =>
+      (sum, tx) =>
         sum +
-        parseFloat(t.shares) * parseFloat(t.price) -
-        parseFloat(t.fees || '0'),
+        parseFloat(tx.shares) * parseFloat(tx.price) -
+        parseFloat(tx.fees || '0'),
       0
     );
 
@@ -123,35 +125,35 @@ export default function TransactionList({
 
   return (
     <div className="md:hidden space-y-3">
-      {transactions.map((t) => {
+      {transactions.map((tx) => {
         const amount =
-          parseFloat(t.shares) * parseFloat(t.price) +
-          (t.txType === 'Buy'
-            ? parseFloat(t.fees || '0')
-            : -parseFloat(t.fees || '0'));
+          parseFloat(tx.shares) * parseFloat(tx.price) +
+          (tx.txType === 'Buy'
+            ? parseFloat(tx.fees || '0')
+            : -parseFloat(tx.fees || '0'));
         return (
-          <Card key={t.id}>
+          <Card key={tx.id}>
             <CardContent className="p-4">
               <div className="flex items-start justify-between">
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="font-mono-nums font-bold text-primary">
-                      {t.ticker}
+                      {tx.ticker}
                     </span>
                     <Badge
                       className={cn(
-                        t.txType === 'Buy'
+                        tx.txType === 'Buy'
                           ? 'bg-primary/10 text-primary'
                           : 'bg-muted text-muted-foreground',
                         'text-[10px]'
                       )}
                       variant="outline"
                     >
-                      {t.txType === 'Buy' ? '买入' : '卖出'}
+                      {tx.txType === 'Buy' ? t('tx.buy') : t('tx.sell')}
                     </Badge>
                   </div>
                   <div className="text-xs text-muted-foreground mt-0.5 font-mono-nums">
-                    {formatDate(t.txDate)}
+                    {formatDate(tx.txDate)}
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -159,7 +161,7 @@ export default function TransactionList({
                     className="font-mono-nums text-lg font-semibold text-foreground"
                   >
                     <span className="text-muted-foreground">
-                      {t.txType === 'Buy' ? '-' : '+'}
+                      {tx.txType === 'Buy' ? '-' : '+'}
                     </span>
                     {formatCurrency(amount)}
                   </div>
@@ -167,7 +169,7 @@ export default function TransactionList({
                     variant="ghost"
                     size="icon"
                     className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                    onClick={() => onDelete(t.id)}
+                    onClick={() => onDelete(tx.id)}
                   >
                     <Trash2 className="size-4" />
                   </Button>
@@ -178,26 +180,26 @@ export default function TransactionList({
                 <div>
                   <div className="text-xs text-muted-foreground">股数</div>
                   <div className="font-mono-nums">
-                    {formatShares(t.shares)}
+                    {formatShares(tx.shares)}
                   </div>
                 </div>
                 <div>
                   <div className="text-xs text-muted-foreground">价格</div>
                   <div className="font-mono-nums">
-                    {formatPrice(t.price)}
+                    {formatPrice(tx.price)}
                   </div>
                 </div>
                 <div>
                   <div className="text-xs text-muted-foreground">手续费</div>
                   <div className="font-mono-nums">
-                    {formatCurrency(t.fees || '0')}
+                    {formatCurrency(tx.fees || '0')}
                   </div>
                 </div>
               </div>
 
-              {t.notes && (
+              {tx.notes && (
                 <div className="mt-3 pt-3 border-t text-xs text-muted-foreground">
-                  {t.notes}
+                  {tx.notes}
                 </div>
               )}
             </CardContent>

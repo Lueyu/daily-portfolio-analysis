@@ -82,6 +82,8 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 
+import { useTranslation } from 'react-i18next';
+
 // ── Category definitions ─────────────────────────────────
 /** Ordered list of rule categories for grouping and rendering. */
 const CATEGORY_ORDER: Array<{
@@ -107,7 +109,7 @@ const CATEGORY_LABELS: Record<RuleCategory | 'other', string> = {
   other: '其他',
 };
 
-/** Severity label map. */
+/** Severity label map (translated at render time via the key). */
 const SEVERITY_LABELS: Record<RuleSeverity, string> = {
   hard_block: '硬阻断',
   warning: '警告',
@@ -179,6 +181,7 @@ function formatThreshold(
  * failure; create/delete/reset refetch the whole list.
  */
 function StrategyRulesPage() {
+  const { t } = useTranslation();
   const [rules, setRules] = useState<StrategyRule[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -940,7 +943,7 @@ function StrategyRulesPage() {
               onClick={() => void handleDelete()}
               disabled={deleting}
             >
-              {deleting ? '删除中...' : '确认删除'}
+              {deleting ? '删除中...' : t('rules.deleteConfirm')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -974,7 +977,7 @@ function StrategyRulesPage() {
               onClick={() => void handleReset()}
               disabled={resetting}
             >
-              {resetting ? '恢复中...' : '确认恢复'}
+              {resetting ? '恢复中...' : t('rules.restoreConfirm')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

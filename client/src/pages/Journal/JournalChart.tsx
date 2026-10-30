@@ -18,6 +18,7 @@ import {
   EmptyTitle,
   EmptyDescription,
 } from '@/components/ui/empty';
+import { useTranslation } from 'react-i18next';
 
 /** Props for {@link JournalChart}. */
 interface JournalChartProps {
@@ -29,6 +30,7 @@ interface JournalChartProps {
  * Render the daily-P/L bar + account-value line chart.
  */
 export function JournalChart({ snapshots, loading }: JournalChartProps) {
+  const { t } = useTranslation();
   /** Build the ECharts option from snapshots; returns {} when there is no data. */
   const chartOption = useMemo(() => {
     const valid = snapshots.filter((s) => toDate(s.snapshotDate));
@@ -50,7 +52,7 @@ export function JournalChart({ snapshots, loading }: JournalChartProps) {
         axisPointer: { type: 'cross' },
       },
       legend: {
-        data: ['每日盈亏', '账户净值'],
+        data: [t('journal.dailyPl'), t('journal.accountNav')],
         top: 0,
         right: 0,
         textStyle: { fontSize: 12, color: '#64748b' },
@@ -65,7 +67,7 @@ export function JournalChart({ snapshots, loading }: JournalChartProps) {
       yAxis: [
         {
           type: 'value',
-          name: '盈亏($)',
+          name: t('journal.plLabel'),
           nameTextStyle: { fontSize: 10, color: '#64748b' },
           axisLabel: {
             fontSize: 10,
@@ -77,7 +79,7 @@ export function JournalChart({ snapshots, loading }: JournalChartProps) {
         },
         {
           type: 'value',
-          name: '净值($)',
+          name: t('journal.nav'),
           nameTextStyle: { fontSize: 10, color: '#64748b' },
           axisLabel: {
             fontSize: 10,
@@ -90,7 +92,7 @@ export function JournalChart({ snapshots, loading }: JournalChartProps) {
       ],
       series: [
         {
-          name: '每日盈亏',
+          name: t('journal.dailyPl'),
           type: 'bar',
           yAxisIndex: 0,
           data: dailyPl.map((v) => ({
@@ -103,7 +105,7 @@ export function JournalChart({ snapshots, loading }: JournalChartProps) {
           barWidth: '50%',
         },
         {
-          name: '账户净值',
+          name: t('journal.accountNav'),
           type: 'line',
           yAxisIndex: 1,
           data: accountValues.map((v) => Number(v.toFixed(2))),

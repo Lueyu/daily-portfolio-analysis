@@ -19,6 +19,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
+import { useTranslation } from 'react-i18next';
 
 /** Metadata describing one journal section. */
 export interface JournalSection {
@@ -62,6 +63,7 @@ export function JournalSectionCard({
   editValue,
   onEditChange,
 }: JournalSectionCardProps) {
+  const { t } = useTranslation();
   const SectionIcon = section.icon;
 
   if (editing) {

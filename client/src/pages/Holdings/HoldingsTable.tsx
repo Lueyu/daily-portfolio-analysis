@@ -47,6 +47,7 @@ import {
 import type { Group, Market, Currency, AgentRating, AgentConfidence } from '@shared/api.interface';
 import RatingBadge from '@/components/MultiAgent/RatingBadge';
 import ConfidenceBadge from '@/components/MultiAgent/ConfidenceBadge';
+import { useTranslation } from 'react-i18next';
 
 /** Columns the holdings table can sort by. */
 type SortKey =
@@ -128,6 +129,7 @@ export default function HoldingsTable({
   aiRatings,
   onViewAiAnalysis,
 }: HoldingsTableProps) {
+  const { t } = useTranslation();
   const SortIcon = ({ column }: { column: SortKey }) => {
     if (sortKey !== column)
       return <ChevronDown className="size-3 opacity-30" />;
@@ -155,9 +157,9 @@ export default function HoldingsTable({
   );
 
   const currencyLabel: Record<string, string> = {
-    USD: '美股',
-    HKD: '港股',
-    CNY: 'A股',
+    USD: t('dash.us'),
+    HKD: t('dash.hk'),
+    CNY: t('dash.cn'),
   };
 
   const sortedCurrencies = Object.keys(mvByCurrency).sort();
