@@ -22,8 +22,8 @@
   "analysisHint": "补充你的看法，阅读成员的论据，再回头检验结论。",
   "newSession": "新建讨论",
   "newTitle": "这次一起研究什么？",
-  "newHint": "小组会自动开始一轮研究。聊天不会直接下单。",
-  "newInvalid": "请选择小组并输入有效股票代码（最多 20 个字符）。",
+  "newHint": "选好成员，小组就会开始查资料、交流观点。你随时可以插话。",
+  "newInvalid": "请输入有效股票代码（最多 20 个字符），并检查所选投资配置。",
   "noProfiles": "先创建一个智能体，为讨论设置小组与投资规则。",
   "createTeam": "创建投研小组",
   "profile": "所属智能体",
@@ -62,7 +62,7 @@
   "roles": { "researcher": "研究员", "challenger": "质疑者", "manager": "投资经理", "user": "你", "system": "研究记录" },
   "team": {
     "title": "认识你的投研小组",
-    "intro": "三种视角，共用一份证据。给成员起名，选择模型，再写下各自的研究偏好。",
+    "intro": "选择 2–6 位成员，搭配不同的研究视角、性格和模型，由一位主持人串联讨论。",
     "enabledHint": "已启用投研小组：每个候选订单都需要当前有效的评审，再进入常规模拟交易检查。",
     "rulesOnly": "仅规则模式：使用基础研究与确定性价格规则，不代表已经通过语言模型小组评审。",
     "name": "成员名字",
@@ -73,7 +73,41 @@
     "jobs": { "researcher": "建立投资逻辑，用证据支持观点。", "challenger": "寻找遗漏、下行风险和需要等待的理由。", "manager": "结合双方观点与组合约束，形成判断。" },
     "prompts": { "researcher": "优先考察持续盈利能力与估值。", "challenger": "重点质疑乐观假设和持仓集中度。", "manager": "证据不足时，耐心等待更清晰的机会。" }
   },
-  "teamInvalid": "需保留三个不同职责；每位成员名字最多 40 字，研究偏好最多 1,000 字。",
+  "teamInvalid": "小组需要 2–6 位不同成员和一位主持人。请检查名字、角色、模型、研究重点及提示词长度。",
+  "members": {
+    "presets": "团队预设", "selected": "已选成员 · {{count}}", "bounds": "2–6 人 · 1 位主持人",
+    "add": "添加成员", "full": "已达到 6 人上限", "custom": "从空白创建成员", "chooseTemplate": "从一种研究视角开始",
+    "editTitle": "设置这位成员", "editHint": "给成员鲜明的视角，也告诉它如何参与讨论。",
+    "editMember": "编辑 {{name}}", "removeMember": "移除 {{name}}", "removeModeratorHint": "先将另一位成员设为主持人，再移除这位成员。",
+    "avatar": "头像", "roleTitle": "角色称呼", "personality": "性格", "personalityPlaceholder": "例如：耐心、直率，喜欢用事实追问。",
+    "style": "发言风格", "focus": "研究重点", "advanced": "提示词与讨论职责", "responsibility": "讨论职责",
+    "moderator": "主持人", "moderatorHint": "每组只有一位主持人。选为主持人后，原主持人会转为研究员。",
+    "prompt": "自定义提示词", "promptHint": "最多 1,000 字。描述研究方法、关注点与交流方式。较长上下文会按预算摘录；最新留言过长会提示缩短。", "save": "保存成员", "cancel": "取消",
+    "defaultConnection": "默认连接", "unavailable": "不可用", "connectionMissing": "模型连接不可用，请重新选择。",
+    "manageModels": "管理模型连接", "modelsLoadFailed": "部分模型信息暂时无法加载。",
+    "webResearch": "允许网页检索", "webResearchHint": "结构化财务数据会自动获取（SEC 免费）。网页检索使用 DeepSeek Search，可能另行计费；每次讨论最多 2 次。默认关闭。",
+    "webDisabled": "先为本组开启网页检索，才能选择此研究重点。",
+    "webEnabledSnapshot": "此讨论已允许网页检索，仍受研究额度和检索次数上限约束。",
+    "webDisabledSnapshot": "此讨论未开启网页检索；结构化财务数据仍会自动获取。",
+    "profileOptional": "关联投资配置（选填）", "standalone": "独立研究", "profileHint": "不关联配置也可以聊天。选择配置会载入它的团队，你仍可在开聊前调整成员。",
+    "profilesLoadFailed": "投资配置暂时无法加载，你仍可以独立研究。",
+    "groupTitle": "群成员 · {{count}}", "snapshotHint": "这是本次讨论保存的成员配置。修改团队会另开讨论，原记录会保留。",
+    "legacySnapshot": "这个旧讨论没有成员配置快照；新开讨论可以选择并保存团队。", "useTeam": "用这组成员新开讨论",
+    "roomHint": "{{names}} · 随时加入讨论。",
+    "avatars": { "value": "价值", "growth": "成长", "risk": "风险", "technical": "市场", "news": "事件", "macro": "宏观", "moderator": "主持人" },
+    "styles": { "concise": "简明直接", "detailed": "展开分析", "socratic": "追问启发" },
+    "focuses": { "financials": "财务质量", "valuation": "估值", "news": "新闻与公告", "price": "市场价格", "web": "网页检索" },
+    "modelTier": { "fast": "快速模型", "slow": "深度模型" }
+  },
+  "chat": {
+    "replyTo": "回应 {{name}}", "basis": "判断依据", "sources": "参考资料 · {{count}}",
+    "sourcePending": "资料 {{index}} 已被引用，详细来源将在本轮研报保存后显示。"
+  },
+  "progress": {
+    "history": "研究过程", "turn": "{{turn}} / {{total}}", "waiting": "研究正在进行，已完成的查证记录会显示在这里。",
+    "phases": { "opening": "分享初步观点", "challenge": "交叉提问", "response": "回应问题", "summary": "整理研究结论", "progress": "查阅资料" },
+    "acquisition": { "started": "查阅中", "succeeded": "已获取", "partial": "部分获取", "failed": "暂不可用", "cache_hit": "使用已核验资料", "skipped": "已跳过" }
+  },
   "cadenceInvalid": "请检查复核间隔（1–60）、每周订单（1–20）、冷静期（0–60）和每周换手（0.1–100%）。",
   "cadence": {
     "title": "给好决策留一点时间",
@@ -86,6 +120,8 @@
     "summary": "每 {{days}} 个工作日复核 · 滚动 7 日最多 {{orders}} 单"
   },
   "report": {
+    "stances": { "positive": "研究倾向：积极", "balanced": "研究倾向：中性", "cautious": "研究倾向：谨慎" },
+    "manualHint": "这份研报整理观点、依据和分歧，不会生成订单。",
     "title": "决策简报 · v{{version}}",
     "history": "研报",
     "empty": "暂无研报",

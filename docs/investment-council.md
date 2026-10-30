@@ -6,31 +6,39 @@ Build a small research team in **Agent Builder**, discuss a stock in the **Resea
 
 ## Configure the team
 
-Each council has exactly three roles:
+Choose **2–6 members**, including exactly one moderator/manager. Seven templates cover value, growth, risk, technicals, news, macro and moderation. The default three-person team works as follows:
 
 | Member | Job | Default model tier |
 |---|---|---|
 | Researcher | Build a case from the available evidence. | Fast |
-| Challenger | Independently look for missing facts, downside and reasons to wait. | Fast |
-| Portfolio manager | Combine the two published views into approve, wait or reject. | Slow |
+| Challenger | Test the researcher's claims, cite contrary facts and ask questions. | Fast |
+| Portfolio manager | Summarize agreements, disagreements and next checks; assess an exact trade candidate only when one is attached. | Slow |
 
-You can change names, research preferences and each member's fast/slow tier. These tiers use the models configured in **API Settings**; they do not select a new provider per member. Members share the saved evidence snapshot. The researcher and challenger work independently before the manager reviews their opinions. Their permissions do not include arbitrary tools, changing trade direction or size, or sending orders.
+Customize names, role titles, personality, research focus, speaking style and an additional prompt. Each member selects the default model connection or a separately saved connection and its fast/slow model. **API Settings → Team model connections** supports up to eight extra OpenAI-compatible public HTTPS connections. Credentials are encrypted server-side and never copied into room configuration. A missing connection stops that member instead of silently switching credentials.
+
+The default discussion has four sequential turns: research → challenge → response → summary. Larger teams add viewpoints before the response and summary. Members see previous contributions, user steering and cited facts, and can request bounded financial, valuation, news, price or optional web research. Permissions, trade direction/size and hard spending limits cannot be overridden by a prompt. Expand a message to read its **public rationale**, questions and sources; this is not the model's private chain of thought.
+
+Each room request waits up to two minutes and does not automatically retry transport failures. A timed-out request may still be billed; its reservation remains counted. Explicitly continue from the retained turn after checking the provider.
+
+The controls follow the useful separation of role/goals/tools in [CrewAI agents](https://docs.crewai.com/en/concepts/agents) and speaker selection/termination in [AutoGen group chat](https://microsoft.github.io/autogen/stable/user-guide/agentchat-user-guide/selector-group-chat.html). Squabble implements its own bounded workflow; it does not add either framework as a runtime dependency. Role, personality and prompt shape the contribution; focus determines research preferences; concise/detailed/Socratic style shapes presentation. Tool permissions, stop conditions and shared spending caps stay outside persona prompts.
 
 For a free starting point, turn off the council and leave custom AI review instructions empty. Basic analysis, public quotes and explicit investor-authored price rules can work without a model key. Enabling the council requires a configured model to activate that Builder profile. Opening a discussion without a model produces an honest basic **wait** report, without simulated AI member messages. A provider's “free” model is still subject to its own key requirements, availability, limits and pricing.
 
 ## Discuss and keep the report
 
-1. Save a Builder profile, then open **Research room** and create a discussion for that profile and ticker.
+1. Open **Research room**, enter a ticker, select a preset and customize the team. A saved Builder profile is optional; a standalone room never activates a strategy. Add your question in the chat.
 2. Creating a discussion starts one research round. The central chat shows member replies; the composer stays at the bottom. The page polls for completed messages rather than streaming individual tokens.
 3. Add your own view at any time. Sending a note after a completed round starts another bounded round, with the previous conclusions as context. During research, your note steers the current discussion within its existing budget. Enter sends, Shift+Enter adds a new line, and selecting Chinese input does not send accidentally. Paused or failed rooms require an explicit resume.
 4. Pause when needed. A provider request already in flight may finish and incur usage, but a paused or obsolete revision cannot become current approval.
 5. Reports are organized in the right sidebar (the Reports button on small screens). Open a version to read its conclusions, dissent, evidence and related report or paper-order links. Each discussion freezes the profile configuration and version; after editing the profile, start a new discussion to use that version.
 
-A note can contain up to 2,000 characters; a discussion accepts up to 30 user notes. Automatic work makes at most three revision attempts. Continuing or pausing does not reset that discussion's task budget. Short evidence excerpts go to the model, while the full collected snapshot and complete user notes remain in the instance database. Long user instructions can reach the input cap and produce a wait result.
+A note can contain up to 2,000 characters; a discussion accepts up to 30 user notes. Completed turns and the next speaker are checkpointed in the database. An interruption continues from that point instead of replaying the whole round. Continuing or pausing does not reset the task budget. Bounded context goes to the model; full collected sources and user notes remain in the instance database. Standalone reports use positive, balanced or cautious assessments; they are not trade approvals. Open the members panel and create a new room to use a changed team.
 
 For supported US stocks, a saved Finnhub key enables valuation metrics, recent company news and reported financial statements with filing dates and SEC references. Access and completeness depend on the endpoint and subscription; a successful connection test does not guarantee every field. Missing balance-sheet items, stale filings, unsupported markets, provider permissions and network errors are identified separately. Available facts remain in the report. Research-driven approval is withheld when critical evidence is missing. An explicitly configured price-rule candidate can be assessed as **rule-only**, with gaps disclosed; this is not an AI price forecast.
 
-Starting or explicitly resuming a discussion collects fresh data using the current API settings. Each published report retains its original evidence snapshot. An unrelated portfolio or FX failure no longer prevents stock research, although portfolio sizing remains unavailable. Continuing does **not** reset token usage: a task limit, daily limit, provider rate limit and provider account balance are distinct errors with separate remedies.
+Incomplete US financial statements trigger a free SEC EDGAR fallback, checked against filing, currency and reporting period. Optional **web research** uses a saved DeepSeek connection and is off by default. Search is separately metered by the provider: at most two requests per task and twenty per UTC day. Web excerpts support discussion, but cannot become verified financial statements or bypass approval checks. See [research data and tools](research-data.md).
+
+A new round collects current data; resuming an interrupted round retains its checkpoint and evidence. Each report retains its original snapshot. An unrelated portfolio or FX failure does not prevent stock research, although portfolio sizing remains unavailable. Task limits, daily limits, provider rate limits and account balance have separate remedies.
 
 ## How a conclusion can affect paper trading
 
@@ -75,6 +83,6 @@ Users can change their own limits. These account budgets are not an operator-wid
 
 ## Storage and operation
 
-Messages, member preferences, frozen profile configuration, full evidence snapshots and report versions persist in the instance database. Model providers receive the selected evidence excerpts, candidate and profile context, full user notes included in the request, and previous member opinion excerpts. Budget records keep model/task identifiers, token counts, status and timestamps; the budget ledger does not itself store prompt bodies. Hosting operators can access their database and server secrets. See [Privacy and data flow](privacy.md).
+Messages, member preferences, frozen configuration, evidence snapshots and reports persist in the instance database. Each selected model provider receives bounded evidence, profile/candidate context, user notes and prior contributions. Optional DeepSeek Search receives the ticker and research query. Budget records keep task/model identifiers, usage, status and timestamps, not prompt bodies. Hosting operators can access their database and server secrets. See [Privacy and data flow](privacy.md).
 
 The supported deployment remains a **single application instance**. Restarting it marks unfinished council sessions paused and invalidates their previous revision; it does not resume model work automatically. Startup recovery currently pauses all running council rows, so multiple live replicas are not supported as a durable job queue. Resume deliberately after a restart, remembering that previously reserved or spent task usage remains counted.

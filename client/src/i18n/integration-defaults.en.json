@@ -1,4 +1,15 @@
 {
+  "connections": {
+    "title": "Models for your research team", "intro": "Save extra OpenAI-compatible connections, then choose a connection and model for each member. Your existing default connection remains available.",
+    "add": "Add connection", "edit": "Edit connection", "remove": "Remove connection", "loading": "Loading connections…", "failed": "Could not update the connection.",
+    "retry": "Retry", "empty": "You can start with the default model below. Add connections here when you want different models or providers in the same room.",
+    "fast": "Fast model", "slow": "Deep model", "test": "Test connection", "reentry": "Re-enter this connection’s API key before using it.",
+    "budget": "All members and providers share your account token budget. Connection tests use a small request under the same limits.",
+    "guide": "Enter the provider’s OpenAI-compatible base URL and exact API model IDs, not display names. Keys are encrypted and only sent to that provider; team profiles store a connection reference.",
+    "name": "Connection name", "baseUrl": "API base URL", "fastModel": "Fast model ID", "slowModel": "Deep model ID", "apiKey": "API key",
+    "keepKey": "Leave blank to keep the saved key", "save": "Save connection", "cancel": "Cancel",
+    "removeHint": "Past messages and reports stay saved. Members using this connection will need another connection before their next turn."
+  },
   "intro": "Start with free basic analysis and public market quotes. Add your own model key for AI analysis, or a Finnhub key for extra company data and news.",
   "readyTitle": "Ready without API keys",
   "readyBody": "Basic analysis checks public prices, portfolio exposure and configured risk rules. Its report shows the rules and data used; it is not a language-model opinion.",

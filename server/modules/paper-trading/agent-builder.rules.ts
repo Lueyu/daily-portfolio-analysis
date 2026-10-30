@@ -13,21 +13,42 @@ export function normalizeCouncil(input?: CouncilConfig): CouncilConfig {
     { id: 'challenger', role: 'challenger', name: 'Challenger', instructions: '', model: 'fast' },
     { id: 'manager', role: 'manager', name: 'Portfolio manager', instructions: '', model: 'slow' },
   ] };
-  if (!input || typeof input.enabled !== 'boolean' || !Array.isArray(input.members) || input.members.length !== 3) {
-    throw new Error('Council needs three members and an enabled preference');
+  if (!input || typeof input.enabled !== 'boolean' || !Array.isArray(input.members)
+    || input.members.length < 2 || input.members.length > 6) {
+    throw new Error('Council needs 2–6 members and an enabled preference');
   }
-  const roles = new Set<string>();
+  if (input.webResearch !== undefined && typeof input.webResearch !== 'boolean') throw new Error('Invalid web research preference');
+  const optionalText = (value: unknown, maximum: number): string | undefined => {
+    if (value === undefined) return undefined;
+    if (typeof value !== 'string' || value.trim().length > maximum) throw new Error('Invalid member customization');
+    return value.trim();
+  };
   const ids = new Set<string>();
   const members = input.members.map((member) => {
-    if (!member || !['researcher', 'challenger', 'manager'].includes(member.role) || roles.has(member.role)) throw new Error('Council roles must be unique');
+    if (!member || !['researcher', 'challenger', 'manager'].includes(member.role)) throw new Error('Invalid council role');
     if (typeof member.id !== 'string' || !/^[a-zA-Z0-9_-]{1,32}$/.test(member.id) || ids.has(member.id)) throw new Error('Invalid council member id');
     if (typeof member.name !== 'string' || !member.name.trim() || member.name.trim().length > 40) throw new Error('Member name must contain 1–40 characters');
     if (typeof member.instructions !== 'string' || member.instructions.length > 1000) throw new Error('Member instructions must be at most 1000 characters');
     if (member.model !== 'fast' && member.model !== 'slow') throw new Error('Invalid member model tier');
-    roles.add(member.role); ids.add(member.id);
-    return { id: member.id, role: member.role, name: member.name.trim(), instructions: member.instructions.trim(), model: member.model };
+    if (member.connectionId !== undefined && (typeof member.connectionId !== 'string'
+      || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(member.connectionId))) {
+      throw new Error('Invalid model connection identifier');
+    }
+    if (member.speakingStyle !== undefined && !['concise', 'detailed', 'socratic'].includes(member.speakingStyle)) throw new Error('Invalid speaking style');
+    if (member.avatar !== undefined && !['value', 'growth', 'risk', 'technical', 'news', 'macro', 'moderator'].includes(member.avatar)) throw new Error('Invalid member avatar');
+    if (member.researchFocus !== undefined && (!Array.isArray(member.researchFocus) || member.researchFocus.length > 5
+      || member.researchFocus.some((kind) => !['financials', 'valuation', 'news', 'price', 'web'].includes(kind)))) throw new Error('Invalid research focus');
+    ids.add(member.id);
+    return { id: member.id, role: member.role, name: member.name.trim(), instructions: member.instructions.trim(), model: member.model,
+      ...(member.connectionId === undefined ? {} : { connectionId: member.connectionId }),
+      ...(member.avatar === undefined ? {} : { avatar: member.avatar }),
+      ...(member.roleTitle === undefined ? {} : { roleTitle: optionalText(member.roleTitle, 60) }),
+      ...(member.personality === undefined ? {} : { personality: optionalText(member.personality, 240) }),
+      ...(member.researchFocus === undefined ? {} : { researchFocus: [...new Set(member.researchFocus)] }),
+      ...(member.speakingStyle === undefined ? {} : { speakingStyle: member.speakingStyle }) };
   });
-  return { enabled: input.enabled, members };
+  if (members.filter((member) => member.role === 'manager').length !== 1) throw new Error('Council requires exactly one moderator');
+  return { enabled: input.enabled, members, webResearch: input.webResearch ?? false };
 }
 
 /** Inputs that are known at one bot scan, before an order is considered. */

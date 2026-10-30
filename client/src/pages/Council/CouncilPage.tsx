@@ -3,11 +3,13 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { CirclePause, FileText, History, Loader2, MessageCircle, Play, Plus, Settings2 } from 'lucide-react';
+import { CirclePause, FileText, History, Loader2, MessageCircle, Play, Plus, Users } from 'lucide-react';
 import type { BuilderProfile } from '@shared/api.interface';
-import type { CouncilSession } from '@shared/council.interface';
+import type { CouncilConfig, CouncilSession, CreateCouncilSession } from '@shared/council.interface';
+import { createCouncilPreset } from '@shared/council-templates';
 import { fetchBuilderProfiles } from '@/api/builder';
 import { fetchIntegrationSettings } from '@/api/settings';
+import { fetchModelConnections } from '@/api/model-connections';
 import { useCouncilActions, useCouncilSession, useCouncilSessions } from '@/hooks/use-council';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
@@ -16,6 +18,7 @@ import { errorMessage } from '@/pages/AgentBuilder/errorMessage';
 import CouncilConversation from './CouncilConversation';
 import CouncilNewDialog from './CouncilNewDialog';
 import CouncilReports from './CouncilReports';
+import CouncilMembersSheet from './CouncilMembersSheet';
 
 export default function CouncilPage() {
   const { t, i18n } = useTranslation();
@@ -23,8 +26,11 @@ export default function CouncilPage() {
   const [newOpen, setNewOpen] = useState(params.has('profileId') || params.has('ticker'));
   const [historyOpen, setHistoryOpen] = useState(false);
   const [reportsOpen, setReportsOpen] = useState(false);
+  const [membersOpen, setMembersOpen] = useState(false);
+  const [newSeed, setNewSeed] = useState<{ key: number; ticker: string; team?: CouncilConfig }>({ key: 0, ticker: params.get('ticker') ?? '' });
   const profilesQuery = useQuery({ queryKey: ['builder', 'profiles'], queryFn: fetchBuilderProfiles });
   const integrations = useQuery({ queryKey: ['settings', 'integrations'], queryFn: fetchIntegrationSettings });
+  const connections = useQuery({ queryKey: ['settings', 'model-connections'], queryFn: fetchModelConnections });
   const sessionsQuery = useCouncilSessions();
   const selectedId = params.get('session') ?? sessionsQuery.data?.[0]?.id ?? null;
   const sessionQuery = useCouncilSession(selectedId);
@@ -32,12 +38,15 @@ export default function CouncilPage() {
   const session = sessionQuery.data;
   const profiles = profilesQuery.data ?? [];
   const selectedProfile = profiles.find((item: BuilderProfile) => item.id === session?.profileId);
-  const noModel = integrations.data && (!integrations.data.llm.available || integrations.data.llm.engine === 'basic');
+  const defaultAvailable = integrations.data?.llm.available && integrations.data.llm.engine !== 'basic';
+  const noModel = integrations.isSuccess && connections.isSuccess && (session?.members?.length
+    ? session.members.every((member) => member.connectionId
+      ? !connections.data.some((connection) => connection.id === member.connectionId && connection.available) : !defaultAvailable)
+    : !defaultAvailable && !connections.data.some((connection) => connection.available));
   const showError = (cause: unknown) => toast.error(errorMessage(cause, t('council.actionFailed')));
 
-  const create = async (profileId: string, ticker: string) => {
-    const created = await actions.create.mutateAsync({ profileId, ticker,
-      language: i18n.language.startsWith('zh') ? 'zh-CN' : 'en' });
+  const create = async (request: CreateCouncilSession) => {
+    const created = await actions.create.mutateAsync(request);
     setParams({ session: created.id });
     setNewOpen(false);
     try { await actions.run.mutateAsync(created.id); } catch (cause) { showError(cause); }
@@ -69,10 +78,10 @@ export default function CouncilPage() {
             : session.status === 'running' ? <CirclePause className="size-4" /> : <Play className="size-4" />}
         </Button>
       </TooltipTrigger><TooltipContent>{t(session.status === 'running' ? 'council.pause' : 'council.continue')}</TooltipContent></Tooltip>}
-      <Tooltip><TooltipTrigger asChild>
-        <Button asChild variant="ghost" size="icon" className="hidden shrink-0 sm:inline-flex" aria-label={t('council.builder')}>
-          <Link to="/agent-builder"><Settings2 className="size-4" /></Link></Button>
-      </TooltipTrigger><TooltipContent>{t('council.builder')}</TooltipContent></Tooltip>
+      {session && <Tooltip><TooltipTrigger asChild>
+        <Button type="button" variant="ghost" size="icon" className="shrink-0" aria-label={t('council.members.groupTitle', { count: session.members?.length ?? 0 })}
+          onClick={() => setMembersOpen(true)}><Users className="size-4" /></Button>
+      </TooltipTrigger><TooltipContent>{t('council.members.groupTitle', { count: session.members?.length ?? 0 })}</TooltipContent></Tooltip>}
       {session && <Button variant="ghost" size="icon" className="shrink-0 xl:hidden" aria-label={t('council.report.history')}
         onClick={() => setReportsOpen(true)}><FileText className="size-4" /></Button>}
       <Tooltip><TooltipTrigger asChild>
@@ -125,7 +134,7 @@ export default function CouncilPage() {
                 <span className="text-[11px] text-muted-foreground">{new Date(item.updatedAt).toLocaleDateString(i18n.language)}</span></span>
               <span className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
                 {item.status === 'running' && <Loader2 className="size-3 animate-spin" />}{t(`council.status.${item.status}`)}
-                <span className="truncate">· {profiles.find((profile: BuilderProfile) => profile.id === item.profileId)?.config.name ?? t('council.profile')}</span>
+                <span className="truncate">· {profiles.find((profile: BuilderProfile) => profile.id === item.profileId)?.config.name ?? t('council.members.standalone')}</span>
               </span>
             </button>;
           })}
@@ -144,8 +153,15 @@ export default function CouncilPage() {
         {session && <CouncilReports session={session} profileVersion={selectedProfile?.version} />}
       </SheetContent>
     </Sheet>
-    <CouncilNewDialog open={newOpen} onOpenChange={setNewOpen} profiles={profiles}
+    {membersOpen && session && <CouncilMembersSheet session={session} onClose={() => setMembersOpen(false)} onUseTeam={() => {
+      setNewSeed((current) => ({ key: current.key + 1, ticker: session.ticker, team: { enabled: true,
+        members: (session.members?.length ? session.members : createCouncilPreset('balanced', i18n.language))
+          .map((member) => ({ ...member, researchFocus: member.researchFocus ? [...member.researchFocus] : undefined })),
+        webResearch: Boolean(session.webResearch) } }));
+      setMembersOpen(false); setNewOpen(true);
+    }} />}
+    <CouncilNewDialog key={newSeed.key} open={newOpen} onOpenChange={setNewOpen} profiles={profiles}
       loading={profilesQuery.isLoading} error={profilesQuery.error} pending={actions.create.isPending}
-      initialProfileId={params.get('profileId') ?? ''} initialTicker={params.get('ticker') ?? ''} onCreate={create} />
+      initialProfileId={params.get('profileId') ?? ''} initialTicker={newSeed.ticker} initialTeam={newSeed.team} onCreate={create} />
   </div>;
 }

@@ -27,14 +27,37 @@ export interface LlmBudgetUsage {
 }
 
 export type CouncilRole = 'researcher' | 'challenger' | 'manager';
+export type CouncilSpeakingStyle = 'concise' | 'detailed' | 'socratic';
+export type CouncilResearchKind = 'financials' | 'valuation' | 'news' | 'price' | 'web';
+export type CouncilPhase = 'opening' | 'challenge' | 'response' | 'summary' | 'progress';
+export interface ResearchAcquisition {
+  source: string;
+  status: 'started' | 'succeeded' | 'partial' | 'failed' | 'cache_hit' | 'skipped';
+  detail: string;
+  kind?: CouncilResearchKind;
+}
 export interface CouncilMember {
   id: string;
   role: CouncilRole;
   name: string;
   instructions: string;
   model: 'fast' | 'slow';
+  /** Empty uses the account's existing default connection; credentials never enter a profile. */
+  connectionId?: string;
+  roleTitle?: string;
+  personality?: string;
+  researchFocus?: CouncilResearchKind[];
+  speakingStyle?: CouncilSpeakingStyle;
+  avatar?: 'value' | 'growth' | 'risk' | 'technical' | 'news' | 'macro' | 'moderator';
 }
-export interface CouncilConfig { enabled: boolean; members: CouncilMember[] }
+export interface CouncilConfig { enabled: boolean; members: CouncilMember[]; webResearch?: boolean }
+export interface CreateCouncilSession {
+  profileId?: string;
+  ticker: string;
+  language?: 'zh-CN' | 'en';
+  members?: CouncilMember[];
+  webResearch?: boolean;
+}
 export interface TradingCadence {
   reviewEveryTradingDays: number;
   maxOrdersPerWeek: number;
@@ -56,6 +79,14 @@ export interface CouncilMessage {
   revision: number;
   tokensUsed: number;
   createdAt: string;
+  memberId?: string | null;
+  phase?: CouncilPhase;
+  replyToMessageId?: string | null;
+  evidenceIds?: string[];
+  /** Short public rationale and evidence checks, never raw model reasoning_content. */
+  reasoningSummary?: string[];
+  questions?: string[];
+  acquisition?: ResearchAcquisition | null;
 }
 export interface CouncilReport {
   id: string;
@@ -72,10 +103,11 @@ export interface CouncilReport {
   tokensUsed: number;
   engine: 'basic' | 'llm';
   createdAt: string;
+  researchStance?: 'positive' | 'balanced' | 'cautious' | null;
 }
 export interface CouncilSession {
   id: string;
-  profileId: string;
+  profileId: string | null;
   profileVersion: number;
   ticker: string;
   language: 'zh-CN' | 'en';
@@ -86,6 +118,9 @@ export interface CouncilSession {
   error: string | null;
   createdAt: string;
   updatedAt: string;
+  members?: CouncilMember[];
+  webResearch?: boolean;
+  progress?: { phase: CouncilPhase; memberId: string | null; turn: number; totalTurns: number } | null;
 }
 export interface CouncilReviewResult {
   approved: boolean;

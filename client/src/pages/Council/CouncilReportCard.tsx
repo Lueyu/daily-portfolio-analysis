@@ -27,7 +27,7 @@ export default function CouncilReportCard({ report, session, profileVersion }: {
         <Badge variant={current ? 'default' : 'secondary'}>{t(current ? 'council.report.current' : 'council.report.obsolete')}</Badge>
       </div>
       <div className="mt-2 flex flex-wrap gap-2">
-        <Badge variant="outline">{t(`council.report.decisions.${report.decision}`)}</Badge>
+        <Badge variant="outline">{t(report.researchStance ? `council.report.stances.${report.researchStance}` : `council.report.decisions.${report.decision}`)}</Badge>
         <Badge variant="outline">{t(`council.report.engines.${report.engine}`)}</Badge>
         <span className="self-center text-xs text-muted-foreground">{new Date(report.createdAt).toLocaleString(i18n.language)}</span>
       </div>
@@ -81,7 +81,7 @@ export default function CouncilReportCard({ report, session, profileVersion }: {
       <p className="text-xs leading-5 text-muted-foreground">{t('council.report.tokens', {
         count: report.tokensUsed.toLocaleString(i18n.language),
       })}</p>
-      <p className="text-xs leading-5 text-muted-foreground">{t('council.report.executionHint')}</p>
+      <p className="text-xs leading-5 text-muted-foreground">{t(report.researchStance ? 'council.report.manualHint' : 'council.report.executionHint')}</p>
     </CardContent>
   </Card>;
 }

@@ -24,6 +24,7 @@ const portfolio = { totalValue: 1000, totalMv: 0, cash: 1000, cashRatio: 100, ho
 before(async () => {
   if (!client) return;
   await client.unsafe(readFileSync('scripts/db/08_investment_council.sql', 'utf8'));
+  await client.unsafe(readFileSync('scripts/db/12_council_dialogue.sql', 'utf8'));
   const [row] = await db.insert(builderProfiles).values({ owner, config }).returning();
   profileId = row.id;
 });
@@ -36,7 +37,7 @@ after(async () => {
 
 function service(chat = async () => ({ data: { decision: 'wait', summary: 'Need verified data', evidenceIds: [], dissent: [], nextReviewCondition: 'financials' }, tokens: 5 }), configured = true) {
   return new CouncilService(db, {
-    isConfigured: async () => configured, chatFastJSON: chat, chatSlowJSON: chat,
+    isConfigured: async () => configured, validateConnectionIds: async () => undefined, chatFastJSON: chat, chatSlowJSON: chat,
   } as never, { collectEvidence: async () => [
     { role: 'fundamental', evidenceType: 'price', title: 'quote', content: '100 USD', relevanceScore: 1, sourceName: 'provider' },
     { role: 'fundamental', evidenceType: 'other', title: 'financials missing', content: 'unavailable', relevanceScore: 0, sourceName: 'Data Unavailable' },
@@ -51,6 +52,179 @@ async function completed(svc: CouncilService, id: string) {
   }
   throw new Error('Council did not finish');
 }
+
+dbTest('sequential discussion responds to prior messages and publishes public rationale in four bounded turns', async () => {
+  const contexts: Array<{ conversation?: Array<{ id: string; content: string }> }> = [];
+  const svc = service(async (...args: unknown[]) => {
+    contexts.push(JSON.parse((args[0] as Array<{ content: string }>)[1].content));
+    return { data: { content: `Public contribution ${contexts.length}`, reasoningSummary: ['Check filed cash flow'],
+      questions: ['How durable is the margin?'], evidenceIds: [], researchStance: 'balanced' }, tokens: 8 };
+  });
+  const session = await svc.createSession(owner, { profileId, ticker: 'AAPL', language: 'en' });
+  await svc.runSession(owner, session.id);
+  const result = await completed(svc, session.id);
+  const messages = result.messages.filter((item) => item.memberId);
+  assert.equal(contexts.length, 4);
+  assert.deepEqual(messages.map((item) => item.phase), ['opening', 'challenge', 'response', 'summary']);
+  assert.ok(contexts[1].conversation?.some((item) => item.content.includes('Public contribution 1')));
+  assert.equal(messages[1].replyToMessageId, messages[0].id);
+  assert.deepEqual(messages[0].reasoningSummary, ['Check filed cash flow']);
+  assert.equal(result.reports[0].researchStance, 'balanced');
+  assert.equal(result.reports[0].decision, 'wait', 'Manual research has no trade approval capability');
+});
+
+dbTest('manual research rooms require no Builder profile and cannot become trading candidates', async () => {
+  const svc = service();
+  const session = await svc.createSession(owner, { ticker: 'AAPL', language: 'en', webResearch: false });
+  assert.equal(session.profileId, null);
+  assert.equal(session.members?.length, 3);
+  const [row] = await db.select().from(councilSessions).where(eq(councilSessions.id, session.id));
+  assert.equal(row.candidate, null);
+  assert.equal(row.profileSnapshot.template, 'guard');
+  assert.deepEqual(row.profileSnapshot.priceRules, []);
+});
+
+dbTest('six custom members use seven turns and each selected connection routes without a default model', async () => {
+  const members = Array.from({ length: 6 }, (_, index) => ({ id: `expert${index}`, role: index === 5 ? 'manager' as const : 'researcher' as const,
+    name: `Expert ${index}`, instructions: '', model: 'fast' as const, connectionId: randomUUID() }));
+  const connections: string[] = [];
+  const svc = service();
+  Reflect.set(svc, 'llm', { validateConnectionIds: async (_owner: string, ids: string[]) => assert.deepEqual(ids, members.map((member) => member.connectionId)),
+    isConfigured: async (_owner: string, connectionId?: string) => Boolean(connectionId),
+    chatFastJSON: async (_prompt: unknown, _owner: string, options: { connectionId: string }) => {
+      connections.push(options.connectionId);
+      return { data: { content: 'Review this evidence', evidenceIds: [], researchStance: 'cautious' }, tokens: 4 };
+    } });
+  const session = await svc.createSession(owner, { ticker: 'AAPL', members });
+  await svc.runSession(owner, session.id);
+  const result = await completed(svc, session.id);
+  assert.equal(result.status, 'completed');
+  assert.deepEqual(connections, [...members.slice(0, 5).map((member) => member.connectionId), members[0].connectionId, members[5].connectionId]);
+});
+
+dbTest('a failed turn resumes at its checkpoint without replaying successful members or resetting task usage', async () => {
+  let calls = 0;
+  let fail = true;
+  const tasks: string[] = [];
+  const svc = service(async (...args: unknown[]) => {
+    calls++;
+    tasks.push((args[2] as { taskId: string }).taskId);
+    if (calls === 2 && fail) throw new Error('LLM provider returned HTTP 503');
+    return { data: { content: `Contribution ${calls}`, evidenceIds: [] }, tokens: 4 };
+  });
+  const session = await svc.createSession(owner, { ticker: 'AAPL' });
+  await svc.runSession(owner, session.id);
+  const failed = await completed(svc, session.id);
+  assert.equal(failed.status, 'failed');
+  assert.equal(failed.progress?.turn, 2);
+  fail = false;
+  await svc.addMessage(owner, session.id, 'Continue with the saved evidence');
+  await svc.runSession(owner, session.id);
+  const done = await completed(svc, session.id);
+  assert.equal(calls, 5);
+  assert.equal(new Set(tasks).size, 1);
+  assert.equal(done.messages.filter((item) => item.phase === 'opening').length, 1);
+  assert.equal(done.reports.length, 2);
+});
+
+dbTest('steering while the moderator is speaking repeats only the outdated summary', async () => {
+  let calls = 0;
+  let sessionId = '';
+  const svc = service(async () => {
+    calls++;
+    if (calls === 4) await svc.addMessage(owner, sessionId, 'Please include the debt maturity risk');
+    return { data: { content: `Contribution ${calls}`, evidenceIds: [] }, tokens: 4 };
+  });
+  sessionId = (await svc.createSession(owner, { ticker: 'AAPL' })).id;
+  await svc.runSession(owner, sessionId);
+  const result = await completed(svc, sessionId);
+  assert.equal(calls, 5);
+  assert.equal(result.reports.length, 1);
+  assert.equal(result.reports[0].summary, 'Contribution 5');
+  assert.equal(result.reports[0].revision, result.revision);
+});
+
+dbTest('requested tools are fixed to the room ticker and two categories with persisted real progress', async () => {
+  let calls = 0;
+  const tools: string[] = [];
+  const svc = service(async (...args: unknown[]) => {
+    calls++;
+    const context = JSON.parse((args[0] as Array<{ content: string }>)[1].content);
+    if (calls === 2) assert.ok(context.evidence.some((item: { content: string }) => item.content.includes('Verified tool financials')));
+    return { data: { content: `Contribution ${calls}`, evidenceIds: [], researchRequests:
+      calls === 1 ? [{ kind: 'financials' }, { kind: 'news' }] : [{ kind: 'financials' }, { kind: 'web' }] }, tokens: 4 };
+  });
+  Reflect.set(svc, 'evidence', { collectEvidence: async () => [{ role: 'fundamental', evidenceType: 'other',
+    title: 'AAPL Financial statements unavailable', content: 'Missing source', sourceName: 'Data Unavailable', relevanceScore: 0 }],
+  collectResearch: async (ticker: string, user: string, kind: string, _language: string,
+    options: { onAcquisition: (event: { source: string; status: string; detail: string }) => Promise<void> }) => {
+    assert.equal(ticker, 'AAPL'); assert.equal(user, owner); tools.push(kind);
+    await options.onAcquisition({ source: 'Fixture source', status: 'succeeded', detail: `Retrieved ${kind}` });
+    return [{ role: kind === 'news' ? 'news' : 'fundamental', evidenceType: kind === 'news' ? 'news' : 'financial',
+      title: `AAPL ${kind}`, content: `Verified tool ${kind}`, sourceName: 'Fixture source', relevanceScore: 1 }];
+  } });
+  const session = await svc.createSession(owner, { ticker: 'AAPL', webResearch: false });
+  await svc.runSession(owner, session.id);
+  const done = await completed(svc, session.id);
+  assert.deepEqual(tools, ['financials', 'news']);
+  assert.equal(calls, 4);
+  assert.ok(done.messages.some((item) => item.acquisition?.source === 'Fixture source' && item.acquisition.status === 'succeeded'));
+  assert.ok(done.messages.some((item) => item.acquisition?.status === 'skipped'));
+  assert.ok(!done.reports[0].evidence.some((item) => item.title.includes('statements unavailable')));
+});
+
+dbTest('refreshing a source retains earlier message citations in the final report and empty tools retain gaps', async () => {
+  let cited = '';
+  let calls = 0;
+  const svc = service(async (...args: unknown[]) => {
+    calls++;
+    const context = JSON.parse((args[0] as Array<{ content: string }>)[1].content);
+    if (calls === 1) cited = context.evidence.find((item: { title: string }) => item.title === 'AAPL financial statements').id;
+    return { data: { content: 'Check revised facts', evidenceIds: calls === 1 ? [cited] : [],
+      researchRequests: calls === 1 ? [{ kind: 'financials' }, { kind: 'valuation' }] : [] }, tokens: 4 };
+  });
+  Reflect.set(svc, 'evidence', { collectEvidence: async () => [
+    { role: 'fundamental', evidenceType: 'financial', title: 'AAPL financial statements', content: 'Old filed revenue USD 100', sourceName: 'SEC EDGAR', relevanceScore: 1 },
+    { role: 'fundamental', evidenceType: 'other', title: 'AAPL valuation unavailable', content: 'No valuation', sourceName: 'Data Unavailable', relevanceScore: 0 },
+  ], collectResearch: async (_ticker: string, _owner: string, kind: string) => kind === 'valuation' ? [] : [
+    { role: 'fundamental', evidenceType: 'financial', title: 'AAPL financial statements', content: 'Revised filed revenue USD 110', sourceName: 'SEC EDGAR', relevanceScore: 1 },
+  ] });
+  const session = await svc.createSession(owner, { ticker: 'AAPL' });
+  await svc.runSession(owner, session.id);
+  const result = await completed(svc, session.id);
+  assert.ok(result.reports[0].evidence.some((item) => item.id === cited), 'A cited replaced source must remain resolvable');
+  assert.ok(result.reports[0].evidence.some((item) => item.content === 'No valuation'), 'An empty response cannot erase a critical gap');
+});
+
+dbTest('Chinese steering and customized personas fit the default input budget while retaining the latest question and direct rationale', async () => {
+  const { estimateInputTokens, DEFAULT_LLM_BUDGET } = await import('../llm-budget/llm-budget.rules');
+  const newest = '请重点分析现金流负债与收入的关系，并明确说明风险。'.repeat(20).slice(0, 500);
+  const captures: number[] = [];
+  const svc = service(async (...args: unknown[]) => {
+    const prompt = args[0] as Array<{ role: string; content: string }>;
+    const context = JSON.parse(prompt[1].content);
+    assert.ok(context.steering.includes(newest));
+    if (captures.length) {
+      assert.ok(context.conversation.some((item: { questions?: string[] }) => item.questions?.includes('负债的期限是否匹配现金流？')));
+      assert.ok(context.conversation.some((item: { reasoningSummary?: string[] }) => item.reasoningSummary?.includes('已核实本期现金流与负债的币种一致')));
+    }
+    captures.push(estimateInputTokens([...prompt, { role: 'system', content: '你必须严格按照用户要求的 JSON 格式输出，不要添加任何解释、说明或 markdown 格式。只输出合法的 JSON 字符串。' }]));
+    return { data: { content: '这里是公开的分析结论。'.repeat(90), reasoningSummary: ['已核实本期现金流与负债的币种一致'],
+      questions: ['负债的期限是否匹配现金流？'], evidenceIds: [] }, tokens: 5 };
+  });
+  const members = [{ id: 'fundamental', role: 'researcher' as const }, { id: 'risk', role: 'challenger' as const }, { id: 'chair', role: 'manager' as const }]
+    .map((item) => ({ ...item, name: item.id, model: 'fast' as const, instructions: '关注现金流与风险。'.repeat(100).slice(0, 1000),
+      personality: '耐心、严谨，追问证据。'.repeat(30).slice(0, 240) }));
+  await db.update(builderProfiles).set({ config: { ...config, customPrompt: '审查投资依据。'.repeat(100) } }).where(eq(builderProfiles.id, profileId));
+  const session = await svc.createSession(owner, { profileId, ticker: 'AAPL', members, language: 'zh-CN' });
+  await svc.addMessage(owner, session.id, newest);
+  await svc.runSession(owner, session.id);
+  const result = await completed(svc, session.id);
+  assert.equal(result.status, 'completed');
+  assert.equal(captures.length, 4);
+  for (const size of captures) assert.ok(size <= DEFAULT_LLM_BUDGET.maxInputTokens, `packed prompt ${size}`);
+  await db.update(builderProfiles).set({ config }).where(eq(builderProfiles.id, profileId));
+});
 
 dbTest('portfolio and saved-report failures do not prevent fresh stock evidence collection', async () => {
   const svc = service();
@@ -125,8 +299,8 @@ dbTest('follow-up round includes the latest published discussion without copying
   await svc.addMessage(owner, session.id, 'Please explain that cash flow concern');
   await svc.runSession(owner, session.id);
   await completed(svc, session.id);
-  assert.ok(contexts[3].previousDiscussion?.some((item) => item.content.includes('Prior concern')));
-  assert.ok(contexts[3].previousDiscussion.length <= 3);
+  assert.ok(contexts[4].previousDiscussion?.some((item) => item.content.includes('Prior concern')));
+  assert.ok(contexts[4].previousDiscussion.length <= 3);
 });
 
 dbTest('sending notes to a failed discussion preserves its failure until explicit retry', async () => {
@@ -183,7 +357,7 @@ dbTest('pause during an in-flight call prevents report approval and a manager ca
   const paused = await svc.getSession(owner, session.id);
   assert.equal(paused.status, 'paused');
   assert.equal(paused.reports.length, 0);
-  assert.equal(calls, 2);
+  assert.equal(calls, 1);
 });
 
 dbTest('steering invalidates old revision, reuses taskId, persists partial messages and yields one current report', async () => {
@@ -218,7 +392,7 @@ dbTest('unchanged wait candidates reuse saved result without additional model ca
   const second = await svc.reviewCandidate(owner, profile, { ...candidate, price: 100.01 });
   assert.equal(first.approved, false);
   assert.equal(second.sessionId, first.sessionId);
-  assert.equal(calls, 3);
+  assert.equal(calls, 4);
 });
 
 dbTest('default prompts stay within the default conservative input budget', async () => {
@@ -241,7 +415,8 @@ dbTest('default prompts stay within the default conservative input budget', asyn
   await svc.addMessage(owner, session.id, '请进一步解释现金流和负债方面的差异');
   await svc.runSession(owner, session.id);
   await completed(svc, session.id);
-  assert.equal(captures.length, 6);
+  assert.equal(captures.length, 8);
+  assert.ok(captures.slice(0, 4).reduce((sum, size) => sum + size + 900, 0) <= DEFAULT_LLM_BUDGET.perTaskTokenLimit, `default round reservations: ${captures.slice(0, 4)}`);
   for (const size of captures) assert.ok(size <= DEFAULT_LLM_BUDGET.maxInputTokens, `prompt size ${size}`);
 });
 
@@ -256,10 +431,10 @@ dbTest('duplicate run requests across service instances start only one council j
   await first.runSession(owner, session.id);
   while (!calls) await new Promise((resolve) => setTimeout(resolve, 10));
   await Promise.all(Array.from({ length: 8 }, (_, i) => (i % 2 ? first : second).runSession(owner, session.id)));
-  assert.equal(calls, 2);
+  assert.equal(calls, 1);
   release();
   const result = await completed(first, session.id);
-  assert.equal(calls, 3);
+  assert.equal(calls, 4);
   assert.equal(result.reports.length, 1);
 });
 
@@ -279,7 +454,7 @@ dbTest('pause followed immediately by resume drains old calls and finishes the c
   assert.equal(result.status, 'completed');
   assert.equal(result.reports.length, 1);
   assert.equal(result.reports[0].revision, result.revision);
-  assert.equal(calls, 5);
+  assert.equal(calls, 4);
 });
 
 dbTest('repeated steering cannot create unbounded automatic restarts', async () => {
@@ -295,7 +470,8 @@ dbTest('repeated steering cannot create unbounded automatic restarts', async () 
   const result = await completed(svc, sessionId);
   assert.ok(calls <= 6);
   assert.equal(result.reports.at(-1)?.decision, 'wait');
-  assert.match(result.reports.at(-1)?.summary ?? '', /Steering changed repeatedly/);
+  assert.equal(calls, 4, 'Steering must not replay completed turns');
+  assert.equal(result.status, 'completed');
 });
 
 dbTest('rule-only approval preserves exact candidate and changed quote cannot reuse that approval', async () => {
@@ -312,11 +488,11 @@ dbTest('rule-only approval preserves exact candidate and changed quote cannot re
   assert.equal(first.approved, true);
   const same = await svc.reviewCandidate(owner, profile, exact);
   assert.equal(same.reportId, first.reportId);
-  assert.equal(calls, 3);
+  assert.equal(calls, 4);
   const changed = await svc.reviewCandidate(owner, profile, { ...exact, price: 100.01 });
   assert.equal(changed.approved, true);
   assert.notEqual(changed.reportId, first.reportId);
-  assert.equal(calls, 6);
+  assert.equal(calls, 8);
   const stored = await svc.getSession(owner, changed.sessionId);
   assert.deepEqual(stored.reports[0].candidate, { ...exact, price: 100.01 });
 });
@@ -326,9 +502,10 @@ dbTest('research-driven model approval is forced to wait when critical financial
     const data = JSON.parse((args[0] as Array<{ content: string }>)[1].content);
     return { data: { decision: 'approve', summary: 'Model attempts approval', evidenceIds: [data.evidence[0].id] }, tokens: 4 };
   });
-  const session = await svc.createSession(owner, { profileId, ticker: 'AAPL', language: 'en' });
-  await svc.runSession(owner, session.id);
-  const stored = await completed(svc, session.id);
+  const profile = { id: profileId, config: { ...config, language: 'en' as const }, version: 1, status: 'active' as const, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+  await db.update(builderProfiles).set({ config: profile.config }).where(eq(builderProfiles.id, profileId));
+  const result = await svc.reviewCandidate(owner, profile, { ...candidate, reason: 'AI Buy rating', quantity: 7 });
+  const stored = await svc.getSession(owner, result.sessionId);
   assert.equal(stored.reports[0].decision, 'wait');
   assert.match(stored.reports[0].summary, /Critical research evidence is missing/);
 });

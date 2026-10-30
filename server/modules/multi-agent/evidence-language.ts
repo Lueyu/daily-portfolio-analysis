@@ -1,7 +1,9 @@
 /** Translate application-generated evidence labels, preserving original provider/user text. */
 export function englishEvidenceText(text: string): string {
   const translations: Array<[string, string]> = [
+    ['数据获取缺口不代表公司存在财务风险。', 'A data acquisition gap is not evidence of financial weakness.'],
     ['Finnhub 已成功返回部分经核实财报。', 'Finnhub successfully returned partial verified financial statements.'],
+    ['SEC 已成功返回部分经核实财报。', 'SEC successfully returned partial verified financial statements.'],
     ['缺少科目或单位：', 'Missing concepts or units: '],
     ['财报数据不完整', 'Financial statements incomplete'],
     ['当前账户未配置 Finnhub 密钥；请在设置中保存密钥后刷新研究数据。', 'No Finnhub key is configured for this account; save a key in Settings and refresh the research data.'],

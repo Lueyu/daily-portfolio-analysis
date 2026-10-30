@@ -10,7 +10,12 @@ const compiled = ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
 }).outputText;
 const exported = { exports: {} };
-runInNewContext(compiled, { module: exported, exports: exported.exports });
+const templates = { exports: {} };
+runInNewContext(ts.transpileModule(readFileSync(resolve(__dirname, '../../..', 'shared/council-templates.ts'), 'utf8'), {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
+}).outputText, { module: templates, exports: templates.exports });
+runInNewContext(compiled, { module: exported, exports: exported.exports,
+  require: (id) => { if (id === '@shared/council-templates') return templates.exports; throw new Error(`Unexpected import: ${id}`); } });
 const { isCurrentCouncilReport, budgetPercent, validateCouncilSettings, validateBudget } = exported.exports;
 
 test('a new note starts one research round only from a ready or completed room', () => {
@@ -63,10 +68,19 @@ test('budget bars remain bounded and handle unavailable limits', () => {
   assert.equal(budgetPercent(5, 0), 0);
 });
 
-test('team requires every distinct responsibility and finite cadence limits', () => {
+test('teams allow two to six distinct members with exactly one moderator and finite cadence limits', () => {
   const members = ['researcher', 'challenger', 'manager'].map(role => ({ id: role, role, name: role, instructions: '', model: 'fast' }));
   const cadence = { reviewEveryTradingDays: 5, maxOrdersPerWeek: 2, cooldownTradingDays: 3, maxWeeklyTurnoverPct: 10 };
   assert.equal(validateCouncilSettings({ enabled: true, members }, cadence), null);
+  assert.equal(validateCouncilSettings({ enabled: true, members: [members[0], members[2]] }, cadence), null);
+  assert.equal(validateCouncilSettings({ enabled: true, members: [...members, { ...members[0], id: 'growth' }, { ...members[0], id: 'news' }, { ...members[1], id: 'risk' }] }, cadence), null);
+  assert.equal(validateCouncilSettings({ enabled: true, members: [members[0]] }, cadence), 'teamInvalid');
+  assert.equal(validateCouncilSettings({ enabled: true, members: Array.from({ length: 7 }, (_, i) => ({ ...members[i === 6 ? 2 : 0], id: String(i) })) }, cadence), 'teamInvalid');
+  assert.equal(validateCouncilSettings({ enabled: true, members: [members[0], members[1]] }, cadence), 'teamInvalid');
+  assert.equal(validateCouncilSettings({ enabled: true, members: [members[2], { ...members[2], id: 'other-manager' }] }, cadence), 'teamInvalid');
+  assert.equal(validateCouncilSettings({ enabled: true, members: [{ ...members[0], personality: 'x'.repeat(241) }, members[2]] }, cadence), 'teamInvalid');
+  assert.equal(validateCouncilSettings({ enabled: true, members: [{ ...members[0], researchFocus: ['web'] }, members[2]], webResearch: false }, cadence), 'teamInvalid');
+  assert.equal(validateCouncilSettings({ enabled: true, members: [{ ...members[0], researchFocus: ['web'] }, members[2]], webResearch: true }, cadence), null);
   assert.equal(validateCouncilSettings({ enabled: true, members: [members[0], members[0], members[2]] }, cadence), 'teamInvalid');
   assert.equal(validateCouncilSettings({ enabled: true, members }, { ...cadence, maxOrdersPerWeek: 1.5 }), 'cadenceInvalid');
   assert.equal(validateCouncilSettings({ enabled: false, members: [] }, cadence), null);
@@ -78,4 +92,22 @@ test('budget validation rejects impossible or nonfinite caps and accepts unknown
   assert.equal(validateBudget({ ...settings, maxOutputTokens: NaN }), 'invalid');
   assert.equal(validateBudget({ ...settings, inputUsdPerMillion: -1 }), 'priceInvalid');
   assert.equal(validateBudget({ ...settings, maxInputTokens: 30000 }), 'inconsistent');
+});
+
+test('localized presets are valid and template clones never share mutable research focus', () => {
+  const { createCouncilPreset, createCouncilMember, COUNCIL_TEAM_PRESETS } = templates.exports;
+  for (const language of ['en', 'zh-CN']) {
+    for (const preset of COUNCIL_TEAM_PRESETS) {
+      const members = createCouncilPreset(preset.id, language);
+      assert.equal(validateCouncilSettings({ enabled: true, members, webResearch: false }), null);
+      assert.equal(members.filter(member => member.role === 'manager').length, 1);
+    }
+  }
+  const first = createCouncilMember('value', 'en', 'value-a');
+  const second = createCouncilMember('value', 'en', 'value-b');
+  first.researchFocus.push('web');
+  first.name = 'Edited';
+  assert.equal(second.researchFocus.includes('web'), false);
+  assert.equal(second.name, 'Morgan');
+  assert.notEqual(first.id, second.id);
 });

@@ -53,7 +53,7 @@ export default function CouncilReports({ session, profileVersion }: CouncilRepor
             </Badge>
           </div>
           <p className="mt-2 text-xs font-medium text-muted-foreground">
-            {t(`council.report.decisions.${report.decision}`)}
+            {t(report.researchStance ? `council.report.stances.${report.researchStance}` : `council.report.decisions.${report.decision}`)}
           </p>
           <p className="mt-3 line-clamp-4 break-words text-sm leading-6">{report.summary}</p>
           <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-[11px] text-muted-foreground">

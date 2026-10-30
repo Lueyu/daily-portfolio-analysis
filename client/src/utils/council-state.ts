@@ -1,6 +1,7 @@
 import type {
   CouncilConfig, CouncilMessage, CouncilReport, CouncilSession, LlmBudgetSettings, TradingCadence,
 } from '@shared/council.interface';
+import { COUNCIL_AVATARS, COUNCIL_RESEARCH_KINDS, COUNCIL_SPEAKING_STYLES } from '@shared/council-templates';
 
 export const DEFAULT_CADENCE: TradingCadence = {
   reviewEveryTradingDays: 5, maxOrdersPerWeek: 2,
@@ -46,10 +47,19 @@ export function validateCouncilSettings(
 ): 'teamInvalid' | 'cadenceInvalid' | null {
   if (council?.enabled) {
     const members = council.members;
-    if (members.length !== 3 || new Set(members.map((member) => member.role)).size !== 3
-      || new Set(members.map((member) => member.id)).size !== 3
-      || members.some((member) => !member.name.trim() || member.name.length > 40
-        || member.instructions.length > 1000)) return 'teamInvalid';
+    if (members.length < 2 || members.length > 6 || members.filter((member) => member.role === 'manager').length !== 1
+      || new Set(members.map((member) => member.id)).size !== members.length
+      || members.some((member) => !member.id.trim() || member.id.length > 32 || !member.name.trim() || member.name.length > 40
+        || !['researcher', 'challenger', 'manager'].includes(member.role)
+        || !['fast', 'slow'].includes(member.model) || member.instructions.length > 1000
+        || (member.roleTitle?.length ?? 0) > 60 || (member.personality?.length ?? 0) > 240
+        || (member.connectionId && !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/iu.test(member.connectionId))
+        || (member.avatar && !COUNCIL_AVATARS.includes(member.avatar))
+        || (member.speakingStyle && !COUNCIL_SPEAKING_STYLES.includes(member.speakingStyle))
+        || (member.researchFocus && (member.researchFocus.length > 5
+          || new Set(member.researchFocus).size !== member.researchFocus.length
+          || member.researchFocus.some((focus) => !COUNCIL_RESEARCH_KINDS.includes(focus)
+            || (focus === 'web' && !council.webResearch)))))) return 'teamInvalid';
   }
   if (cadence && (!Number.isInteger(cadence.reviewEveryTradingDays)
     || cadence.reviewEveryTradingDays < 1 || cadence.reviewEveryTradingDays > 60

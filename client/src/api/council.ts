@@ -1,5 +1,5 @@
 import http from './http';
-import type { CouncilSession, LlmBudgetSettings, LlmBudgetUsage } from '@shared/council.interface';
+import type { CouncilSession, CreateCouncilSession, LlmBudgetSettings, LlmBudgetUsage } from '@shared/council.interface';
 
 export async function fetchCouncilSessions(): Promise<CouncilSession[]> {
   const response = await http.get<{ items: CouncilSession[] }>('/api/council/sessions');
@@ -11,9 +11,7 @@ export async function fetchCouncilSession(id: string): Promise<CouncilSession> {
   return response.data;
 }
 
-export async function createCouncilSession(request: {
-  profileId: string; ticker: string; language: 'en' | 'zh-CN';
-}): Promise<CouncilSession> {
+export async function createCouncilSession(request: CreateCouncilSession): Promise<CouncilSession> {
   const response = await http.post<CouncilSession>('/api/council/sessions', request);
   return response.data;
 }

@@ -36,6 +36,9 @@ COPY scripts/db/06_account_recovery.sql ./scripts/db/06_account_recovery.sql
 COPY scripts/db/07_llm_budget.sql ./scripts/db/07_llm_budget.sql
 COPY scripts/db/08_investment_council.sql ./scripts/db/08_investment_council.sql
 COPY scripts/db/09_builder_cadence.sql ./scripts/db/09_builder_cadence.sql
+COPY scripts/db/10_model_connections.sql ./scripts/db/10_model_connections.sql
+COPY scripts/db/11_research_tools.sql ./scripts/db/11_research_tools.sql
+COPY scripts/db/12_council_dialogue.sql ./scripts/db/12_council_dialogue.sql
 COPY scripts/ensure-settings-key.cjs scripts/start-app.cjs ./scripts/
 
 # Views and static assets are resolved from process.cwd()/dist/client

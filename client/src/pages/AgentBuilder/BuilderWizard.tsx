@@ -130,7 +130,7 @@ export default function BuilderWizard({ editing, onSaved, onClose }: BuilderWiza
   const [step, setStep] = useState(0);
   const [config, setConfig] = useState<BuilderConfig>(() => ({
     ...(editing?.config ?? { ...DEFAULT_CONFIG, name: t('ui.builder.template.balanced.defaultName') }),
-    council: editing ? (editing.config.council ?? { ...defaultCouncil(t), enabled: false }) : defaultCouncil(t),
+    council: editing ? (editing.config.council ?? { ...defaultCouncil(i18n.language), enabled: false }) : defaultCouncil(i18n.language),
     cadence: editing?.config.cadence ?? { ...DEFAULT_CADENCE },
   }));
   const [tickerText, setTickerText] = useState(editing?.config.tickers.join(', ') ?? '');
@@ -309,7 +309,7 @@ export default function BuilderWizard({ editing, onSaved, onClose }: BuilderWiza
                 placeholder={t('ui.builder.namePlaceholder')}
                 onChange={(event) => setConfig({ ...config, name: event.target.value })} />
             </div>
-            <CouncilConfigEditor council={config.council ?? defaultCouncil(t)}
+            <CouncilConfigEditor council={config.council ?? defaultCouncil(i18n.language)}
               cadence={config.cadence ?? DEFAULT_CADENCE}
               onCouncilChange={(council) => setConfig({ ...config, council })}
               onCadenceChange={(cadence) => setConfig({ ...config, cadence })} />

@@ -22,8 +22,8 @@
   "analysisHint": "Add your own view, read the team's arguments, and revisit their conclusion.",
   "newSession": "New discussion",
   "newTitle": "What should the team look into?",
-  "newHint": "Your team starts a research round automatically. Chatting never places an order.",
-  "newInvalid": "Choose a team and enter a valid ticker (up to 20 characters).",
+  "newHint": "Choose your team. They will gather sources and exchange views. Join in whenever you like.",
+  "newInvalid": "Enter a valid ticker (up to 20 characters) and check the selected investment profile.",
   "noProfiles": "Create a Builder profile first to give this discussion a team and its own rules.",
   "createTeam": "Create a team",
   "profile": "Builder profile",
@@ -62,7 +62,7 @@
   "roles": { "researcher": "Researcher", "challenger": "Challenger", "manager": "Portfolio manager", "user": "You", "system": "Research log" },
   "team": {
     "title": "Meet your investment council",
-    "intro": "Three perspectives share one evidence snapshot. Give each member a name, a model, and a point of view.",
+    "intro": "Choose 2–6 members with different perspectives, personalities, and models. One moderator connects the discussion.",
     "enabledHint": "Council enabled: each candidate needs a current council review before the normal paper-trading checks.",
     "rulesOnly": "Rules-only mode: basic research and deterministic price rules. No model-based council approval is implied.",
     "name": "Member name",
@@ -73,7 +73,41 @@
     "jobs": { "researcher": "Build the investment case and cite the evidence.", "challenger": "Look for missing evidence, downside and reasons to wait.", "manager": "Weigh both views against the portfolio's limits." },
     "prompts": { "researcher": "Prioritize durable earnings and valuation.", "challenger": "Challenge optimistic assumptions and concentration.", "manager": "Prefer patience when the evidence is incomplete." }
   },
-  "teamInvalid": "Keep three distinct roles, each with a name up to 40 characters and preferences up to 1,000 characters.",
+  "teamInvalid": "Choose 2–6 distinct members and exactly one moderator. Check names, responsibilities, models, research focus, and prompt lengths.",
+  "members": {
+    "presets": "Team presets", "selected": "Selected members · {{count}}", "bounds": "2–6 members · 1 moderator",
+    "add": "Add a member", "full": "6-member limit reached", "custom": "Create a member from scratch", "chooseTemplate": "Start with a research perspective",
+    "editTitle": "Customize this member", "editHint": "Give this member a clear perspective and a way to join the conversation.",
+    "editMember": "Edit {{name}}", "removeMember": "Remove {{name}}", "removeModeratorHint": "Make another member the moderator before removing this one.",
+    "avatar": "Avatar", "roleTitle": "Role title", "personality": "Personality", "personalityPlaceholder": "For example: patient, candid, and curious about the evidence.",
+    "style": "Speaking style", "focus": "Research focus", "advanced": "Prompt & discussion responsibility", "responsibility": "Discussion responsibility",
+    "moderator": "Moderator", "moderatorHint": "Each team has one moderator. Choosing this role makes the previous moderator a researcher.",
+    "prompt": "Custom prompt", "promptHint": "Up to 1,000 characters. Describe research methods, priorities, and communication style. Longer context is excerpted to fit the budget; an oversized latest message must be shortened.", "save": "Save member", "cancel": "Cancel",
+    "defaultConnection": "Default connection", "unavailable": "Unavailable", "connectionMissing": "Model connection unavailable. Choose another connection.",
+    "manageModels": "Manage model connections", "modelsLoadFailed": "Some model information could not be loaded.",
+    "webResearch": "Allow web research", "webResearchHint": "Structured financial data is fetched automatically (SEC is free). Web research uses DeepSeek Search and may be billed separately, with at most 2 searches per discussion. Off by default.",
+    "webDisabled": "Enable web research for this team before choosing this focus.",
+    "webEnabledSnapshot": "Web research is enabled for this discussion, within the research budget and search limits.",
+    "webDisabledSnapshot": "Web research is off for this discussion. Structured financial data is still fetched automatically.",
+    "profileOptional": "Link an investment profile (optional)", "standalone": "Independent research", "profileHint": "You can chat without a profile. Selecting one loads its team, which you can customize before starting.",
+    "profilesLoadFailed": "Investment profiles could not be loaded. Independent research is still available.",
+    "groupTitle": "Group members · {{count}}", "snapshotHint": "This is the saved team for this discussion. Team changes start a new discussion and keep the existing history.",
+    "legacySnapshot": "This older discussion has no member snapshot. Start a new discussion to choose and save a team.", "useTeam": "Start a new discussion with this team",
+    "roomHint": "{{names}} · Join the discussion any time.",
+    "avatars": { "value": "Value", "growth": "Growth", "risk": "Risk", "technical": "Market", "news": "Events", "macro": "Macro", "moderator": "Moderator" },
+    "styles": { "concise": "Concise & direct", "detailed": "Detailed analysis", "socratic": "Thoughtful questions" },
+    "focuses": { "financials": "Financial quality", "valuation": "Valuation", "news": "News & filings", "price": "Market prices", "web": "Web research" },
+    "modelTier": { "fast": "Fast model", "slow": "Deep model" }
+  },
+  "chat": {
+    "replyTo": "Replying to {{name}}", "basis": "Basis for this view", "sources": "Sources · {{count}}",
+    "sourcePending": "Source {{index}} was cited. Its details will appear when this round's report is saved."
+  },
+  "progress": {
+    "history": "Research activity", "turn": "{{turn}} / {{total}}", "waiting": "Research is underway. Completed source checks will appear here.",
+    "phases": { "opening": "Sharing an initial view", "challenge": "Comparing views", "response": "Answering questions", "summary": "Preparing the research summary", "progress": "Checking sources" },
+    "acquisition": { "started": "Checking", "succeeded": "Retrieved", "partial": "Partially retrieved", "failed": "Unavailable", "cache_hit": "Using verified data", "skipped": "Skipped" }
+  },
   "cadenceInvalid": "Check review frequency (1–60), weekly orders (1–20), cooldown (0–60) and weekly turnover (0.1–100%).",
   "cadence": {
     "title": "Give good decisions time",
@@ -86,6 +120,8 @@
     "summary": "Review every {{days}} weekdays · up to {{orders}} orders / 7 days"
   },
   "report": {
+    "stances": { "positive": "Research stance: positive", "balanced": "Research stance: balanced", "cautious": "Research stance: cautious" },
+    "manualHint": "This report records views, supporting evidence, and disagreements. It does not generate orders.",
     "title": "Decision brief · v{{version}}",
     "history": "Reports",
     "empty": "No reports yet",

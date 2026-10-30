@@ -25,9 +25,13 @@ import { normalizePublicLlmBaseUrl, publicHttpsAgent } from '../settings/setting
 import { LlmBudgetService } from '../llm-budget/llm-budget.service';
 
 export interface LlmCallOptions {
+  connectionId?: string;
   taskId?: string;
   purpose?: string;
   maxOutputTokens?: number;
+  /** Interactive rooms retain a failed turn rather than retrying a possibly billed request. */
+  retryPolicy?: 'none' | 'transient';
+  timeoutMs?: number;
   /** Checked before every paid attempt, including transport retries. */
   shouldContinue?: () => Promise<boolean>;
 }
@@ -90,8 +94,13 @@ export class LlmService {
   ) {}
 
   /** A broken saved key is still configured: callers must not silently downgrade it. */
-  async isConfigured(userId: string): Promise<boolean> {
+  async isConfigured(userId: string, connectionId?: string): Promise<boolean> {
+    if (connectionId) return Boolean(await this.settings.getLlmConfig(userId, connectionId));
     return (await this.settings.getSettings(userId)).llm.engine === 'llm';
+  }
+
+  async validateConnectionIds(userId: string, ids: string[]): Promise<void> {
+    for (const id of new Set(ids)) await this.settings.getLlmConfig(userId, id);
   }
 
   /** Public execution metadata only; credentials never enter reports. */
@@ -136,7 +145,7 @@ export class LlmService {
     userId: string,
     options: LlmCallOptions = {},
   ): Promise<ChatResponse> {
-    const config = await this.settings.getLlmConfig(userId);
+    const config = await this.settings.getLlmConfig(userId, options.connectionId);
     if (!config) throw new Error('No LLM API key configured');
     const baseUrl = config.source === 'user'
       ? await normalizePublicLlmBaseUrl(config.baseUrl)
@@ -145,8 +154,11 @@ export class LlmService {
 
     // All retries share a task id, but every attempted HTTP request has its own reservation.
     const taskId = options.taskId ?? randomUUID();
+    const maxRetries = options.retryPolicy === 'none' ? 0 : this.maxRetries;
+    const timeoutMs = Number.isFinite(options.timeoutMs)
+      ? Math.max(1000, Math.min(120_000, Math.trunc(options.timeoutMs))) : this.timeoutMs;
 
-    for (let attempt = 0; attempt <= this.maxRetries; attempt += 1) {
+    for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
       if (options.shouldContinue && !(await options.shouldContinue())) throw new Error('LLM request cancelled');
       // Deliberately outside the network catch: budget/DB failures must never retry or bypass accounting.
       const reservation = await this.budgets.reserve(userId, { ...options, taskId, model, messages });
@@ -164,7 +176,7 @@ export class LlmService {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${config.apiKey}`,
           },
-          timeout: this.timeoutMs,
+          timeout: timeoutMs,
           maxRedirects: 0,
           proxy: false,
           httpsAgent: config.source === 'user' ? publicHttpsAgent() : undefined,
@@ -182,9 +194,10 @@ export class LlmService {
         await this.budgets.settle(userId, reservation.id, undefined, true);
         const safeError = error instanceof ProviderHttpError
           ? error
-          : new Error('LLM request failed. Check provider URL and server network.');
+          : axios.isAxiosError(error) && ['ECONNABORTED', 'ETIMEDOUT'].includes(error.code ?? '')
+            ? new Error('LLM_REQUEST_TIMEOUT') : new Error('LLM request failed. Check provider URL and server network.');
         if (
-          attempt === this.maxRetries
+          attempt === maxRetries
           || (error instanceof ProviderHttpError && error.status < 500 && error.status !== 429)
         ) {
           throw safeError;

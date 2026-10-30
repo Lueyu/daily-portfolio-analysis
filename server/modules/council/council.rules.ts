@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { BuilderConfig } from '@shared/api.interface';
-import type { CouncilCandidate, CouncilMember, CouncilRole } from '@shared/council.interface';
+import type { CouncilCandidate, CouncilMember, CouncilRole, CouncilResearchKind } from '@shared/council.interface';
 
 export interface CouncilEvidence {
   id: string;
@@ -12,6 +12,7 @@ export interface CouncilEvidence {
   sourceName: string | null;
   fetchedAt: string;
   relevanceScore: number;
+  researchKind?: CouncilResearchKind;
 }
 export interface CouncilOpinion {
   decision: 'approve' | 'wait' | 'reject';
@@ -78,6 +79,7 @@ export function sameCandidate(left: CouncilCandidate | null, right: CouncilCandi
 
 /** Bound excerpts by UTF-8 bytes because the budget reserves conservatively for unknown tokenizers. */
 export function byteExcerpt(value: string, maxBytes: number): string {
+  if (maxBytes <= 0) return '';
   if (Buffer.byteLength(value, 'utf8') <= maxBytes) return value;
   let result = '';
   for (const character of value) {
@@ -87,15 +89,18 @@ export function byteExcerpt(value: string, maxBytes: number): string {
   return result + '…';
 }
 
-export function evidenceExcerpts(evidence: CouncilEvidence[]) {
+export function evidenceExcerpts(evidence: CouncilEvidence[], budget = 2100) {
   const priority = (item: CouncilEvidence): number => item.sourceName === 'Investor configuration' ? 0
-    : item.evidenceType === 'price' ? 1 : item.evidenceType === 'financial' ? 2
-      : item.evidenceType === 'news' ? 3 : 4;
-  let remaining = 1800;
+    : item.evidenceType === 'financial' && /statement|财报/iu.test(item.title) ? 1
+      : item.researchKind ? 2 : item.evidenceType === 'price' ? 3 : item.evidenceType === 'financial' ? 4
+        : item.evidenceType === 'news' ? 5 : 6;
+  let remaining = budget;
   return evidence.filter((item) => item.sourceName !== 'Data Unavailable' && item.relevanceScore > 0)
     .sort((left, right) => priority(left) - priority(right)).flatMap((item) => {
-      const excerpt = { id: item.id, title: byteExcerpt(item.title, 90),
-        content: byteExcerpt(item.content, 250), source: byteExcerpt(item.sourceName ?? '', 50),
+      const compact = budget <= 1300;
+      const excerpt = { id: item.id, title: byteExcerpt(item.title, compact ? 60 : 90),
+        content: byteExcerpt(item.content, item.evidenceType === 'financial' ? compact ? 350 : 600 : compact ? 160 : 300),
+        source: byteExcerpt(item.sourceName ?? '', compact ? 32 : 50),
         fetchedAt: item.fetchedAt };
       const bytes = Buffer.byteLength(JSON.stringify(excerpt), 'utf8');
       if (bytes > remaining) return [];
