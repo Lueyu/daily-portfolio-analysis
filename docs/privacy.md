@@ -10,7 +10,7 @@ take our word for it.
 - **不收手机号、不收邮箱验证、不收真实姓名** — 注册只需要一个用户名和密码。
 - **零埋点、零统计上报、零错误上报** — 没有任何 analytics SDK。
 - **数据全部落在你自己的数据库里** — 自托管部署，备份与删除完全自主。
-- 出网请求包括大模型、公开行情源、可选的 Finnhub 美股研究数据和你主动配置的通知渠道；截图识别属于可选的大模型请求。公开行情源不一定需要 API key。
+- 未配置模型时，免费基础分析在本地执行规则，不向大模型发送数据；公开股票及股指行情请求仍会出网，无需个人 API key。配置后还可请求大模型、Finnhub 美股研究数据和你主动配置的通知渠道；截图识别属于可选的大模型请求。
 
 ## What we collect
 
@@ -21,6 +21,7 @@ take our word for it.
 | Real name / identity | ❌ Never | — |
 | Telemetry / analytics | ❌ None | 无埋点、无统计、无错误上报 |
 | Holdings & transactions | ✅ In your own DB | 只存在你部署的 PostgreSQL 里 |
+| Analysis reports & execution traces | ✅ In your own DB | 保存启动时的中英文语言、证据、风险检查与执行步骤；AI 模式还保存模型输出的论点和审查摘要，不读取隐藏推理 token。基础报告明确标记为规则分析 |
 | Agent preferences & prompts | ✅ In your own DB | 版本化配置；自定义 prompt 在候选信号审核时发给你配置的 LLM |
 | User-supplied LLM / Finnhub API keys | ✅ Encrypted in your own DB | 各账号独立保存；设置接口只返回配置状态及遮盖提示，不返回明文。Docker 在独立持久卷自动生成加密密钥；源码部署可用私有 `SETTINGS_ENCRYPTION_KEY` 或私有 `JWT_SECRET`，已知演示密钥不可用于保存 API key。更换加密密钥后须重新填写 |
 | Paper orders & real-execution notes | ✅ In your own DB | 模拟交易与自报的真实成交记录分表存储；不会自动改写真实交易流水 |
@@ -33,8 +34,8 @@ take our word for it.
 
 The main outbound request categories are:
 
-1. **LLM 推理请求** — 运行多智能体分析时，相关行情、组合上下文与研究提示词会发送给你配置的大模型厂商（火山方舟 / DeepSeek / 任意 OpenAI 兼容端点）；若你没有个人配置而部署者设置了 `DOUBAO_API_KEY`，则使用部署者的豆包接口。个人配置优先于部署环境，删除个人配置后恢复环境回退。Agent Builder 的自定义 prompt 仅在你填写并启用 AI 审核后随候选信号发送；显式规则不需要 LLM。连接测试也会发送一条小请求，可能产生服务商用量。厂商如何处理请求由其隐私条款决定。
-2. **行情与金融数据请求** — 服务端向 Tencent、Sina、Yahoo 等公开源查询报价；公开源可能延迟、不可用，也不使用你的个人 API key。若你在「设置」中保存 Finnhub key，运行美股研究时服务端会向 Finnhub 查询可用的公司基础指标与新闻。Finnhub 公司新闻接口只覆盖北美公司；服务商套餐、标的与字段覆盖可能各不相同。连接测试使用已保存的 key 查询示例美股，可能计入 API 用量。删除 Finnhub 配置后停止这类请求；缺失数据会明确标记，不能当作事实引用。
+1. **LLM 推理请求** — 运行已配置模型的 AI 分析时，相关行情、组合上下文与研究提示词会发送给你配置的大模型厂商（火山方舟 / DeepSeek / OpenRouter / 任意 OpenAI 兼容端点）；若你没有个人配置而部署者设置了 `DOUBAO_API_KEY`，则使用部署者的接口。两者均未配置时，站内生成免费基础报告，不调用 LLM。个人配置优先于部署环境；删除后恢复环境模型，或无模型时的基础模式。已配置模型失败会报错，不静默降级。Agent Builder 的自定义 prompt 仅在你填写并启用 AI 审核后随候选信号发送；显式规则不需要 LLM。模型连接测试也会发送一条小请求，可能产生服务商用量；基础模式检查不发送模型请求。厂商如何处理请求由其隐私条款决定。
+2. **行情与金融数据请求** — 服务端向 Tencent、Sina、Yahoo 等公开源查询股票及股指报价；公开源可能延迟、不可用，也不使用你的个人 API key。市场情绪分数在本地按股指涨跌估算，不是官方情绪指数；界面保留数据来源、交易日期和不可用状态。未配置金融 API 时，连接测试通过公共源读取示例股票。若保存 Finnhub key，美股研究会向 Finnhub 查询可用的公司基础指标与新闻；连接测试也会使用已保存的 key，可能计入 API 用量。Finnhub 公司新闻接口只覆盖北美公司；服务商套餐、标的与字段覆盖可能各不相同。删除 Finnhub 配置后恢复公共源；缺失数据会明确标记，不能当作事实引用。
 3. **通知推送** — 仅当你主动配置了通知渠道（Webhook / Bark / Server酱 / SMTP / Telegram）时，才会向相应服务发送事件消息。Agent Builder 的提案通知可包含标的、方向、模拟数量和理由；关闭提案通知或停用渠道即可停止这类消息。
 4. **截图识别（可选功能）** — 仅当你主动上传券商截图并配置了自己的多模态模型时，截图才会发给所选模型服务。详见 [import.md](import.md)。
 

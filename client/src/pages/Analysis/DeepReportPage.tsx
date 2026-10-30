@@ -70,7 +70,7 @@ function DeepReportPage() {
               className="gap-1 border-amber-500/50 bg-amber-500/10 text-amber-700 dark:text-amber-400 font-medium"
             >
               <Sparkles size={12} />
-              {t('ui.report.deepReport')}
+              {t(report.analysisTrace?.engine === 'basic' ? 'analysisFlow.basic' : 'analysisFlow.report')}
             </Badge>
           )}
         </div>

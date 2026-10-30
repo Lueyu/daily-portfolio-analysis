@@ -38,6 +38,14 @@ export class SettingsController {
 
   @Post('llm/test')
   async testLlm(@Req() req: Request): Promise<IntegrationTestResult> {
+    const settings = await this.settings.getSettings(req.userContext.userId);
+    if (settings.llm.engine === 'basic') {
+      return {
+        ok: true,
+        code: 'basic_ready',
+        message: 'Basic analysis is ready. It uses data and rules, without a language model or model API charges.',
+      };
+    }
     try {
       const response = await this.llm.chatFast(
         [{ role: 'user', content: 'Reply with OK only.' }],

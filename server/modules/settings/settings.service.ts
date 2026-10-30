@@ -3,6 +3,7 @@ import { Inject } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
 import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '../../common/platform';
 import { userApiSettings } from '../../database/schema';
+import { QuoteService } from '../quote/quote.service';
 import type {
   IntegrationSettings,
   IntegrationTestResult,
@@ -64,7 +65,10 @@ function cleanModel(value: unknown): string {
 
 @Injectable()
 export class SettingsService {
-  constructor(@Inject(DRIZZLE_DATABASE) private readonly db: PostgresJsDatabase) {}
+  constructor(
+    @Inject(DRIZZLE_DATABASE) private readonly db: PostgresJsDatabase,
+    private readonly quotes: QuoteService,
+  ) {}
 
   private encryptionSecret(): string {
     const dedicated = process.env.SETTINGS_ENCRYPTION_KEY;
@@ -100,6 +104,8 @@ export class SettingsService {
     return {
       llm: userLlmKey ? {
         source: 'user',
+        engine: 'llm',
+        available: true,
         baseUrl: row?.llmBaseUrl || DEFAULT_LLM_BASE_URL,
         fastModel: row?.llmFastModel || DEFAULT_FAST_MODEL,
         slowModel: row?.llmSlowModel || DEFAULT_SLOW_MODEL,
@@ -107,21 +113,26 @@ export class SettingsService {
         maskedApiKey: maskedKey(userLlmKey),
       } : row?.llmApiKeyEnc ? {
         source: 'user',
+        engine: 'llm',
+        available: false,
         baseUrl: row.llmBaseUrl || DEFAULT_LLM_BASE_URL,
         fastModel: row.llmFastModel || DEFAULT_FAST_MODEL,
         slowModel: row.llmSlowModel || DEFAULT_SLOW_MODEL,
         hasApiKey: false,
         needsReentry: true,
       } : {
-        source: serverLlmKey ? 'server' : 'none',
-        baseUrl: process.env.DOUBAO_BASE_URL || DEFAULT_LLM_BASE_URL,
-        fastModel: process.env.DOUBAO_MODEL_FAST || DEFAULT_FAST_MODEL,
-        slowModel: process.env.DOUBAO_MODEL_SLOW || DEFAULT_SLOW_MODEL,
+        source: serverLlmKey ? 'server' : 'builtin',
+        engine: serverLlmKey ? 'llm' : 'basic',
+        available: true,
+        baseUrl: serverLlmKey ? process.env.DOUBAO_BASE_URL || DEFAULT_LLM_BASE_URL : '',
+        fastModel: serverLlmKey ? process.env.DOUBAO_MODEL_FAST || DEFAULT_FAST_MODEL : '',
+        slowModel: serverLlmKey ? process.env.DOUBAO_MODEL_SLOW || DEFAULT_SLOW_MODEL : '',
         hasApiKey: Boolean(serverLlmKey),
       },
       financial: {
-        source: row?.finnhubApiKeyEnc ? 'user' : 'none',
-        provider: 'finnhub',
+        source: row?.finnhubApiKeyEnc ? 'user' : 'builtin',
+        provider: row?.finnhubApiKeyEnc ? 'finnhub' : 'public',
+        available: !row?.finnhubApiKeyEnc || Boolean(finnhubKey),
         hasApiKey: Boolean(finnhubKey),
         ...(finnhubKey ? { maskedApiKey: maskedKey(finnhubKey) } : {}),
         ...(row?.finnhubApiKeyEnc && !finnhubKey ? { needsReentry: true } : {}),
@@ -173,6 +184,10 @@ export class SettingsService {
     const row = await this.rowFor(userId);
     const retainedKey = this.tryDecrypt(row?.llmApiKeyEnc);
     const apiKey = cleanApiKey(input.apiKey, !retainedKey);
+    if (!apiKey && retainedKey && row?.llmBaseUrl
+      && baseUrl !== row.llmBaseUrl.replace(/\/+$/u, '')) {
+      throw new BadRequestException('Enter a new API key when changing the model endpoint');
+    }
     const encrypted = apiKey ? encryptSecret(apiKey, this.encryptionSecret()) : row?.llmApiKeyEnc;
     if (!encrypted) throw new BadRequestException('Enter an API key');
     await this.db.insert(userApiSettings)
@@ -238,8 +253,20 @@ export class SettingsService {
   }
 
   async testFinancial(userId: string): Promise<IntegrationTestResult> {
+    const settings = await this.getSettings(userId);
+    if (settings.financial.provider === 'public') {
+      try {
+        const quote = await this.quotes.getQuote('AAPL');
+        if (quote && Number.isFinite(Number(quote.price)) && Number(quote.price) > 0) {
+          return { ok: true, code: 'public_ready', message: 'Public market data returned an AAPL quote. No API key is required.' };
+        }
+      } catch {
+        // A failed provider must never be reported as a successful connection.
+      }
+      return { ok: false, code: 'public_unavailable', message: 'Public quote providers are unavailable. Retry when the server network recovers.' };
+    }
     const key = await this.getFinnhubKey(userId);
-    if (!key) return { ok: false, message: 'Save a Finnhub API key first.' };
+    if (!key) return { ok: false, code: 'credential_unreadable', message: 'The saved API key cannot be read. Re-enter or remove it.' };
     const url = new URL(FINNHUB_PROFILE_URL);
     url.searchParams.set('symbol', 'AAPL');
     url.searchParams.set('token', key);

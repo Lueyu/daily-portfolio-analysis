@@ -9,7 +9,7 @@
  *   rating   - final rating, catalysts, risks, and uncertainties
  *
  * When the run is 'awaiting_human', a human-in-the-loop (HITL) action bar lets
- * the user approve, modify, or reject the AI rating; approve/modify syncs the
+ * the user approve, modify, or reject the rating; approve/modify syncs the
  * rating back to holdings and the analysis log (submitHumanDecision).
  */
 import { useState, useEffect, useCallback } from 'react';
@@ -74,6 +74,8 @@ import {
   Loader2,
 } from 'lucide-react';
 import { getAgentRun, submitHumanDecision, logger } from '@/api';
+import { displayCompanyName } from '@/utils/company-name';
+import { getPipelineStepState } from './pipeline-step-state';
 import RatingBadge from './RatingBadge';
 import ConfidenceBadge from './ConfidenceBadge';
 import RunProgressBar from './RunProgressBar';
@@ -133,38 +135,6 @@ const pipelineSteps = [
   { key: 'risk_check', labelKey: 'ui.agent.riskCheck', icon: ShieldAlert },
   { key: 'completed', labelKey: 'ui.agent.finalRating', icon: Target },
 ] as const;
-
-/** Linear order of pipeline stages used to compute done/active/pending per step */
-const stepStatusOrder: AgentRunStatus[] = [
-  'fetching',
-  'debating',
-  'critiquing',
-  'risk_check',
-  'completed',
-];
-
-/**
- * Computes the timeline state of one pipeline step. Completed/awaiting runs show
- * every step done; failed/cancelled runs mark steps after the failure point pending.
- */
-function getPipelineStepState(
-  stepKey: string,
-  status: AgentRunStatus,
-): 'done' | 'active' | 'pending' {
-  const stepIdx = stepStatusOrder.indexOf(stepKey as AgentRunStatus);
-  const currentIdx = stepStatusOrder.indexOf(status);
-
-  if (status === 'pending') return 'pending';
-  if (status === 'completed' || status === 'awaiting_human') return 'done';
-  if (status === 'failed' || status === 'cancelled') {
-    // Mark steps before failure point as done, current as pending-ish
-    return stepIdx < currentIdx ? 'done' : 'pending';
-  }
-
-  if (stepIdx < currentIdx) return 'done';
-  if (stepIdx === currentIdx) return 'active';
-  return 'pending';
-}
 
 /**
  * Dialog body: fetches the run detail, renders the tabbed view, and owns the
@@ -304,6 +274,7 @@ function AgentRunDetailModal({
   const criticRecords = run?.debate.filter(
     (d: DebateRecord) => d.speaker === 'critic',
   ) || [];
+  const companyName = run ? displayCompanyName(run.tickerName, run.ticker, i18n.language) : null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -315,9 +286,9 @@ function AgentRunDetailModal({
             ) : run ? (
               <>
                 <span className="text-xl font-bold">{run.ticker}</span>
-                {run.tickerName && (
+                {companyName && (
                   <span className="text-base font-normal text-muted-foreground">
-                    {run.tickerName}
+                    {companyName}
                   </span>
                 )}
                 <Badge
@@ -406,7 +377,7 @@ function AgentRunDetailModal({
                         {pipelineSteps.map((step, idx) => {
                           const state = getPipelineStepState(
                             step.key,
-                            run.status,
+                            run,
                           );
                           const StepIcon = step.icon;
                           return (
@@ -451,6 +422,8 @@ function AgentRunDetailModal({
                                     ? t('ui.agent.stepDone')
                                     : state === 'active'
                                       ? t('ui.agent.stepInProgress')
+                                      : state === 'skipped' || state === 'partial'
+                                        ? t(`analysisFlow.stepStatus.${state}`)
                                       : t('ui.agent.stepPending')}
                                 </div>
                               </div>
@@ -915,7 +888,7 @@ function AgentRunDetailModal({
                     {t('ui.agent.awaitingDecision')}
                   </span>
                   <span className="text-muted-foreground">
-                    {t('ui.agent.reviewPrompt')}
+                    {t('analysisFlow.reviewPrompt')}
                   </span>
                 </div>
                 <div className="flex gap-2">

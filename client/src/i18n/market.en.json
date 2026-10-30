@@ -1,0 +1,22 @@
+{
+  "title": "Market pulse",
+  "refresh": "Refresh market indices",
+  "chooseMarket": "Choose a market",
+  "markets": { "US": "US", "HK": "Hong Kong", "CN": "China A" },
+  "loading": "Loading market indices",
+  "loadFailed": "Market data is temporarily unavailable. Use refresh to try again.",
+  "connectionLost": "Connection lost. Showing earlier quotes; sentiment will return after a successful refresh.",
+  "mood": "Market sentiment",
+  "estimate": "Price-based estimate",
+  "tones": { "bearish": "Cautious", "balanced": "Balanced", "bullish": "Upbeat", "unknown": "Unavailable" },
+  "insufficient": "At least two current-session index quotes are needed.",
+  "coverage": "{{covered}}/{{total}} indices · average daily move {{change}}%",
+  "indices": "Latest session · vs. prior close",
+  "names": { "sp500": "S&P 500", "nasdaq": "Nasdaq Composite", "dow": "Dow Jones", "hsi": "Hang Seng", "hstech": "Hang Seng TECH", "sse": "Shanghai Composite", "csi300": "CSI 300", "szse": "Shenzhen Component" },
+  "status": { "stale": "Last available · stale", "unavailable": "Quote unavailable" },
+  "noQuote": "No quote",
+  "source": "Tencent Finance · quotes may be delayed · times shown in each market's local time.",
+  "methodTitle": "How is sentiment estimated?",
+  "method": "Squabble estimates sentiment from the equal-weight average daily change of the indices above. Score = 50 + 20 × average change (%), limited to 0–100. Only valid quotes from the same latest session are included. This is a price-momentum proxy, not an official Fear & Greed Index or a trading signal.",
+  "timing": "Refreshes every minute. Closed markets retain their latest session date. Failed refreshes are marked stale and excluded from the score; last available values are kept for up to 24 hours."
+}

@@ -18,19 +18,21 @@
  *  - createDailyBatch: convenience that runs all holdings + buy-signal watchlist
  *    items in tiered mode.
  */
-import { Injectable, Inject, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, Inject, Logger, OnModuleInit, BadRequestException } from '@nestjs/common';
 import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '../../common/platform';
 import { eq, and } from 'drizzle-orm';
 import { holdings, watchlist, agentRuns } from '@server/database/schema';
 import { MultiAgentService } from './multi-agent.service';
 import { PipelineService } from './pipeline.service';
 import { PortfolioContextService } from './portfolio-context.service';
+import { normalizeAnalysisLanguage, safeAnalysisError } from './analysis-report';
 import type {
   BatchRunRequest,
   BatchRunResult,
   BatchRunItem,
   AgentRunMode,
   AgentRunStatus,
+  AnalysisLanguage,
 } from '@shared/api.interface';
 
 /** A single pending run waiting in the in-memory queue. */
@@ -55,6 +57,8 @@ export class BatchService implements OnModuleInit {
   /** FIFO queues of not-yet-started runs per mode. */
   private fullQueue: QueueItem[] = [];
   private summaryQueue: QueueItem[] = [];
+  private activeTargets = new Set<string>();
+  private targetByRun = new Map<string, string>();
 
   constructor(
     @Inject(DRIZZLE_DATABASE) private readonly db: PostgresJsDatabase,
@@ -69,9 +73,26 @@ export class BatchService implements OnModuleInit {
    */
   onModuleInit(): void {
     this.pipelineService.onRunComplete((runId, userId, mode) => {
+      const target = this.targetByRun.get(runId);
+      if (!target) return;
+      this.activeTargets.delete(target);
+      this.targetByRun.delete(runId);
       this.releaseSlot(mode);
       this.processQueue();
     });
+  }
+
+  /** Pending work has not acquired a slot; remove it immediately without reducing live counters. */
+  cancelQueuedRun(runId: string, userId: string): void {
+    for (const queue of [this.fullQueue, this.summaryQueue]) {
+      const index = queue.findIndex((item) => item.runId === runId && item.userId === userId);
+      if (index < 0) continue;
+      queue.splice(index, 1);
+      const target = this.targetByRun.get(runId);
+      if (target) this.activeTargets.delete(target);
+      this.targetByRun.delete(runId);
+      return;
+    }
   }
 
   /**
@@ -81,6 +102,19 @@ export class BatchService implements OnModuleInit {
    * aborting the whole batch.
    */
   async createBatch(userId: string, req: BatchRunRequest): Promise<BatchRunResult> {
+    if (!req || !['holdings', 'watchlist', 'all', 'custom'].includes(req.scope)) {
+      throw new BadRequestException('Select a valid analysis scope');
+    }
+    if (req.tickers !== undefined && (!Array.isArray(req.tickers) || req.tickers.length > 100
+      || req.tickers.some((ticker) => typeof ticker !== 'string' || !/^[A-Za-z0-9.^_-]{1,20}$/u.test(ticker)))) {
+      throw new BadRequestException('Provide up to 100 valid ticker symbols');
+    }
+    let language: AnalysisLanguage;
+    try {
+      language = normalizeAnalysisLanguage(req.language);
+    } catch (error) {
+      throw new BadRequestException(error instanceof Error ? error.message : 'Invalid analysis language');
+    }
     const targets = await this.resolveTargets(userId, req);
     const result: BatchRunResult = {
       created: 0,
@@ -91,6 +125,12 @@ export class BatchService implements OnModuleInit {
     };
 
     for (const target of targets) {
+      const targetKey = `${userId}:${target.ticker.toUpperCase()}`;
+      if (this.activeTargets.has(targetKey)) {
+        result.errors.push({ ticker: target.ticker, error: 'Analysis is already running for this ticker' });
+        continue;
+      }
+      this.activeTargets.add(targetKey);
       try {
         const run = await this.multiAgentService.createRun(userId, {
           ticker: target.ticker,
@@ -98,6 +138,7 @@ export class BatchService implements OnModuleInit {
           market: target.market ?? undefined,
           triggerType: 'manual',
           runMode: target.runMode,
+          language,
         });
 
         const item: BatchRunItem = {
@@ -108,6 +149,7 @@ export class BatchService implements OnModuleInit {
         };
         result.runs.push(item);
         result.created += 1;
+        this.targetByRun.set(run.id, targetKey);
 
         const queueItem: QueueItem = {
           runId: run.id,
@@ -118,7 +160,7 @@ export class BatchService implements OnModuleInit {
 
         if (this.canStart(target.runMode)) {
           this.acquireSlot(target.runMode);
-          this.pipelineService.startPipeline(run.id, userId);
+          this.pipelineService.startPipeline(run.id, userId, target.runMode);
           item.status = 'fetching';
           result.running += 1;
         } else {
@@ -127,9 +169,10 @@ export class BatchService implements OnModuleInit {
           result.queued += 1;
         }
       } catch (err) {
+        this.activeTargets.delete(targetKey);
         result.errors.push({
           ticker: target.ticker,
-          error: err instanceof Error ? err.message : String(err),
+          error: safeAnalysisError(err, language),
         });
       }
     }
@@ -141,7 +184,7 @@ export class BatchService implements OnModuleInit {
    * Daily routine: tiered run over all holdings, plus a tiered run over
    * watchlist tickers that carry a buy/strong-buy signal.
    */
-  async createDailyBatch(userId: string): Promise<{
+  async createDailyBatch(userId: string, language?: AnalysisLanguage): Promise<{
     holdingsRuns: BatchRunItem[];
     watchlistRuns: BatchRunItem[];
     totalCreated: number;
@@ -150,18 +193,22 @@ export class BatchService implements OnModuleInit {
     const holdingsResult = await this.createBatch(userId, {
       scope: 'holdings',
       tiered: true,
+      language,
     });
 
     const watchlistItems = await this.getWatchlistTargets(userId);
+    const holdingTickers = new Set(holdingsResult.runs.map((run) => run.ticker.toUpperCase()));
     const buySignals = watchlistItems.filter((w) => {
+      if (holdingTickers.has(w.ticker.toUpperCase())) return false;
       const sig = w.signal ?? '';
-      return sig.includes('买入') || sig.includes('强烈');
+      return sig.includes('买入') || sig.includes('强烈') || /^(strong\s+)?buy$/iu.test(sig.trim());
     });
 
     const watchlistResult = await this.createBatch(userId, {
       scope: 'custom',
       tickers: buySignals.map((w) => w.ticker),
       tiered: true,
+      language,
     });
 
     return {
@@ -183,7 +230,7 @@ export class BatchService implements OnModuleInit {
       if (!item) break;
       this.fullRunning += 1;
       this.logger.log(`Dequeued full run: ${item.ticker} (${item.runId})`);
-      this.pipelineService.startPipeline(item.runId, item.userId);
+      this.pipelineService.startPipeline(item.runId, item.userId, item.runMode);
     }
 
     while (this.summaryRunning < this.MAX_SUMMARY_CONCURRENT && this.summaryQueue.length > 0) {
@@ -191,7 +238,7 @@ export class BatchService implements OnModuleInit {
       if (!item) break;
       this.summaryRunning += 1;
       this.logger.log(`Dequeued summary run: ${item.ticker} (${item.runId})`);
-      this.pipelineService.startPipeline(item.runId, item.userId);
+      this.pipelineService.startPipeline(item.runId, item.userId, item.runMode);
     }
   }
 
@@ -263,8 +310,6 @@ export class BatchService implements OnModuleInit {
         this.db.select().from(watchlist).where(eq(watchlist.owner, userId)),
       ]);
 
-      const tickerUpper = new Set(req.tickers.map((t) => t.toUpperCase()));
-
       for (const t of req.tickers) {
         const upper = t.toUpperCase();
         const h = holdingRows.find((r) => r.ticker.toUpperCase() === upper);
@@ -296,7 +341,21 @@ export class BatchService implements OnModuleInit {
       }
     }
 
-    return targets;
+    // Dedupe the complete request independently of live execution: a fast run
+    // may finish (and release its active target) before later items are created.
+    const uniqueTargets = new Map<string, (typeof targets)[number]>();
+    for (const target of targets) {
+      const key = target.ticker.toUpperCase();
+      const existing = uniqueTargets.get(key);
+      if (!existing) {
+        uniqueTargets.set(key, target);
+      } else {
+        if (target.runMode === 'full') existing.runMode = 'full';
+        existing.company ??= target.company;
+        existing.market ??= target.market;
+      }
+    }
+    return [...uniqueTargets.values()];
   }
 
   /** Fetch just ticker+signal for the caller's watchlist. */

@@ -29,6 +29,7 @@ import {
 import { cn } from '@/lib/utils';
 import { useTranslation } from 'react-i18next';
 import { formatScenarioProbabilities } from './scenario-probability';
+import AnalysisTracePanel from './AnalysisTracePanel';
 import type {
   DeepReport,
   AgentRating,
@@ -1273,6 +1274,7 @@ const DeepReportView: React.FC<DeepReportViewProps> = ({
 
   // Build section list based on actual data
   const sections: SectionDef[] = [
+    { id: 'analysis-trace', label: t('analysisFlow.traceTitle'), visible: !!report.analysisTrace },
     {
       id: 'executive-summary',
       label: t('ui.report.conclusionSummary'),
@@ -1584,6 +1586,7 @@ const DeepReportView: React.FC<DeepReportViewProps> = ({
 
           {/* Content area */}
           <main ref={contentRef} className="flex-1 min-w-0">
+            {report.analysisTrace && <AnalysisTracePanel trace={report.analysisTrace} />}
             <ExecutiveSummarySection report={report} />
             <CompanyBusinessSection report={report} />
             <FinancialSection report={report} />

@@ -50,8 +50,10 @@ Self-hosted. No phone number, no email verification, zero telemetry — see
 | 🤖 **Guided Agent Builder** | Pick a guard, scout or balanced template; select symbols, optional per-symbol buy/sell price triggers, a minimum research rating and explicit paper risk limits. Preview the rules, activate one versioned profile, then run a scan or let the scheduled bot scan. Investor-set price triggers can produce paper ideas even when research data is unavailable; they are labeled as your rules, not AI findings. A free-text preference can veto a candidate when you configure an LLM; it cannot change an order or override a limit. |
 | 🧪 **Paper first, real trades by hand** | Filled paper orders can produce proposals in an inbox and optional Webhook / Bark / Server酱 / SMTP / Telegram notifications. You place any real trade in your own broker, then skip the proposal or record the actual time, size, price and fees. This manual record is a comparison ledger and does not update holdings or transactions. No real-broker execution path exists. |
 | 🗣️ **Evidence-aware research** | Missing financials, news or valuation inputs are labelled unavailable, excluded from debate citations and lower the final recommendation's confidence. Portfolio risk checks convert currencies before computing exposure; unverified rules are reported as such. |
-| 🔒 **Self-hosted data** | Accounts, holdings, prompts and proposal history live in your PostgreSQL database. No telemetry; username and password suffice. Research and optional AI review send selected context to your configured LLM, while quotes and notifications contact their respective providers. |
-| 🔑 **Your API settings** | In **Settings**, save an OpenAI-compatible LLM endpoint, model IDs and API key for your own account. Optionally add a Finnhub key for US-company financial metrics and news in research. The page includes provider setup guides and connection tests. Keys are encrypted in your database and are never returned by the settings API. |
+| ▶️ **One-click analysis, no key required** | Run a stock or portfolio analysis inside **Daily Analysis**. Free basic mode checks public quotes, portfolio exposure and your risk rules; it produces a clearly labelled Watch/low report, without an LLM or target-price forecast. Add a model key to use AI debate. New reports follow the selected Chinese/English language and retain evidence, risk checks and a readable execution trace. |
+| 🌍 **Market overview** | Track US/HK/CN index changes with their source and trading date. Market mood is a transparent estimate derived from index price changes, not an official sentiment index. Missing or stale data stays visible. |
+| 🔒 **Self-hosted data** | Accounts, holdings, prompts and proposal history live in your PostgreSQL database. No telemetry; username and password suffice. AI research and optional AI review send selected context to your configured LLM, while quotes and notifications contact their respective providers. |
+| 🔑 **Your API settings** | Start with free basic analysis and public quotes. Optionally save an OpenAI-compatible LLM endpoint, model IDs and API key, or add Finnhub for US-company metrics and news. Settings includes provider guides, an OpenRouter free-model preset (requires your own key), and connection tests. Keys are encrypted in your database and are never returned by the settings API. |
 
 ## Try it in 5 minutes
 
@@ -69,13 +71,14 @@ upgraded Hold → Buy, with the losing bear argument preserved), and one
 triggered risk gate. The demo account is seeded by the database initializer —
 change or drop it for a public deployment.
 
-**No API keys needed** to explore the seeded demo. Fresh research requires your
-own OpenAI-compatible LLM key, entered under **API Settings**
-after login or supplied through `DOUBAO_API_KEY` by the host. The optional
-Agent Builder prompt also requires that key; its explicit trading rules work
-without it. An optional [Finnhub](https://finnhub.io/docs/api) key adds
-US-company metrics and news to research. Market quotes still come from public
-providers and may be delayed or unavailable. Details:
+**No API keys needed** to explore the demo or generate new **basic reports** in
+Daily Analysis. Basic mode applies explicit rules to available data; it does
+not call a language model. For AI debate, add your OpenAI-compatible key in
+**API Settings**, or let the host configure `DOUBAO_API_KEY`. The optional
+Agent Builder prompt also needs a model key; its explicit trading rules work
+without one. An optional [Finnhub](https://finnhub.io/docs/api) key adds
+US-company metrics and news. Stock quotes and dashboard indices use public
+providers by default and may be delayed or unavailable. Details:
 [self-hosting guide](docs/self-hosting.md).
 
 > 🧡 The app is free and open source. External LLM and market-data providers
@@ -98,18 +101,20 @@ providers and may be delayed or unavailable. Details:
 <details>
 <summary><b>Is it free?</b></summary>
 
-Yes — MIT-licensed open source. Your chosen LLM or financial-data provider may
-charge for API usage, including connection tests, according to its plan.
+Yes — MIT-licensed open source, with no-key basic analysis and public quotes.
+Your chosen LLM or optional financial-data provider may charge for API usage,
+including connection tests, according to its plan.
 
 </details>
 
 <details>
 <summary><b>Where does my data go?</b></summary>
 
-Your account data lives in the PostgreSQL on your own machine. Running research
-sends selected context to your LLM provider and, if you configure Finnhub,
-requests US-company data from Finnhub. Quote providers and any notification
-channel you configure also receive requests. The full breakdown is in
+Your account data lives in the PostgreSQL on your own machine. Basic analysis
+uses local rules and public-data requests without calling an LLM. AI analysis
+sends selected context to your configured LLM; an optional Finnhub key enables
+US-company data requests. Quote providers and any notification channel you
+configure also receive requests. The full breakdown is in
 [docs/privacy.md](docs/privacy.md) — every claim is verifiable against the
 open source code.
 

@@ -86,6 +86,7 @@ import {
 } from '@/components/ui/select';
 import DailyPlChart from './DailyPlChart';
 import DailyPnLBreakdown from './DailyPnLBreakdown';
+import MarketOverview from './MarketOverview';
 import { Badge } from '@/components/ui/badge';
 import { useTranslation } from 'react-i18next';
 import './dashboard-design.css';
@@ -498,6 +499,7 @@ export default function DashboardPage() {
       </div>
 
       <div className="dashboard-analysis-grid">
+        <div className="min-w-0 space-y-5">
         <Card className="dashboard-panel dashboard-ai-card">
           <CardHeader className="pb-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -612,6 +614,8 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
+          <MarketOverview />
+        </div>
         <Card className="dashboard-panel dashboard-performance-card">
           <CardHeader className="pb-3">
             <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">

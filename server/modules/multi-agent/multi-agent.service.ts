@@ -69,10 +69,13 @@ import type {
   LatestRating,
   AgentRunWithRating,
 } from '@shared/api.interface';
+import { buildPipelineReport, normalizeAnalysisLanguage, safeAnalysisError, type AnalysisExecutionInfo } from './analysis-report';
 
 /** Internal row shape for bulk evidence inserts (snake_case DB columns). */
 interface EvidenceInsert {
   runId: string;
+  owner: string;
+  createdBy: string;
   role: string;
   evidenceType: string;
   title: string;
@@ -91,6 +94,12 @@ export class MultiAgentService {
 
   /** Create a new run row in `pending` status. Does not start the pipeline. */
   async createRun(userId: string, dto: CreateAgentRunDto): Promise<AgentRun> {
+    let language;
+    try {
+      language = normalizeAnalysisLanguage(dto.language);
+    } catch (error) {
+      throw new BadRequestException(error instanceof Error ? error.message : 'Invalid analysis language');
+    }
     const [row] = await this.db
       .insert(agentRuns)
       .values({
@@ -99,8 +108,11 @@ export class MultiAgentService {
         market: dto.market ?? null,
         triggerType: dto.triggerType,
         runMode: dto.runMode ?? 'full',
+        language,
         status: 'pending',
         owner: userId,
+        createdBy: userId,
+        updatedBy: userId,
       })
       .returning();
     return this.mapRun(row);
@@ -121,6 +133,7 @@ export class MultiAgentService {
     if (Object.keys(patch).length === 0) {
       throw new BadRequestException('未提供可更新字段');
     }
+    patch.updatedBy = userId;
 
     const [updated] = await this.db
       .update(agentRuns)
@@ -210,7 +223,7 @@ export class MultiAgentService {
         .limit(limit)
         .offset(offset),
       this.db
-        .select({ count: this.db.$count(agentRuns) })
+        .select({ count: sql<number>`count(*)` })
         .from(agentRuns)
         .where(and(...conditions)),
     ]);
@@ -230,9 +243,12 @@ export class MultiAgentService {
   /** Bulk-insert evidence rows for a run (owner-checked). */
   async addEvidence(userId: string, runId: string, items: CreateEvidenceDto[]): Promise<AgentEvidence[]> {
     await this.ensureRunOwner(userId, runId);
+    if (items.length === 0) return [];
 
     const values = items.map((it): EvidenceInsert => ({
       runId,
+      owner: userId,
+      createdBy: userId,
       role: it.role,
       evidenceType: it.evidenceType,
       title: it.title,
@@ -280,6 +296,7 @@ export class MultiAgentService {
         evidenceIds,
         counteredBy: dto.counteredBy ?? null,
         owner: userId,
+        createdBy: userId,
       })
       .returning();
 
@@ -299,6 +316,7 @@ export class MultiAgentService {
         content: dto.content,
         tokensUsed: dto.tokensUsed ?? 0,
         owner: userId,
+        createdBy: userId,
       })
       .returning();
 
@@ -333,6 +351,7 @@ export class MultiAgentService {
           bearSummary: dto.bearSummary ?? null,
           catalysts: dto.catalysts ?? null,
           risks: dto.risks ?? null,
+          updatedBy: userId,
         })
         .where(eq(agentRatings.id, existing[0].id))
         .returning();
@@ -355,6 +374,8 @@ export class MultiAgentService {
         catalysts: dto.catalysts ?? null,
         risks: dto.risks ?? null,
         owner: userId,
+        createdBy: userId,
+        updatedBy: userId,
       })
       .returning();
 
@@ -364,17 +385,19 @@ export class MultiAgentService {
   /** Bulk-insert evaluated risk-gate results for a run (owner-checked). */
   async saveRiskGateResults(userId: string, runId: string, items: CreateRiskGateDto[]): Promise<RiskGateResult[]> {
     await this.ensureRunOwner(userId, runId);
+    if (items.length === 0) return [];
 
     const values = items.map((it) => ({
       runId,
       ruleName: it.ruleName,
       ruleType: it.ruleType,
       passed: it.passed,
-      currentValue: it.currentValue !== undefined ? String(it.currentValue) : null,
-      thresholdValue: it.thresholdValue !== undefined ? String(it.thresholdValue) : null,
+      currentValue: it.currentValue != null ? String(it.currentValue) : null,
+      thresholdValue: it.thresholdValue != null ? String(it.thresholdValue) : null,
       detail: it.detail ?? null,
       suggestedAction: it.suggestedAction ?? null,
       owner: userId,
+      createdBy: userId,
     }));
 
     const inserted = await this.db.insert(riskGateResults).values(values).returning();
@@ -431,6 +454,8 @@ export class MultiAgentService {
         sort: dto.sort ?? 0,
         enabled: true,
         owner: userId,
+        createdBy: userId,
+        updatedBy: userId,
       })
       .returning();
 
@@ -520,6 +545,33 @@ export class MultiAgentService {
       .where(eq(deepReport.runId, runId));
     if (rows.length === 0) return null;
     return this.mapDeepReport(rows[0]);
+  }
+
+  /** Persist only the actual evidence, published analysis and risk results of this run. */
+  async savePipelineReport(
+    userId: string,
+    runId: string,
+    engine: 'basic' | 'llm',
+    execution: AnalysisExecutionInfo | null,
+  ): Promise<void> {
+    const detail = await this.getRun(userId, runId);
+    const content = buildPipelineReport(detail, engine, execution);
+    await this.db.insert(deepReport).values({ runId, owner: userId, createdBy: userId, updatedBy: userId, ...content })
+      .onConflictDoUpdate({ target: deepReport.runId, set: { ...content, updatedBy: userId, updatedAt: new Date() } });
+  }
+
+  /** Retry only failed, report-less work; published reports and user notes are never removed. */
+  async resetFailedRunArtifacts(userId: string, runId: string): Promise<void> {
+    const run = await this.getRun(userId, runId);
+    if (run.status !== 'failed') throw new BadRequestException('Only failed analysis can be retried');
+    const reports = await this.db.select({ id: deepReport.id }).from(deepReport)
+      .where(and(eq(deepReport.runId, runId), eq(deepReport.owner, userId)));
+    if (reports.length) throw new BadRequestException('A report already exists; start a new analysis');
+    await this.db.transaction(async (tx) => {
+      for (const table of [bullBearArguments, debateRecords, riskGateResults, agentRatings, agentEvidence]) {
+        await tx.delete(table).where(and(eq(table.runId, runId), eq(table.owner, userId)));
+      }
+    });
   }
 
   /**
@@ -838,6 +890,7 @@ export class MultiAgentService {
         action,
         detail: detail ?? null,
         owner: userId,
+        createdBy: userId,
       })
       .returning();
 
@@ -859,7 +912,7 @@ export class MultiAgentService {
   async cancelRun(userId: string, runId: string): Promise<AgentRun> {
     const [updated] = await this.db
       .update(agentRuns)
-      .set({ status: 'cancelled' })
+      .set({ status: 'cancelled', updatedBy: userId })
       .where(and(eq(agentRuns.id, runId), eq(agentRuns.owner, userId)))
       .returning();
 
@@ -944,12 +997,13 @@ export class MultiAgentService {
     const run = runRow[0];
     const rating = ratingRow[0];
     const today = new Date().toISOString().split('T')[0];
+    const en = run.language === 'en';
 
     const analysisText = [
-      rating.aggregationLogic ? `【综合逻辑】${rating.aggregationLogic}` : '',
-      rating.bullSummary ? `【看多要点】${rating.bullSummary}` : '',
-      rating.bearSummary ? `【看空要点】${rating.bearSummary}` : '',
-      rating.keyUncertainty ? `【不确定性】${rating.keyUncertainty}` : '',
+      rating.aggregationLogic ? `${en ? 'Rationale: ' : '【综合逻辑】'}${rating.aggregationLogic}` : '',
+      rating.bullSummary ? `${en ? 'Bull case: ' : '【看多要点】'}${rating.bullSummary}` : '',
+      rating.bearSummary ? `${en ? 'Bear case: ' : '【看空要点】'}${rating.bearSummary}` : '',
+      rating.keyUncertainty ? `${en ? 'Uncertainty: ' : '【不确定性】'}${rating.keyUncertainty}` : '',
     ].filter(Boolean).join('\n\n');
 
     const existing = await this.db
@@ -973,6 +1027,7 @@ export class MultiAgentService {
           targetPrice: rating.targetPrice,
           catalysts: rating.catalysts,
           risks: rating.risks,
+          updatedBy: userId,
         })
         .where(eq(analysis.id, existing[0].id));
     } else {
@@ -986,6 +1041,8 @@ export class MultiAgentService {
         catalysts: rating.catalysts,
         risks: rating.risks,
         owner: userId,
+        createdBy: userId,
+        updatedBy: userId,
       });
     }
 
@@ -1058,6 +1115,9 @@ export class MultiAgentService {
     query: AgentRunListQuery,
   ): Promise<{ items: AgentRunWithRating[]; total: number }> {
     const conditions = [eq(agentRuns.owner, userId)];
+    if (query.activeOnly) {
+      conditions.push(inArray(agentRuns.status, ['pending', 'fetching', 'debating', 'critiquing', 'risk_check']));
+    }
     if (query.ticker) conditions.push(eq(agentRuns.ticker, query.ticker));
     if (query.status) conditions.push(eq(agentRuns.status, query.status));
     if (query.runMode) conditions.push(eq(agentRuns.runMode, query.runMode));
@@ -1075,7 +1135,7 @@ export class MultiAgentService {
       conditions.push(lt(agentRuns.createdAt, toDate));
     }
 
-    const limit = Math.min(query.limit ?? 20, 100);
+    const limit = Math.max(1, Math.min(query.limit ?? 20, query.activeOnly ? 1000 : 100));
     const offset = query.offset ?? 0;
 
     const [rows, countRows] = await Promise.all([
@@ -1086,6 +1146,7 @@ export class MultiAgentService {
           targetBase: deepReport.targetBase,
           targetBull: deepReport.targetBull,
           drConfidence: deepReport.confidence,
+          reportId: deepReport.id,
         })
         .from(agentRuns)
         .leftJoin(deepReport, eq(agentRuns.id, deepReport.runId))
@@ -1094,7 +1155,7 @@ export class MultiAgentService {
         .limit(limit)
         .offset(offset),
       this.db
-        .select({ count: this.db.$count(agentRuns) })
+        .select({ count: sql<number>`count(*)` })
         .from(agentRuns)
         .where(and(...conditions)),
       ]);
@@ -1116,6 +1177,7 @@ export class MultiAgentService {
         targetBase: r.targetBase?.toString() ?? null,
         targetBull: r.targetBull?.toString() ?? null,
         confidence: (r.drConfidence ?? null) as AgentRun['confidence'],
+        hasReport: r.reportId !== null,
         rating: ratingByRun.has(r.run.id) ? this.mapRating(ratingByRun.get(r.run.id)!) : null,
       })),
       total: Number(countRows[0]?.count ?? 0),
@@ -1164,6 +1226,8 @@ export class MultiAgentService {
       sort: d.sort,
       enabled: d.enabled ?? true,
       owner: userId,
+      createdBy: userId,
+      updatedBy: userId,
     }));
 
     const inserted = await this.db.insert(strategyRules).values(values).returning();
@@ -1179,6 +1243,7 @@ export class MultiAgentService {
       market: row.market,
       triggerType: row.triggerType as AgentRun['triggerType'],
       runMode: row.runMode as AgentRun['runMode'],
+      language: row.language === 'en' ? 'en' : 'zh-CN',
       status: row.status as AgentRun['status'],
       modelFast: row.modelFast,
       modelSlow: row.modelSlow,
@@ -1186,7 +1251,7 @@ export class MultiAgentService {
       costEstimate: row.costEstimate?.toString() ?? '0',
       startedAt: row.startedAt ? row.startedAt.toISOString() : null,
       completedAt: row.completedAt ? row.completedAt.toISOString() : null,
-      errorMessage: row.errorMessage,
+      errorMessage: row.errorMessage ? safeAnalysisError(row.errorMessage, row.language === 'en' ? 'en' : 'zh-CN') : null,
       humanDecision: row.humanDecision as AgentRun['humanDecision'],
       humanNote: row.humanNote,
       createdAt: row.createdAt.toISOString(),
@@ -1304,6 +1369,7 @@ export class MultiAgentService {
       id: row.id,
       runId: row.runId,
       ticker: row.ticker,
+      analysisTrace: (row.analysisTrace as DeepReport['analysisTrace']) ?? null,
       rating: (row.rating as DeepReport['rating']) ?? null,
       confidence: (row.confidence as DeepReport['confidence']) ?? null,
       targetBear: row.targetBear?.toString() ?? null,

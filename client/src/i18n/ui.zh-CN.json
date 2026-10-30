@@ -24,7 +24,7 @@
     "dailyChartNoData": "暂无净值数据",
     "noPositions": "暂无持仓",
     "loadFailed": "加载仪表盘失败，请刷新重试",
-    "analysisStatusLoadFailed": "加载 AI 分析状态失败"
+    "analysisStatusLoadFailed": "加载分析状态失败"
   },
   "tickerSearch": {
     "placeholder": "输入代码或公司名",
@@ -43,9 +43,9 @@
     "floatingPl": "浮盈亏",
     "searchPlaceholder": "搜索代码或公司名称...",
     "allGroups": "全部分组",
-    "riskAlert": "风控告警",
-    "riskMessage": "{{count}} 条硬规则未通过，建议审查持仓敞口",
-    "riskDetail": "请前往风控规则页查看详情",
+    "riskAlert": "分析待审核",
+    "riskMessage": "{{count}} 项分析等待人工审核，请查看结论与风控结果",
+    "riskDetail": "前往每日分析查看结论与风控结果",
     "viewDetails": "查看详情",
     "currentPrice": "现价",
     "marketValue": "市值",
@@ -78,7 +78,7 @@
     "bearView": "空头观点",
     "riskPassed": "风控结果已通过 Multi-Agent 风险门控检查",
     "viewReasoning": "查看完整推理过程",
-    "noAiAnalysis": "暂无 AI 分析记录",
+    "noAiAnalysis": "暂无分析记录",
     "runDeepAnalysis": "前往每日分析页运行 Multi-Agent 深度分析",
     "deleteHoldingTitle": "确认删除持仓",
     "deleteHoldingDesc": "确定要删除 {{ticker}} 的持仓记录吗？此操作无法撤销。",

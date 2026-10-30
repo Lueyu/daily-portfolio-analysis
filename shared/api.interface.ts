@@ -389,6 +389,7 @@ export type AgentRunStatus =
 export type AgentRunTrigger = 'cron' | 'manual' | 'watchlist';
 
 export type AgentRunMode = 'full' | 'summary';
+export type AnalysisLanguage = 'zh-CN' | 'en';
 
 export type AgentRating = 'Strong Buy' | 'Buy' | 'Hold' | 'Sell' | 'Strong Sell' | 'Watch';
 
@@ -437,6 +438,7 @@ export interface AgentRun {
   market: string | null;
   triggerType: AgentRunTrigger;
   runMode: AgentRunMode;
+  language: AnalysisLanguage;
   status: AgentRunStatus;
   modelFast: string | null;
   modelSlow: string | null;
@@ -559,6 +561,7 @@ export interface CreateAgentRunDto {
   market?: string;
   triggerType: AgentRunTrigger;
   runMode?: AgentRunMode;
+  language?: AnalysisLanguage;
 }
 
 export interface UpdateAgentRunDto {
@@ -646,10 +649,27 @@ export interface ReorderStrategyRuleDto {
   sort: number;
 }
 
+export interface AnalysisTrace {
+  language: AnalysisLanguage;
+  engine: 'basic' | 'llm';
+  provider: string | null;
+  model: string | null;
+  generatedAt: string;
+  steps: Array<{
+    id: 'evidence' | 'debate' | 'critique' | 'risk' | 'rating';
+    status: 'completed' | 'skipped' | 'partial';
+    summary: string;
+    evidenceIds: string[];
+  }>;
+  evidence: AgentEvidence[];
+  debate: DebateRecord[];
+}
+
 export interface DeepReport {
   id: string;
   runId: string;
   ticker: string;
+  analysisTrace?: AnalysisTrace | null;
   rating: AgentRating | null;
   confidence: AgentConfidence | null;
   targetBear: string | null;
@@ -794,6 +814,7 @@ export interface TrackingMetric {
 }
 
 export interface AgentRunListQuery {
+  activeOnly?: boolean;
   ticker?: string;
   status?: AgentRunStatus;
   runMode?: AgentRunMode;
@@ -821,6 +842,7 @@ export interface HumanDecisionDto {
 }
 
 export interface BatchRunRequest {
+  language?: AnalysisLanguage;
   scope: 'holdings' | 'watchlist' | 'all' | 'custom';
   tickers?: string[];
   tiered: boolean;
@@ -886,6 +908,7 @@ export interface LatestRating {
 }
 
 export interface AgentRunWithRating extends AgentRun {
+  hasReport?: boolean;
   rating: AgentRatingRecord | null;
 }
 
@@ -1148,7 +1171,10 @@ export interface RecordBuilderFillDto {
 /** User-owned provider credentials are never returned by the API. */
 export interface IntegrationSettings {
   llm: {
-    source: 'user' | 'server' | 'none';
+    source: 'user' | 'server' | 'builtin';
+    /** Basic mode uses public data and deterministic rules, not a language model. */
+    engine: 'basic' | 'llm';
+    available: boolean;
     baseUrl: string;
     fastModel: string;
     slowModel: string;
@@ -1158,8 +1184,9 @@ export interface IntegrationSettings {
     needsReentry?: boolean;
   };
   financial: {
-    source: 'user' | 'none';
-    provider: 'finnhub';
+    source: 'user' | 'builtin';
+    provider: 'finnhub' | 'public';
+    available: boolean;
     hasApiKey: boolean;
     maskedApiKey?: string;
     needsReentry?: boolean;
@@ -1183,6 +1210,7 @@ export interface UpdateFinancialIntegrationRequest {
 export interface IntegrationTestResult {
   ok: boolean;
   message: string;
+  code?: 'basic_ready' | 'public_ready' | 'public_unavailable' | 'credential_unreadable';
 }
 
 /**
@@ -1289,4 +1317,39 @@ export type PaperOrderStatusWithApproval = PaperOrderStatus | 'pending_approval'
 export interface AgentOrderInfo {
   sessionId: string | null;
   agentName: string | null;
+}
+
+/** Public index quotes, kept separate from a user's holdings and quote settings. */
+export interface MarketIndexQuote {
+  id: string;
+  market: Market;
+  value: number | null;
+  change: number | null;
+  changePercent: number | null;
+  /** Provider-local time, paired with timeZone (never the HTTP retrieval time). */
+  quoteTime: string | null;
+  sessionDate: string | null;
+  timeZone: string;
+  retrievedAt: string | null;
+  source: 'Tencent';
+  status: 'available' | 'stale' | 'unavailable';
+  issue: 'fetch_failed' | 'invalid_quote' | 'outdated_quote' | null;
+}
+
+/** An explicitly labelled price-based estimate, not an official fear/greed index. */
+export interface MarketMood {
+  market: Market;
+  score: number | null;
+  averageChangePercent: number | null;
+  sessionDate: string | null;
+  covered: number;
+  total: number;
+  method: 'index_daily_change_v1';
+}
+
+export interface MarketOverviewResponse {
+  checkedAt: string;
+  refreshAfterSeconds: number;
+  indices: MarketIndexQuote[];
+  moods: MarketMood[];
 }

@@ -29,6 +29,7 @@ RUN npm ci --omit=dev
 COPY --from=build /app/dist ./dist
 COPY scripts/db/03_agent_builder.sql ./scripts/db/03_agent_builder.sql
 COPY scripts/db/04_user_api_settings.sql ./scripts/db/04_user_api_settings.sql
+COPY scripts/db/05_analysis_language.sql ./scripts/db/05_analysis_language.sql
 COPY scripts/ensure-settings-key.cjs scripts/start-app.cjs ./scripts/
 
 # Views and static assets are resolved from process.cwd()/dist/client
