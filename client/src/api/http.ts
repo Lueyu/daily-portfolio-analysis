@@ -55,12 +55,25 @@ http.interceptors.request.use((config) => {
   return config;
 });
 
+/** Public auth endpoints: a 401 here is just "wrong credentials", not a
+ * dead session — never clear the token or redirect for these. */
+const PUBLIC_AUTH_PATHS = [
+  '/api/auth/login',
+  '/api/auth/register',
+  '/api/auth/refresh',
+];
+
 http.interceptors.response.use(
   (response) => response,
   (error) => {
     const status = error?.response?.status;
     const url: string = error?.config?.url ?? '';
-    if (status === 401 && !url.includes('/api/auth/')) {
+    const isPublicAuth = PUBLIC_AUTH_PATHS.some((p) => url.includes(p));
+    if (status === 401 && !isPublicAuth) {
+      // Session expired or token invalid (e.g. after a server rebuild or
+      // database reset): drop the stale session and send the user to the
+      // login page. /api/auth/me IS covered here so a stale token can
+      // never trap the app in a redirect loop.
       tokenStore.clear();
       if (!window.location.pathname.startsWith('/login')) {
         window.location.assign('/login');
