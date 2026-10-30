@@ -7,8 +7,10 @@ const ts = require('typescript');
 const directory = __dirname;
 const holdings = { name: 'holdings' };
 const watchlist = { name: 'watchlist' };
+const loadedServices = new Map();
 
 function loadService(name) {
+  if (loadedServices.has(name)) return loadedServices.get(name);
   const source = fs.readFileSync(path.join(directory, name), 'utf8');
   const compiled = ts.transpileModule(source, {
     compilerOptions: {
@@ -31,12 +33,13 @@ function loadService(name) {
     '../../common/platform': { DRIZZLE_DATABASE: 'db' },
     'drizzle-orm': { eq: () => true, and: () => true },
     '@server/database/schema': { holdings, watchlist, agentRuns: {} },
-    './finnhub-evidence.service': { FinnhubEvidenceService: class {} },
     '../settings/settings.service': { SettingsService: class {} },
   };
   const localRequire = (id) => {
     if (Object.hasOwn(dependencies, id)) return dependencies[id];
-    if (id === './analysis-report' || id === './evidence-language') return loadService(`${id.slice(2)}.ts`);
+    if (['./analysis-report', './evidence-language', './finnhub-evidence.service', './finnhub-financials'].includes(id)) {
+      return loadService(`${id.slice(2)}.ts`);
+    }
     throw new Error(`Unexpected import in test: ${id}`);
   };
   new Function('require', 'module', 'exports', compiled)(
@@ -44,6 +47,7 @@ function loadService(name) {
     module,
     module.exports,
   );
+  loadedServices.set(name, module.exports);
   return module.exports;
 }
 
@@ -100,7 +104,7 @@ test('missing news, valuation, and historical data are gaps, not research facts'
   const { EvidenceService } = loadService('evidence.service.ts');
   const service = new EvidenceService(fakeDb(), {
     getQuote: async () => quote,
-  }, { getMetrics: async () => null, getNews: async () => null });
+  }, { getFinancials: async () => ({ items: [], hasStatements: false, missingFields: [] }), getMetrics: async () => null, getNews: async () => null });
 
   const items = await service.collectEvidence('AAPL', 'user-1', { totalValue: 1000 });
   const gaps = items.filter((item) => item.sourceName === 'Data Unavailable');
@@ -120,6 +124,7 @@ test('verified Finnhub valuation is cited while missing statements remain a gap'
   const { EvidenceService } = loadService('evidence.service.ts');
   const seen = [];
   const service = new EvidenceService(fakeDb(), { getQuote: async () => quote }, {
+    getFinancials: async () => ({ items: [], hasStatements: false, missingFields: [] }),
     getMetrics: async (userId, ticker) => {
       seen.push([userId, ticker]);
       return {
@@ -144,7 +149,7 @@ test('verified Finnhub valuation is cited while missing statements remain a gap'
 test('configured Finnhub news is preserved as sourced evidence', async () => {
   const { EvidenceService } = loadService('evidence.service.ts');
   const service = new EvidenceService(fakeDb(), { getQuote: async () => quote }, {
-    getMetrics: async () => null,
+    getFinancials: async () => ({ items: [], hasStatements: false, missingFields: [] }), getMetrics: async () => null,
     getNews: async () => [{
       role: 'news', evidenceType: 'news', title: 'AAPL company update',
       content: 'Headline from provider', sourceUrl: 'https://example.com/article',
@@ -173,8 +178,8 @@ test('Finnhub requests use only the caller key and keep unsupported markets out'
     assert.equal(metrics.hasValuation, true);
     assert.match(metrics.items[0].content, /P\/E.*25\.40/);
     assert.equal(requested[0].searchParams.get('token'), 'alice-secret');
-    assert.equal(await service.getMetrics('bob', 'AAPL'), null);
-    assert.equal(await service.getMetrics('alice', '0700.HK'), null);
+    await assert.rejects(service.getMetrics('bob', 'AAPL'), { code: 'missing_key' });
+    await assert.rejects(service.getMetrics('alice', '0700.HK'), { code: 'unsupported_market' });
     assert.equal(requested.length, 1);
   } finally {
     globalThis.fetch = originalFetch;
@@ -190,13 +195,27 @@ test('Finnhub transport errors cannot leak the key into an exception', async () 
       getFinnhubKey: async () => 'alice-secret',
     });
     await assert.rejects(service.getMetrics('alice', 'AAPL'), (error) => {
-      assert.match(error.message, /Finnhub request failed/);
+      assert.equal(error.code, 'network_error');
       assert.doesNotMatch(error.message, /alice-secret/);
       return true;
     });
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test('malformed valuation values cannot create verified ratios through numeric coercion', async () => {
+  const { FinnhubEvidenceService } = loadService('finnhub-evidence.service.ts');
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => Response.json({
+    metric: { peBasicExclExtraTTM: true, pbAnnual: [4], psTTM: '0x10' },
+  });
+  try {
+    const service = new FinnhubEvidenceService({ getFinnhubKey: async () => 'key' });
+    const result = await service.getMetrics('alice', 'AAPL');
+    assert.equal(result.hasValuation, false);
+    assert.deepEqual(result.items, []);
+  } finally { globalThis.fetch = originalFetch; }
 });
 
 test('Finnhub news rejects invalid provider timestamps as unverified', async () => {
@@ -235,12 +254,207 @@ test('Finnhub news sanitizes article metadata and unsafe links', async () => {
   }
 });
 
+function reportedFinancials(overrides = {}) {
+  const end = new Date(Date.now() - 80 * 86400000).toISOString().slice(0, 10);
+  const filed = new Date(Date.now() - 50 * 86400000).toISOString().slice(0, 10);
+  return {
+    symbol: 'AAPL', cik: '320193', data: [{
+      symbol: 'AAPL', cik: '320193', accessNumber: '0000320193-26-000001',
+      form: '10-Q', startDate: new Date(Date.now() - 170 * 86400000).toISOString().slice(0, 10),
+      endDate: end, filedDate: filed,
+      report: {
+        ic: [
+          { concept: 'us-gaap_RevenueFromContractWithCustomerExcludingAssessedTax', unit: 'usd', value: 123456 },
+          { concept: 'us-gaap_NetIncomeLoss', unit: 'usd', value: -2345 },
+        ],
+        cf: [{ concept: 'us-gaap_NetCashProvidedByUsedInOperatingActivities', unit: 'usd', value: 0 }],
+        bs: [{ concept: 'us-gaap_Liabilities', unit: 'usd', value: 34567 }],
+      },
+      ...overrides,
+    }],
+  };
+}
+
+test('reported statements retain actual values, periods, filing provenance and remove only the real gap', async () => {
+  const { FinnhubEvidenceService } = loadService('finnhub-evidence.service.ts');
+  const { EvidenceService } = loadService('evidence.service.ts');
+  const originalFetch = globalThis.fetch;
+  const requested = [];
+  const financials = reportedFinancials();
+  globalThis.fetch = async (input) => {
+    const url = new URL(String(input));
+    requested.push(url);
+    if (url.pathname.endsWith('/financials-reported')) return Response.json(financials);
+    if (url.pathname.endsWith('/metric')) return Response.json({ metric: { psTTM: 3 } });
+    return Response.json([]);
+  };
+  try {
+    const provider = new FinnhubEvidenceService({ getFinnhubKey: async () => 'alice-secret' });
+    const service = new EvidenceService(fakeDb(), { getQuote: async () => quote }, provider);
+    const items = await service.collectEvidence('AAPL', 'alice', { totalValue: 1000 }, 'en');
+    const statements = items.find((item) => item.title.includes('reported financial statements'));
+    assert.ok(statements, 'Configured Finnhub statements must reach the evidence snapshot');
+    assert.match(statements.content, /123456/);
+    assert.match(statements.content, /-2345/);
+    assert.match(statements.content, /Operating cash flow: USD 0/);
+    assert.ok(statements.content.includes(financials.data[0].endDate));
+    assert.ok(statements.content.includes(financials.data[0].filedDate));
+    assert.match(statements.content, /0000320193-26-000001/);
+    const compactExcerpt = Buffer.from(statements.content).subarray(0, 250).toString('utf8');
+    for (const value of ['123456', '-2345', 'Operating cash flow: USD 0', '34567', financials.data[0].endDate]) {
+      assert.ok(compactExcerpt.includes(value), `Council excerpt must retain ${value}`);
+    }
+    assert.equal(statements.sourceName, 'Finnhub API');
+    assert.match(statements.sourceUrl, /^https:\/\/www.sec.gov\/Archives\//);
+    assert.ok(!items.some((item) => item.title.includes('Financial statements unavailable')));
+    assert.ok(items.some((item) => item.title.includes('Historical technical data unavailable')));
+    assert.ok(items.some((item) => item.title.includes('News and sentiment unavailable')));
+    const request = requested.find((url) => url.pathname.endsWith('/financials-reported'));
+    assert.equal(request.searchParams.get('freq'), 'quarterly');
+    assert.ok(request.searchParams.get('from'));
+    assert.ok(request.searchParams.get('to'));
+    assert.doesNotMatch(JSON.stringify(items), /alice-secret/);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test('the latest incomplete statement stays a gap instead of using an older complete filing', async () => {
+  const { FinnhubEvidenceService } = loadService('finnhub-evidence.service.ts');
+  const { EvidenceService } = loadService('evidence.service.ts');
+  const originalFetch = globalThis.fetch;
+  const latest = reportedFinancials();
+  latest.data[0].report.cf = [];
+  latest.data[0].report.ic[0].value = null;
+  const older = reportedFinancials({ endDate: new Date(Date.now() - 180 * 86400000).toISOString().slice(0, 10) });
+  latest.data.unshift(older.data[0]);
+  globalThis.fetch = async (input) => new URL(String(input)).pathname.endsWith('/financials-reported')
+    ? Response.json(latest) : Response.json({ metric: {} });
+  try {
+    const provider = new FinnhubEvidenceService({ getFinnhubKey: async () => 'key' });
+    const service = new EvidenceService(fakeDb(), { getQuote: async () => quote }, provider);
+    const items = await service.collectEvidence('AAPL', 'alice', { totalValue: 1000 }, 'en');
+    const gap = items.find((item) => item.title.includes('Financial statements incomplete'));
+    assert.ok(gap);
+    assert.match(gap.content, /incomplete_data/);
+    assert.match(gap.content, /revenue|Revenue/);
+    assert.match(gap.content, /cash flow/);
+    assert.match(gap.content, /successfully returned partial/);
+    assert.doesNotMatch(gap.content, /Verified revenue, earnings, cash flow and balance-sheet statements are unavailable/);
+    const statements = items.find((item) => item.title.includes('reported financial statements'));
+    assert.ok(statements);
+    assert.doesNotMatch(statements.content, /123456/);
+    assert.match(statements.content, /-2345/);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test('future and stale filings cannot count as verified current financial coverage', async () => {
+  const { FinnhubEvidenceService } = loadService('finnhub-evidence.service.ts');
+  const originalFetch = globalThis.fetch;
+  try {
+    const service = new FinnhubEvidenceService({ getFinnhubKey: async () => 'key' });
+    globalThis.fetch = async () => Response.json(reportedFinancials({ filedDate: '2099-01-01' }));
+    await assert.rejects(service.getFinancials('alice', 'AAPL'), { code: 'invalid_response' });
+    globalThis.fetch = async () => Response.json(reportedFinancials({
+      startDate: '2020-01-01', endDate: '2020-03-31', filedDate: '2020-04-30',
+    }));
+    await assert.rejects(service.getFinancials('alice', 'AAPL'), { code: 'stale_data' });
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test('unchanged financial facts remain stable across fetches for council deduplication', () => {
+  const { parseFinnhubFinancials } = loadService('finnhub-financials.ts');
+  const raw = reportedFinancials();
+  const now = new Date();
+  const first = parseFinnhubFinancials(raw, 'AAPL', 'quarterly', now);
+  const next = parseFinnhubFinancials(raw, 'AAPL', 'quarterly', new Date(now.getTime() + 10000));
+  assert.deepEqual(first, next);
+});
+
+test('compact financial excerpts retain the cash-flow period caveat with large reported amounts', () => {
+  const { parseFinnhubFinancials } = loadService('finnhub-financials.ts');
+  const raw = reportedFinancials();
+  const filing = raw.data[0];
+  filing.report.ic[0].value = 364357000000;
+  filing.report.ic[1].value = -101464000000;
+  filing.report.cf[0].value = 116996000000;
+  filing.report.bs[0].value = 287480000000;
+  const result = parseFinnhubFinancials(raw, 'AAPL', 'quarterly');
+  const excerpt = Buffer.from(result.items[0].content).subarray(0, 250).toString('utf8');
+  assert.match(excerpt, /Operating cash flow: USD 116996000000 \(may be YTD\)/);
+  for (const value of ['Revenue: USD 364357000000', 'Net income: USD -101464000000',
+    'Liabilities: USD 287480000000', filing.startDate, filing.endDate]) {
+    assert.ok(excerpt.includes(value), `Compact financial excerpt must retain ${value}`);
+  }
+  assert.match(result.items[0].content, /cash flow may cover the year to date/);
+});
+
+test('empty quarterly statements fall back to annual reports without inventing units', async () => {
+  const { FinnhubEvidenceService } = loadService('finnhub-evidence.service.ts');
+  const originalFetch = globalThis.fetch;
+  const requested = [];
+  globalThis.fetch = async (input) => {
+    const frequency = new URL(String(input)).searchParams.get('freq');
+    requested.push(frequency);
+    return Response.json(frequency === 'quarterly' ? { data: [] } : reportedFinancials({
+      form: '10-K', report: {
+        ic: { Revenues: 400, NetIncomeLoss: 20 },
+        cf: { NetCashProvidedByUsedInOperatingActivities: 35 }, bs: { Liabilities: 100 },
+      },
+    }));
+  };
+  try {
+    const service = new FinnhubEvidenceService({ getFinnhubKey: async () => 'key' });
+    const result = await service.getFinancials('alice', 'AAPL');
+    assert.deepEqual(requested, ['quarterly', 'annual']);
+    assert.equal(result.hasStatements, false, 'Unspecified statement units must remain a data gap');
+    assert.ok(result.missingFields.includes('reported currency units'));
+    assert.match(result.items[0].content, /currency not supplied/);
+    assert.doesNotMatch(result.items[0].content, /USD/);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test('provider gap reasons distinguish missing key, market, authentication, permission, limits and network', async () => {
+  const { FinnhubEvidenceService } = loadService('finnhub-evidence.service.ts');
+  const { EvidenceService } = loadService('evidence.service.ts');
+  const originalFetch = globalThis.fetch;
+  const scenarios = [
+    { code: 'missing_key', key: null },
+    { code: 'unsupported_market', ticker: '0700.HK' },
+    { code: 'unauthorized', status: 401 },
+    { code: 'forbidden', status: 403 },
+    { code: 'rate_limited', status: 429 },
+    { code: 'network_error', failure: new Error('https://provider.test?token=alice-secret') },
+    { code: 'timeout', failure: Object.assign(new Error('token=alice-secret'), { name: 'TimeoutError' }) },
+    { code: 'no_data' },
+  ];
+  try {
+    for (const scenario of scenarios) {
+      globalThis.fetch = async (input) => {
+        if (scenario.failure) throw scenario.failure;
+        if (scenario.status) return Response.json({ error: 'token=alice-secret' }, { status: scenario.status });
+        const url = new URL(String(input));
+        return Response.json(url.pathname.endsWith('/financials-reported') ? { data: [] }
+          : url.pathname.endsWith('/metric') ? { metric: {} } : []);
+      };
+      const provider = new FinnhubEvidenceService({ getFinnhubKey: async () =>
+        Object.hasOwn(scenario, 'key') ? scenario.key : 'alice-secret' });
+      const service = new EvidenceService(fakeDb(), { getQuote: async () => quote }, provider);
+      const items = await service.collectEvidence(scenario.ticker ?? 'AAPL', 'alice', { totalValue: 1000 }, 'en');
+      const gaps = items.filter((item) => item.sourceName === 'Data Unavailable'
+        && item.role !== 'technical');
+      assert.equal(gaps.length, 3);
+      assert.ok(gaps.every((item) => item.content.includes(scenario.code)), scenario.code);
+      assert.doesNotMatch(JSON.stringify(gaps), /alice-secret|provider\.test|token=/);
+      assert.doesNotMatch(gaps.map((item) => item.content).join(' '), /\p{Script=Han}/u);
+    }
+  } finally { globalThis.fetch = originalFetch; }
+});
+
 test('quote failure keeps portfolio facts and reports the missing price', async () => {
   const { EvidenceService } = loadService('evidence.service.ts');
   const service = new EvidenceService(
     fakeDb([{ ticker: 'AAPL', shares: '10', buyPrice: '80', currentPrice: '90' }]),
     { getQuote: async () => { throw new Error('provider down'); } },
-    { getMetrics: async () => null, getNews: async () => null },
+    { getFinancials: async () => ({ items: [], hasStatements: false, missingFields: [] }), getMetrics: async () => null, getNews: async () => null },
   );
 
   const items = await service.collectEvidence('AAPL', 'user-1', { totalValue: 1000 });
@@ -266,7 +480,7 @@ test('HK portfolio evidence uses native currency and the USD-normalized weight',
   const service = new EvidenceService(fakeDb([{
     ticker: '0700.HK', shares: '10', buyPrice: '100', currency: 'HKD', sector: 'Technology',
   }]), { getQuote: async () => hkQuote },
-  { getMetrics: async () => null, getNews: async () => null });
+  { getFinancials: async () => ({ items: [], hasStatements: false, missingFields: [] }), getMetrics: async () => null, getNews: async () => null });
   const portfolio = {
     totalValue: 1000,
     holdings: [{
@@ -512,7 +726,7 @@ test('an explicitly configured model failure remains failed and never falls back
 test('English evidence localizes built-in price and missing-data statements', async () => {
   const { EvidenceService } = loadService('evidence.service.ts');
   const service = new EvidenceService(fakeDb(), { getQuote: async () => quote },
-    { getMetrics: async () => null, getNews: async () => null });
+    { getFinancials: async () => ({ items: [], hasStatements: false, missingFields: [] }), getMetrics: async () => null, getNews: async () => null });
   const items = await service.collectEvidence('AAPL', 'user-1', { totalValue: 1000 }, 'en');
   assert.ok(items.some(item => item.title.includes('Financial statements unavailable')));
   assert.doesNotMatch(items.map(item => `${item.title} ${item.content}`).join(' '), /\p{Script=Han}/u);

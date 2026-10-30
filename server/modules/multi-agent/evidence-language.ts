@@ -1,6 +1,22 @@
 /** Translate application-generated evidence labels, preserving original provider/user text. */
 export function englishEvidenceText(text: string): string {
   const translations: Array<[string, string]> = [
+    ['Finnhub 已成功返回部分经核实财报。', 'Finnhub successfully returned partial verified financial statements.'],
+    ['缺少科目或单位：', 'Missing concepts or units: '],
+    ['财报数据不完整', 'Financial statements incomplete'],
+    ['当前账户未配置 Finnhub 密钥；请在设置中保存密钥后刷新研究数据。', 'No Finnhub key is configured for this account; save a key in Settings and refresh the research data.'],
+    ['当前 Finnhub 证据接入仅支持美股代码，暂不支持该市场。', 'The current Finnhub evidence integration supports U.S. ticker symbols only; this market is unsupported.'],
+    ['Finnhub 拒绝认证（HTTP 401）；请检查当前账户保存的密钥。', 'Finnhub authentication failed (HTTP 401); check the key saved for this account.'],
+    ['Finnhub 拒绝访问（HTTP 403）；请检查密钥和此接口的订阅权限。', 'Finnhub denied access (HTTP 403); check the key and subscription access for this endpoint.'],
+    ['Finnhub 请求频率受限（HTTP 429）；请稍后刷新研究数据。', 'Finnhub rate limit reached (HTTP 429); refresh the research data later.'],
+    ['Finnhub 请求超时；请检查网络后刷新研究数据。', 'The Finnhub request timed out; check the network and refresh the research data.'],
+    ['无法连接 Finnhub；请检查网络后刷新研究数据。', 'Could not connect to Finnhub; check the network and refresh the research data.'],
+    ['Finnhub 返回的数据格式、报告日期或标的校验未通过。', 'Finnhub returned data with an invalid format, report date or ticker.'],
+    ['Finnhub 请求失败；请稍后刷新研究数据。', 'The Finnhub request failed; refresh the research data later.'],
+    ['Finnhub 请求成功，但没有返回该标的所需的有效数据。', 'The Finnhub request succeeded but returned no usable data for this ticker.'],
+    ['Finnhub 返回的最新财报已超过可用时效，需补充更新的报告。', 'The latest Finnhub financial statement is stale; a newer report is required.'],
+    ['Finnhub 最新财报缺少必需科目或币种单位，仍需补齐。', 'The latest Finnhub financial statement is missing required concepts or currency units.'],
+    ['当前没有经核实的近期公司新闻或市场情绪数据。', 'No verified recent company news or sentiment data is available.'],
     ['持仓、关注列表或行情获取失败，当前基本面数据不完整。', 'Portfolio, watchlist or quote retrieval failed; fundamental data is incomplete.'],
     ['新闻数据获取失败，无法判断最新事件与情绪。', 'News retrieval failed; recent events and sentiment could not be assessed.'],
     ['行情或历史K线获取失败，无法完成技术面分析。', 'Quote or historical-price retrieval failed; technical coverage is incomplete.'],

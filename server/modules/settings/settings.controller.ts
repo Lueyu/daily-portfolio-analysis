@@ -10,6 +10,7 @@ import type {
 import { LlmService } from '../multi-agent/llm.service';
 import { SettingsService } from './settings.service';
 import { BudgetExceededException } from '../llm-budget/llm-budget.rules';
+import { safeAnalysisError } from '../multi-agent/analysis-report';
 
 @NeedLogin()
 @Controller('api/settings/integrations')
@@ -38,7 +39,7 @@ export class SettingsController {
   }
 
   @Post('llm/test')
-  async testLlm(@Req() req: Request): Promise<IntegrationTestResult> {
+  async testLlm(@Req() req: Request, @Body() body?: { language?: 'zh-CN' | 'en' }): Promise<IntegrationTestResult> {
     const settings = await this.settings.getSettings(req.userContext.userId);
     if (settings.llm.engine === 'basic') {
       return {
@@ -60,7 +61,7 @@ export class SettingsController {
       if (error instanceof BudgetExceededException) throw error;
       return {
         ok: false,
-        message: 'Could not reach the model. Check the API URL, key, model and server network.',
+        message: safeAnalysisError(error, body?.language === 'zh-CN' ? 'zh-CN' : 'en'),
       };
     }
   }

@@ -66,6 +66,15 @@ test('model connection tests retain budget denial and request only a small bound
     error => error === exceeded);
 });
 
+test('model connection tests explain invalid credentials or parameters without echoing provider content', async () => {
+  const controller = new SettingsController({ getSettings: async () => ({ llm: { engine: 'llm' } }) } as never, {
+    chatFast: async () => { throw new Error('LLM provider returned HTTP 401'); },
+  } as never);
+  const result = await controller.testLlm({ userContext: { userId: 'alice' } } as never, { language: 'zh-CN' });
+  assert.equal(result.ok, false);
+  assert.match(result.message, /鉴权失败.*401.*API Key/);
+});
+
 test('input estimation includes UTF8 and framing without silently truncating facts', () => {
   const messages = [{ role: 'user', content: '事实🧪' }];
   assert.ok(estimateInputTokens(messages) >= Buffer.byteLength(JSON.stringify(messages), 'utf8'));

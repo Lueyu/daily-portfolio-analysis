@@ -105,7 +105,7 @@ function Layout() {
   }
 
   return (
-    <div className="app-shell flex h-screen w-screen overflow-hidden bg-background text-foreground">
+    <div className={`app-shell flex w-screen overflow-hidden bg-background text-foreground ${location.pathname === '/council' ? 'h-dvh' : 'h-screen'}`}>
       {/* Sidebar */}
       <aside
         aria-label={zh ? '主导航' : 'Main navigation'}
@@ -217,7 +217,9 @@ function Layout() {
         </header>
 
         {/* Page content */}
-        <main ref={pageScrollRef} className="app-content flex-1 overflow-y-auto safe-bottom">
+        <main ref={pageScrollRef} className={location.pathname === '/council'
+          ? 'app-content flex min-h-0 flex-1 flex-col overflow-hidden safe-bottom'
+          : 'app-content flex-1 overflow-y-auto safe-bottom'}>
           <Outlet />
         </main>
       </div>

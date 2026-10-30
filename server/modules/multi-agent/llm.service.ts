@@ -38,6 +38,27 @@ class ProviderHttpError extends Error {
   }
 }
 
+class ModelResponseError extends Error {
+  constructor(readonly code: 'LLM_OUTPUT_LIMIT' | 'LLM_EMPTY_RESPONSE' | 'LLM_INVALID_JSON') {
+    super(code);
+  }
+}
+
+/** Keep short council replies usable without silently increasing a user's spend cap. */
+function boundedDeepSeekMode(baseUrl: string, model: string, purpose?: string) {
+  if (purpose !== 'connection-test' && !purpose?.startsWith('council:')) return {};
+  // These documented IDs support an explicit mode switch. Do not guess the
+  // capabilities of legacy aliases, custom gateways or similarly named hosts.
+  if (!['deepseek-flash', 'deepseek-v4-pro', 'deepseek-v4-flash', 'deepseek-v4-flash-vision-exp'].includes(model)) return {};
+  try {
+    const url = new URL(baseUrl);
+    if (url.protocol === 'https:' && url.hostname === 'api.deepseek.com') {
+      return { thinking: { type: 'disabled' as const } };
+    }
+  } catch { /* Invalid server configuration is handled by the safe transport error. */ }
+  return {};
+}
+
 /** A single chat-completion message in OpenAI-compatible format. */
 interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
@@ -53,7 +74,7 @@ interface ChatResponse {
 }
 
 interface ProviderChatPayload {
-  choices?: Array<{ message?: { content?: string } }>;
+  choices?: Array<{ message?: { content?: string | null }; finish_reason?: string | null }>;
   usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
 }
 
@@ -133,7 +154,7 @@ export class LlmService {
       const outputLimit = /^(?:o[1-9](?:-|$)|gpt-5(?:[.-]|$))/u.test(model)
         ? { max_completion_tokens: reservation.maxOutputTokens }
         : { max_tokens: reservation.maxOutputTokens };
-      const body = { model, messages, ...outputLimit };
+      const body = { model, messages, ...outputLimit, ...boundedDeepSeekMode(baseUrl, model, options.purpose) };
       let result: ProviderChatPayload;
       try {
         const response = await axios.post<ProviderChatPayload>(
@@ -176,8 +197,14 @@ export class LlmService {
         continue;
       }
       const usage = await this.budgets.settle(userId, reservation.id, result?.usage);
+      const choice = result?.choices?.[0];
+      // A billed but incomplete response is not a decision. Do not retry or
+      // substitute hidden reasoning for final content, and keep its usage.
+      if (choice?.finish_reason === 'length') throw new ModelResponseError('LLM_OUTPUT_LIMIT');
+      const content = choice?.message?.content;
+      if (typeof content !== 'string' || !content.trim()) throw new ModelResponseError('LLM_EMPTY_RESPONSE');
       return {
-        content: result?.choices?.[0]?.message?.content ?? '',
+        content,
         promptTokens: usage.inputTokens,
         completionTokens: usage.outputTokens,
         totalTokens: usage.chargedTokens,
@@ -237,7 +264,7 @@ export class LlmService {
           // fall through to final throw
         }
       }
-      throw new Error('Failed to parse LLM JSON response');
+      throw new ModelResponseError('LLM_INVALID_JSON');
     }
   }
 }

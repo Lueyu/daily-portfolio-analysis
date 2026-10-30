@@ -1,11 +1,33 @@
 import type {
-  CouncilConfig, CouncilReport, CouncilSession, LlmBudgetSettings, TradingCadence,
+  CouncilConfig, CouncilMessage, CouncilReport, CouncilSession, LlmBudgetSettings, TradingCadence,
 } from '@shared/council.interface';
 
 export const DEFAULT_CADENCE: TradingCadence = {
   reviewEveryTradingDays: 5, maxOrdersPerWeek: 2,
   cooldownTradingDays: 3, maxWeeklyTurnoverPct: 10,
 };
+
+/** A message never resumes a paused/failed room or starts a second active run. */
+export function shouldStartCouncilAfterMessage(
+  previousStatus: CouncilSession['status'], savedStatus: CouncilSession['status'],
+): boolean {
+  return (previousStatus === 'idle' || previousStatus === 'completed') && savedStatus === 'idle';
+}
+
+export function shouldSendCouncilMessage(event: {
+  key: string; shiftKey: boolean; isComposing: boolean; keyCode: number;
+}): boolean {
+  return event.key === 'Enter' && !event.shiftKey && !event.isComposing && event.keyCode !== 229;
+}
+
+const EVIDENCE_UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
+const INTERNAL_EVIDENCE_LINE = new RegExp(`^\\s*\\[\\s*${EVIDENCE_UUID}(?:\\s*,\\s*${EVIDENCE_UUID})*\\s*\\]\\s*$`, 'iu');
+
+/** Legacy AI replies included internal IDs; source details remain in the report. */
+export function councilMessageDisplayContent(message: Pick<CouncilMessage, 'role' | 'content'>): string {
+  if (message.role === 'user' || message.role === 'system') return message.content;
+  return message.content.split('\n').filter((line: string) => !INTERNAL_EVIDENCE_LINE.test(line)).join('\n');
+}
 
 export function isCurrentCouncilReport(
   report: CouncilReport, session: CouncilSession, profileVersion?: number,

@@ -12,7 +12,7 @@ import { eq } from 'drizzle-orm';
 import { holdings, watchlist } from '@server/database/schema';
 import { QuoteService } from '@server/modules/quote/quote.service';
 import type { EvidenceType, PortfolioContext, QuoteResponse, AnalysisLanguage } from '@shared/api.interface';
-import { FinnhubEvidenceService } from './finnhub-evidence.service';
+import { FinnhubEvidenceService, FinnhubEvidenceError, finnhubGapReason } from './finnhub-evidence.service';
 
 /** High-level category of evidence; used to label evidence rows in the UI. */
 export type EvidenceRole = 'fundamental' | 'news' | 'technical';
@@ -48,7 +48,7 @@ export class EvidenceService {
   async collectEvidence(
     ticker: string,
     userId: string,
-    portfolioContext: PortfolioContext,
+    portfolioContext: PortfolioContext | null,
     language: AnalysisLanguage = 'zh-CN',
   ): Promise<EvidenceInput[]> {
     const [fundamental, news, technical] = await Promise.allSettled([
@@ -111,12 +111,12 @@ export class EvidenceService {
 
   /**
    * Fundamental evidence: quote, portfolio, and any configured provider
-   * metrics. Statements remain a gap until a verified statement source exists.
+   * metrics and reported statements. Failed or incomplete sources remain gaps.
    */
   private async collectFundamental(
     ticker: string,
     userId: string,
-    portfolioContext: PortfolioContext,
+    portfolioContext: PortfolioContext | null,
   ): Promise<EvidenceInput[]> {
     const evidence: EvidenceInput[] = [];
     let quote: QuoteResponse | null = null;
@@ -154,7 +154,7 @@ export class EvidenceService {
       const shares = Number(h.shares ?? 0);
       const buyPrice = Number(h.buyPrice ?? 0);
       const currency = h.currency || quote?.currency || 'USD';
-      const portfolioHolding = portfolioContext.holdings?.find(
+      const portfolioHolding = portfolioContext?.holdings?.find(
         (item) => item.ticker.toUpperCase() === h.ticker.toUpperCase(),
       );
       let content = `持仓数量: ${shares}股, 成本价: ${currency} ${buyPrice.toFixed(2)}, 行业: ${h.sector ?? '未知'}`;
@@ -206,25 +206,31 @@ export class EvidenceService {
       });
     }
 
-    let hasValuation = false;
-    try {
-      const metrics = await this.finnhubEvidence.getMetrics(userId, ticker);
-      if (metrics) {
-        evidence.push(...metrics.items);
-        hasValuation = metrics.hasValuation;
-      }
-    } catch (error) {
-      this.logger.warn(`Finnhub metrics unavailable for ${ticker}: ${analysisErrorCode(error)}`);
-    }
-
-    evidence.push(this.dataGap(
-      'fundamental', `${ticker} 财报数据缺失`,
-      '当前缺少经核实的营收、利润、现金流、负债等财报数据。',
-    ));
-    if (!hasValuation) {
+    const [metrics, financials] = await Promise.allSettled([
+      this.finnhubEvidence.getMetrics(userId, ticker),
+      this.finnhubEvidence.getFinancials(userId, ticker),
+    ]);
+    if (metrics.status === 'fulfilled' && metrics.value?.hasValuation) {
+      evidence.push(...metrics.value.items);
+    } else {
+      const reason: string = finnhubGapReason(metrics.status === 'rejected'
+        ? metrics.reason : new FinnhubEvidenceError('no_data'));
       evidence.push(this.dataGap(
         'fundamental', `${ticker} 估值数据缺失`,
-        '当前缺少 PE、PB、PS 等估值数据及可比公司或历史估值参考。',
+        `${reason} 当前缺少 PE、PB、PS 等估值数据及可比公司或历史估值参考。`,
+      ));
+    }
+    if (financials.status === 'fulfilled') evidence.push(...financials.value.items);
+    if (financials.status === 'rejected' || !financials.value.hasStatements) {
+      const partial: boolean = financials.status === 'fulfilled' && financials.value.items.length > 0;
+      const reason: string = finnhubGapReason(financials.status === 'rejected'
+        ? financials.reason : new FinnhubEvidenceError('incomplete_data'));
+      const missing: string = financials.status === 'fulfilled' && financials.value.missingFields.length
+        ? ` 缺少科目或单位：${financials.value.missingFields.join(', ')}.` : '';
+      evidence.push(this.dataGap(
+        'fundamental', `${ticker} ${partial ? '财报数据不完整' : '财报数据缺失'}`,
+        `${missing} ${reason} ${partial ? 'Finnhub 已成功返回部分经核实财报。'
+          : '当前缺少经核实的营收、利润、现金流、负债等财报数据。'}`.trim(),
       ));
     }
 
@@ -258,16 +264,17 @@ export class EvidenceService {
 
   /** Use verified company headlines when available; never invent sentiment. */
   private async collectNews(ticker: string, userId: string): Promise<EvidenceInput[]> {
+    let reason: string = finnhubGapReason(new FinnhubEvidenceError('no_data'));
     try {
       const news = await this.finnhubEvidence.getNews(userId, ticker);
       if (news?.length) return news;
     } catch (error) {
-      this.logger.warn(`Finnhub news unavailable for ${ticker}: ${analysisErrorCode(error)}`);
+      reason = finnhubGapReason(error);
     }
     return [
       this.dataGap(
         'news', `${ticker} 新闻与情绪缺失`,
-        '当前没有经核实的近期公司新闻或市场情绪数据；数据源可能未配置、无覆盖或暂时不可用。',
+        `${reason} 当前没有经核实的近期公司新闻或市场情绪数据。`,
       ),
     ];
   }

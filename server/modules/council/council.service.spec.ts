@@ -52,6 +52,95 @@ async function completed(svc: CouncilService, id: string) {
   throw new Error('Council did not finish');
 }
 
+dbTest('portfolio and saved-report failures do not prevent fresh stock evidence collection', async () => {
+  const svc = service();
+  let collected = 0;
+  Reflect.set(svc, 'portfolio', { getPortfolioContext: async () => { throw new Error('FX unavailable'); } });
+  Reflect.set(svc, 'research', { listRuns: async () => { throw new Error('old report unavailable'); } });
+  Reflect.set(svc, 'evidence', { collectEvidence: async (_ticker: string, _owner: string, context: unknown) => {
+    collected++;
+    assert.equal(context, null);
+    return [{ role: 'fundamental', evidenceType: 'financial', title: 'Verified statement', content: 'Filed revenue', sourceName: 'Finnhub API', relevanceScore: 1 }];
+  } });
+  const session = await svc.createSession(owner, { profileId, ticker: 'AAPL', language: 'en' });
+  await svc.runSession(owner, session.id);
+  const result = await completed(svc, session.id);
+  assert.equal(collected, 1);
+  assert.ok(result.reports[0].evidence.some((item) => item.title === 'Verified statement'));
+  assert.ok(result.reports[0].evidence.some((item) => /portfolio.*unavailable/i.test(item.title)));
+});
+
+dbTest('explicit discussion resume refreshes old gaps, preserves reports and retains the task budget', async () => {
+  const svc = service();
+  let available = false;
+  let collected = 0;
+  Reflect.set(svc, 'evidence', { collectEvidence: async () => {
+    collected++;
+    return [{ role: 'fundamental', evidenceType: 'financial', title: available ? 'Verified statement' : 'Missing key',
+      content: available ? 'Filed revenue' : 'Configure key', sourceName: available ? 'Finnhub API' : 'Data Unavailable', relevanceScore: available ? 1 : 0 }];
+  } });
+  const session = await svc.createSession(owner, { profileId, ticker: 'AAPL', language: 'en' });
+  await svc.runSession(owner, session.id);
+  const first = await completed(svc, session.id);
+  const [before] = await db.select().from(councilSessions).where(eq(councilSessions.id, session.id));
+  available = true;
+  await svc.runSession(owner, session.id);
+  const second = await completed(svc, session.id);
+  const [after] = await db.select().from(councilSessions).where(eq(councilSessions.id, session.id));
+  assert.equal(collected, 2);
+  assert.equal(after.taskId, before.taskId);
+  assert.deepEqual(second.reports.find((item) => item.id === first.reports[0].id), first.reports[0]);
+  assert.ok(second.reports.find((item) => item.version === 2)?.evidence.some((item) => item.title === 'Verified statement'));
+});
+
+dbTest('incomplete cached research is recollected instead of perpetuating old missing-key gaps', async () => {
+  const svc = service();
+  let collected = 0;
+  Reflect.set(svc, 'research', {
+    listRuns: async () => ({ items: [{ id: randomUUID(), completedAt: new Date().toISOString() }] }),
+    getEvidence: async () => [{ id: randomUUID(), role: 'fundamental', evidenceType: 'other', title: 'Old missing key',
+      content: 'old', sourceName: 'Data Unavailable', relevanceScore: 0, fetchedAt: new Date().toISOString(), sourceUrl: null }],
+  });
+  Reflect.set(svc, 'evidence', { collectEvidence: async () => {
+    collected++;
+    return [{ role: 'fundamental', evidenceType: 'financial', title: 'Fresh statement', content: 'new', sourceName: 'Finnhub API', relevanceScore: 1 }];
+  } });
+  const session = await svc.createSession(owner, { profileId, ticker: 'AAPL', language: 'en' });
+  await svc.runSession(owner, session.id);
+  const result = await completed(svc, session.id);
+  assert.equal(collected, 1);
+  assert.ok(!result.reports[0].evidence.some((item) => item.title === 'Old missing key'));
+  assert.equal(result.reports[0].sourceRunId, null);
+});
+
+dbTest('follow-up round includes the latest published discussion without copying the entire chat', async () => {
+  const contexts: Array<{ previousDiscussion?: Array<{ content: string }> }> = [];
+  const svc = service(async (...args: unknown[]) => {
+    contexts.push(JSON.parse((args[0] as Array<{ content: string }>)[1].content));
+    return { data: { decision: 'wait', summary: 'Prior concern about cash flow', evidenceIds: [], dissent: [], nextReviewCondition: 'financials' }, tokens: 5 };
+  });
+  const session = await svc.createSession(owner, { profileId, ticker: 'AAPL', language: 'en' });
+  await svc.runSession(owner, session.id);
+  await completed(svc, session.id);
+  await svc.addMessage(owner, session.id, 'Please explain that cash flow concern');
+  await svc.runSession(owner, session.id);
+  await completed(svc, session.id);
+  assert.ok(contexts[3].previousDiscussion?.some((item) => item.content.includes('Prior concern')));
+  assert.ok(contexts[3].previousDiscussion.length <= 3);
+});
+
+dbTest('sending notes to a failed discussion preserves its failure until explicit retry', async () => {
+  const svc = service(async () => { throw new Error('LLM_BUDGET_EXCEEDED'); });
+  const session = await svc.createSession(owner, { profileId, ticker: 'AAPL', language: 'en' });
+  await svc.runSession(owner, session.id);
+  const failed = await completed(svc, session.id);
+  for (const note of ['First follow-up', 'Second follow-up']) {
+    const updated = await svc.addMessage(owner, session.id, note);
+    assert.equal(updated.status, 'failed');
+    assert.equal(updated.error, failed.error);
+  }
+});
+
 dbTest('cross-owner session reads, steering, pause and run all refuse access', async () => {
   const svc = service();
   const session = await svc.createSession(owner, { profileId, ticker: 'AAPL', language: 'en' });
@@ -138,7 +227,8 @@ dbTest('default prompts stay within the default conservative input budget', asyn
   const svc = service(async (...args: unknown[]) => {
     const prompt = args[0] as Array<{ role: string; content: string }>;
     captures.push(estimateInputTokens([...prompt, { role: 'system', content: '你必须严格按照用户要求的 JSON 格式输出，不要添加任何解释、说明或 markdown 格式。只输出合法的 JSON 字符串。' }]));
-    return { data: { decision: 'wait', summary: 'Need verified data', evidenceIds: [] }, tokens: 5 };
+    return { data: { decision: 'wait', summary: '本季度现金流已有数据，需继续审查负债和估值风险。'.repeat(25),
+      dissent: ['潜在风险需进一步核实。'.repeat(25), '数据来源有时效限制。'.repeat(25)], evidenceIds: [] }, tokens: 5 };
   });
   Reflect.set(svc, 'evidence', { collectEvidence: async () => Array.from({ length: 12 }, (_, i) => ({
     role: i < 8 ? 'fundamental' : 'news', evidenceType: i === 0 ? 'price' : 'other',
@@ -148,7 +238,10 @@ dbTest('default prompts stay within the default conservative input budget', asyn
   const session = await svc.createSession(owner, { profileId, ticker: 'AAPL', language: 'zh-CN' });
   await svc.runSession(owner, session.id);
   await completed(svc, session.id);
-  assert.equal(captures.length, 3);
+  await svc.addMessage(owner, session.id, '请进一步解释现金流和负债方面的差异');
+  await svc.runSession(owner, session.id);
+  await completed(svc, session.id);
+  assert.equal(captures.length, 6);
   for (const size of captures) assert.ok(size <= DEFAULT_LLM_BUDGET.maxInputTokens, `prompt size ${size}`);
 });
 

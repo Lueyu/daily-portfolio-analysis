@@ -86,8 +86,9 @@ export class CouncilService implements OnModuleInit {
       const revision = current.revision + 1;
       await tx.insert(councilMessages).values({ owner: userId, sessionId: id, role: 'user', memberName: 'You',
         content: content.trim(), revision, tokensUsed: 0 });
-      await tx.update(councilSessions).set({ revision, updatedAt: new Date(), error: null,
-        status: current.status === 'running' ? 'running' : current.status === 'paused' ? 'paused' : 'idle' })
+      const held = current.status === 'failed' || current.status === 'paused';
+      await tx.update(councilSessions).set({ revision, updatedAt: new Date(), error: held ? current.error : null,
+        status: current.status === 'running' || held ? current.status : 'idle' })
         .where(and(eq(councilSessions.owner, userId), eq(councilSessions.id, id)));
     });
     return this.getSession(userId, id);
@@ -111,7 +112,10 @@ export class CouncilService implements OnModuleInit {
       if (current.status === 'running') return { row: current, started: false };
       // The task budget is deliberately retained across resumes and user revisions.
       const [started] = await tx.update(councilSessions).set({ status: 'running',
-        revision: current.revision + 1, error: null, updatedAt: new Date() })
+        revision: current.revision + 1, error: null, updatedAt: new Date(),
+        // Explicit follow-ups use current credentials/data, without erasing old reports or budget usage.
+        ...(!current.candidate || current.revision > 1
+          ? { evidenceSnapshot: [], sourceRunId: null, cacheKey: null } : {}) })
         .where(and(eq(councilSessions.owner, userId), eq(councilSessions.id, id))).returning();
       return { row: started, started: true };
     });
@@ -225,11 +229,13 @@ export class CouncilService implements OnModuleInit {
       let row = await this.requireSession(userId, id);
       if (row.status !== 'running') return;
       if (!row.evidenceSnapshot.length) {
-        const snapshot = await this.collectSnapshot(userId, row.ticker, row.language, row.profileSnapshot, row.candidate);
+        const snapshot = await this.collectSnapshot(userId, row.ticker, row.language, row.profileSnapshot, row.candidate, true);
         await this.db.update(councilSessions).set({ evidenceSnapshot: snapshot.evidence, sourceRunId: snapshot.sourceRunId })
-          .where(and(eq(councilSessions.owner, userId), eq(councilSessions.id, id)));
+          .where(and(eq(councilSessions.owner, userId), eq(councilSessions.id, id),
+            eq(councilSessions.status, 'running'), eq(councilSessions.revision, row.revision)));
         row = await this.requireSession(userId, id);
         if (row.status !== 'running') return;
+        if (!row.evidenceSnapshot.length) continue;
       }
       const revision = row.revision;
       const en = row.language === 'en';
@@ -267,12 +273,11 @@ export class CouncilService implements OnModuleInit {
         }
       } catch (error) {
         const budget = /budget|limit|quota|LLM_BUDGET/iu.test(error instanceof Error ? error.message : '');
-        const reason = budget
-          ? en ? 'Model budget reached. The council waits; no order is approved.' : '模型预算已达上限，投委会保持等待，不批准订单。'
-          : safeAnalysisError(error, row.language);
+        const reason = safeAnalysisError(error, row.language);
         await this.publish(userId, row, { decision: 'wait', summary: reason, dissent: [],
           nextReviewCondition: budget
-            ? en ? 'Review the budget or wait for its reset; resume explicitly.' : '检查预算或等待预算重置，再手动继续。'
+            ? en ? 'Review the specific limit in Research budget; continuing does not reset this discussion’s usage.'
+              : '请在研究预算中检查对应上限；继续讨论不会重置本次已用额度。'
             : en ? 'Restore the data/model service and explicitly retry.' : '恢复数据或模型服务后手动重试。', evidenceIds: [] }, 'llm', reason);
       }
       const current = await this.requireSession(userId, id);
@@ -297,6 +302,13 @@ export class CouncilService implements OnModuleInit {
     const messages = await this.db.select().from(councilMessages)
       .where(and(eq(councilMessages.owner, userId), eq(councilMessages.sessionId, row.id), eq(councilMessages.role, 'user')))
       .orderBy(councilMessages.createdAt).limit(30);
+    const [lastReport] = await this.db.select({ revision: councilReports.revision }).from(councilReports)
+      .where(and(eq(councilReports.owner, userId), eq(councilReports.sessionId, row.id)))
+      .orderBy(desc(councilReports.version)).limit(1);
+    const previousDiscussion = lastReport ? await this.db.select().from(councilMessages)
+      .where(and(eq(councilMessages.owner, userId), eq(councilMessages.sessionId, row.id),
+        eq(councilMessages.revision, lastReport.revision), sql`${councilMessages.role} IN ('researcher', 'challenger', 'manager')`))
+      .orderBy(councilMessages.createdAt).limit(3) : [];
     const data = { ticker: row.ticker, candidate: row.candidate, ruleOnly: isRuleCandidate(row.profileSnapshot, row.candidate),
       criticalEvidenceMissing: criticalEvidenceGaps(row.evidenceSnapshot),
       profile: { template: row.profileSnapshot.template, maxOrderPct: row.profileSnapshot.maxOrderPct,
@@ -304,12 +316,14 @@ export class CouncilService implements OnModuleInit {
       customization: member.instructions,
       // Keep all human instructions intact. Oversized requests fail closed at the shared budget gate.
       steering: messages.map((item) => item.content),
+      // Published conclusions are conversational context, not new factual evidence.
+      previousDiscussion: previousDiscussion.map((item) => ({ role: item.role, content: byteExcerpt(item.content, 140) })),
       evidenceExcerpts: true, evidence: evidenceExcerpts(row.evidenceSnapshot),
       gaps: row.evidenceSnapshot.filter((item) => item.sourceName === 'Data Unavailable').slice(0, 3)
-        .map((item) => byteExcerpt(item.title, 90)),
+        .map((item) => ({ title: byteExcerpt(item.title, 60), detail: byteExcerpt(item.content, 160) })),
       publishedOpinions: previous.map((item) => ({ role: item.member.role, decision: item.opinion.decision,
-        summary: byteExcerpt(item.opinion.summary, 400), dissent: item.opinion.dissent.slice(0, 2)
-          .map((text) => byteExcerpt(text, 150)), evidenceIds: item.opinion.evidenceIds })),
+        summary: byteExcerpt(item.opinion.summary, 240), dissent: item.opinion.dissent.slice(0, 1)
+          .map((text) => byteExcerpt(text, 100)), evidenceIds: item.opinion.evidenceIds.slice(0, 3) })),
     };
     const prompt = [{ role: 'system' as const, content: councilPrompt(member.role, row.language) },
       { role: 'user' as const, content: JSON.stringify(data) }];
@@ -326,8 +340,7 @@ export class CouncilService implements OnModuleInit {
     const tokens = Number.isFinite(result.tokens) ? Math.max(0, Math.trunc(result.tokens)) : 0;
     await this.db.insert(councilMessages).values({ owner: userId, sessionId: row.id, role: member.role,
       memberName: member.name, revision: row.revision, tokensUsed: tokens,
-      content: [opinion.summary, opinion.evidenceIds.length ? `[${opinion.evidenceIds.join(', ')}]` : '',
-        ...opinion.dissent, opinion.nextReviewCondition].filter(Boolean).join('\n') });
+      content: [opinion.summary, ...opinion.dissent, opinion.nextReviewCondition].filter(Boolean).join('\n\n') });
     return { member, opinion, tokens };
   }
 
@@ -353,36 +366,52 @@ export class CouncilService implements OnModuleInit {
   }
 
   private async collectSnapshot(userId: string, ticker: string, language: 'zh-CN' | 'en',
-    config: BuilderConfig, candidate: CouncilCandidate | null): Promise<ResearchSnapshot> {
+    config: BuilderConfig, candidate: CouncilCandidate | null, fresh = false): Promise<ResearchSnapshot> {
     const evidence: CouncilEvidence[] = [];
     let sourceRunId: string | null = null;
     const now = new Date().toISOString();
-    try {
+    if (!fresh) try {
       const runs = await this.research.listRuns(userId, { ticker, status: 'completed', limit: 1 });
       const latest = runs.items[0];
       if (latest && Date.now() - Date.parse(latest.completedAt ?? latest.createdAt) < 48 * 3600_000) {
         const saved = await this.research.getEvidence(userId, latest.id);
-        if (saved.length) {
+        if (saved.length && !saved.some((item) => item.sourceName === 'Data Unavailable')) {
           sourceRunId = latest.id;
           evidence.push(...saved.map((item) => ({ ...item, relevanceScore: Number(item.relevanceScore ?? 0) })));
         }
       }
-      const portfolio = await this.portfolio.getPortfolioContext(userId);
-      if (!evidence.length) {
+    } catch {
+      // A missing saved report must not prevent direct provider collection.
+      this.logger.warn('Council saved research unavailable; collecting fresh evidence');
+    }
+    let portfolio: Awaited<ReturnType<PortfolioContextService['getPortfolioContext']>> | null = null;
+    try {
+      portfolio = await this.portfolio.getPortfolioContext(userId);
+    } catch {
+      evidence.push({ id: randomUUID(), role: 'fundamental', evidenceType: 'other',
+        title: language === 'en' ? 'Current portfolio data unavailable' : '当前组合数据不可用',
+        content: language === 'en' ? 'Portfolio valuation or FX could not be verified. Stock research continues; portfolio sizing is withheld.'
+          : '组合估值或汇率暂时无法核实。个股研究仍会继续，暂不计算组合仓位建议。',
+        sourceName: 'Data Unavailable', sourceUrl: null, fetchedAt: now, relevanceScore: 0 });
+    }
+    if (!sourceRunId) {
+      try {
         const collected = await this.evidence.collectEvidence(ticker, userId, portfolio, language);
         evidence.push(...collected.map((item) => ({ ...item, id: randomUUID(), sourceUrl: item.sourceUrl ?? null,
           sourceName: item.sourceName ?? null, fetchedAt: now })));
+      } catch {
+        evidence.push({ id: randomUUID(), role: 'fundamental', evidenceType: 'other',
+          title: language === 'en' ? 'Stock research data unavailable' : '个股研究数据不可用',
+          content: language === 'en' ? 'Stock data collection failed. Check the data provider and retry.' : '个股数据采集失败，请检查金融数据服务后重试。',
+          sourceName: 'Data Unavailable', sourceUrl: null, fetchedAt: now, relevanceScore: 0 });
       }
+    }
+    if (portfolio) {
       evidence.push({ id: randomUUID(), role: 'fundamental', evidenceType: 'other',
         title: language === 'en' ? 'Current portfolio snapshot (USD)' : '当前组合快照（美元）',
         content: JSON.stringify({ totalValue: portfolio.totalValue, cash: portfolio.cash,
           holdings: portfolio.holdings.filter((holding) => holding.ticker.toUpperCase() === ticker) }),
         sourceName: 'Portfolio Data', sourceUrl: null, fetchedAt: now, relevanceScore: 1 });
-    } catch {
-      evidence.push({ id: randomUUID(), role: 'fundamental', evidenceType: 'other',
-        title: language === 'en' ? 'Research or portfolio data unavailable' : '研究或组合数据不可用',
-        content: language === 'en' ? 'Data could not be verified. Wait for the source to recover.' : '无法核实数据，等待数据源恢复。',
-        sourceName: 'Data Unavailable', sourceUrl: null, fetchedAt: now, relevanceScore: 0 });
     }
     if (isRuleCandidate(config, candidate)) {
       const rule = config.priceRules.find((item) => item.ticker.toUpperCase() === ticker);

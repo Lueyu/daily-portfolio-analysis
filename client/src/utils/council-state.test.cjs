@@ -13,6 +13,40 @@ const exported = { exports: {} };
 runInNewContext(compiled, { module: exported, exports: exported.exports });
 const { isCurrentCouncilReport, budgetPercent, validateCouncilSettings, validateBudget } = exported.exports;
 
+test('a new note starts one research round only from a ready or completed room', () => {
+  const shouldStart = exported.exports.shouldStartCouncilAfterMessage;
+  assert.equal(shouldStart?.('completed', 'idle'), true);
+  assert.equal(shouldStart?.('idle', 'idle'), true);
+  assert.equal(shouldStart?.('running', 'running'), false);
+  assert.equal(shouldStart?.('running', 'idle'), false);
+  assert.equal(shouldStart?.('paused', 'paused'), false);
+  assert.equal(shouldStart?.('failed', 'idle'), false);
+  assert.equal(shouldStart?.('completed', 'paused'), false);
+  assert.equal(shouldStart?.('idle', 'running'), false);
+});
+
+test('Enter sends a chat message while Shift+Enter and IME confirmation do not', () => {
+  const shouldSend = exported.exports.shouldSendCouncilMessage;
+  const enter = { key: 'Enter', shiftKey: false, isComposing: false, keyCode: 13 };
+  assert.equal(shouldSend?.(enter), true);
+  assert.equal(shouldSend?.({ ...enter, shiftKey: true }), false);
+  assert.equal(shouldSend?.({ ...enter, isComposing: true }), false);
+  assert.equal(shouldSend?.({ ...enter, keyCode: 229 }), false);
+  assert.equal(shouldSend?.({ ...enter, key: 'a' }), false);
+});
+
+test('AI chat hides standalone internal evidence UUID lists but preserves user text and citations', () => {
+  const display = exported.exports.councilMessageDisplayContent;
+  const ids = '[12345678-abcd-1234-abcd-123456789012, abcdef12-1234-abcd-1234-abcdef123456]';
+  const content = `Research summary.\n${ids}\nReview the cash flow.`;
+  assert.equal(display?.({ role: 'researcher', content }), 'Research summary.\nReview the cash flow.');
+  assert.equal(display?.({ role: 'manager', content: `  ${ids}  \nConclusion.` }), 'Conclusion.');
+  assert.equal(display?.({ role: 'user', content }), content);
+  assert.equal(display?.({ role: 'system', content }), content);
+  assert.equal(display?.({ role: 'challenger', content: 'A source [E1]\n[E1, E2]\n[1234]\nInline ' + ids }),
+    'A source [E1]\n[E1, E2]\n[1234]\nInline ' + ids);
+});
+
 test('a report becomes obsolete after new input or a newer report version', () => {
   const report = { id: 'r1', version: 1, revision: 2 };
   const session = { revision: 2, profileVersion: 3, reports: [report] };

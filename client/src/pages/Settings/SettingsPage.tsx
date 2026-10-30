@@ -85,7 +85,7 @@ function getErrorMessage(error: unknown, fallback: string): string {
 }
 
 export default function SettingsPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const queryClient = useQueryClient();
   const [llmDraft, setLlmDraft] = useState<LlmDraft>(EMPTY_LLM);
   const [llmDirty, setLlmDirty] = useState(false);
@@ -161,7 +161,7 @@ export default function SettingsPage() {
     onError: (error: Error) => setFinancialError(getErrorMessage(error, t('ui.settings.saveFailed'))),
   });
   const testLlm = useMutation<IntegrationTestResult, Error, void>({
-    mutationFn: testLlmIntegration,
+    mutationFn: () => testLlmIntegration(i18n.language.startsWith('zh') ? 'zh-CN' : 'en'),
     retry: false,
     onSuccess: setLlmTestResult,
     onError: (error: Error) => setLlmTestResult({
@@ -376,7 +376,15 @@ export default function SettingsPage() {
                     OpenAI
                   </Button>
                   <Button size="sm" variant="outline" type="button"
-                    onClick={() => updateLlm('baseUrl', 'https://api.deepseek.com')}>
+                    onClick={() => {
+                      setLlmDraft((current: LlmDraft) => ({ ...current,
+                        baseUrl: 'https://api.deepseek.com', fastModel: 'deepseek-flash', slowModel: 'deepseek-flash',
+                        apiKey: /^https:\/\/api\.deepseek\.com(?:\/|$)/iu.test(current.baseUrl.trim()) ? current.apiKey : '',
+                      }));
+                      setLlmDirty(true);
+                      setLlmError(null);
+                      setLlmTestResult(null);
+                    }}>
                     DeepSeek
                   </Button>
                   <Button size="sm" variant="outline" type="button"
@@ -403,6 +411,11 @@ export default function SettingsPage() {
               <p className="text-xs leading-5 text-muted-foreground">
                 {t('ui.settings.llm.modelHint')}
               </p>
+              {/^https:\/\/api\.deepseek\.com(?:\/|$)/iu.test(llmDraft.baseUrl.trim()) &&
+                <div className="rounded-lg border border-border bg-muted/40 p-3 text-xs leading-6 text-muted-foreground">
+                  <p>{t('integrations.deepSeekModelHint')}</p>
+                  <p className="mt-1">{t('integrations.deepSeekModeHint')}</p>
+                </div>}
               <div className="space-y-2">
                 <Label htmlFor="llm-api-key">{t('ui.settings.apiKey')}</Label>
                 <div className="flex gap-2">
