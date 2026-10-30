@@ -36,6 +36,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { useTranslation } from 'react-i18next';
 
 /** localStorage keys for the OCR provider config (browser-only, like Finnhub). */
 const OCR_LS = { baseUrl: 'sq-ocr-base', model: 'sq-ocr-model', apiKey: 'sq-ocr-key' };
@@ -102,13 +103,13 @@ const XUEQIU_ALIASES: Record<MapField, string[]> = {
   company: ['name', '名称', '股票名称'],
 };
 
-/** All broker presets keyed by selector value. */
-const BROKER_PRESETS: Record<string, { label: string; aliases: Record<MapField, string[]> }> = {
-  generic: { label: '通用 CSV', aliases: FIELD_ALIASES },
-  robinhood: { label: 'Robinhood 导出', aliases: ROBINHOOD_ALIASES },
-  futu: { label: '富途牛牛导出', aliases: FUTU_ALIASES },
-  tiger: { label: '老虎证券导出', aliases: TIGER_ALIASES },
-  xueqiu: { label: '雪球导出', aliases: XUEQIU_ALIASES },
+/** All broker presets keyed by selector value (labels translated at render). */
+const BROKER_PRESETS: Record<string, { labelKey: string; aliases: Record<MapField, string[]> }> = {
+  generic: { labelKey: 'import.generic', aliases: FIELD_ALIASES },
+  robinhood: { labelKey: 'import.robinhood', aliases: ROBINHOOD_ALIASES },
+  futu: { labelKey: 'import.futu', aliases: FUTU_ALIASES },
+  tiger: { labelKey: 'import.tiger', aliases: TIGER_ALIASES },
+  xueqiu: { labelKey: 'import.xueqiu', aliases: XUEQIU_ALIASES },
 };
 
 function suggestForPreset(headers: string[], presetKey: string): Partial<Record<MapField, number>> {
@@ -164,6 +165,7 @@ const ocrConfig = {
 };
 
 function ImportPage() {
+  const { t } = useTranslation();
   const [mode, setMode] = useState<'csv' | 'ocr'>('csv');
   return (
     <div className="space-y-4">
@@ -197,6 +199,7 @@ function ImportPage() {
 // ---------------------------------------------------------------------
 
 function CsvImport() {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const fileRef = useRef<HTMLInputElement>(null);
   const [filename, setFilename] = useState('');
@@ -253,7 +256,7 @@ function CsvImport() {
       queryClient.invalidateQueries({ queryKey: ['import'] });
       queryClient.invalidateQueries({ queryKey: ['holdings'] });
     } catch (error) {
-      toast.error((error as { response?: { data?: { message?: string } } })?.response?.data?.message ?? '导入失败');
+      toast.error((error as { response?: { data?: { message?: string } } })?.response?.data?.message ?? t('import.importFailed'));
     } finally {
       setCommitting(false);
     }
@@ -274,7 +277,7 @@ function CsvImport() {
             }}
           >
             {Object.entries(BROKER_PRESETS).map(([k, v]) => (
-              <option key={k} value={k}>{v.label}</option>
+              <option key={k} value={k}>{v.labelKey}</option>
             ))}
           </select>
           <select
@@ -313,7 +316,7 @@ function CsvImport() {
               {(['ticker', 'shares', 'avgCost', 'company'] as MapField[]).map((field) => (
                 <div key={field} className="space-y-1.5">
                   <Label className="text-xs">
-                    {field === 'ticker' ? '股票代码 *' : field === 'shares' ? '股数 *' : field === 'avgCost' ? '成本价（每股）' : '名称（可选）'}
+                    {field === 'ticker' ? t('import.ticker') : field === 'shares' ? t('import.shares') : field === 'avgCost' ? t('import.avgCost') : t('import.company')}
                   </Label>
                   <select
                     className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
@@ -401,6 +404,7 @@ function CsvImport() {
 // ---------------------------------------------------------------------
 
 function OcrImport() {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const fileRef = useRef<HTMLInputElement>(null);
   const [imageBase64, setImageBase64] = useState('');
@@ -443,7 +447,7 @@ function OcrImport() {
       setRows(r.rows);
       toast.success(`识别到 ${r.rows.length} 行持仓${r.broker ? `（来自 ${r.broker}）` : ''}，请核对后提交`);
     } catch (error) {
-      toast.error((error as { response?: { data?: { message?: string } } })?.response?.data?.message ?? '识别失败');
+      toast.error((error as { response?: { data?: { message?: string } } })?.response?.data?.message ?? t('import.extractFailed'));
     } finally {
       setExtracting(false);
     }
@@ -460,7 +464,7 @@ function OcrImport() {
       queryClient.invalidateQueries({ queryKey: ['import'] });
       queryClient.invalidateQueries({ queryKey: ['holdings'] });
     } catch (error) {
-      toast.error((error as { response?: { data?: { message?: string } } })?.response?.data?.message ?? '导入失败');
+      toast.error((error as { response?: { data?: { message?: string } } })?.response?.data?.message ?? t('import.importFailed'));
     } finally {
       setCommitting(false);
     }
@@ -525,7 +529,7 @@ function OcrImport() {
           />
           <Button size="sm" onClick={extract} disabled={extracting || !imageBase64}>
             {extracting ? <Loader2 size={14} className="mr-1 animate-spin" /> : <Wand2 size={14} className="mr-1" />}
-            {extracting ? '识别中…' : '开始识别'}
+            {extracting ? t('import.extracting') : t('import.extract')}
           </Button>
           {imageBase64 && (
             <img
@@ -576,12 +580,13 @@ function OcrImport() {
 // ---------------------------------------------------------------------
 
 function ImportHistoryCard() {
+  const { t } = useTranslation();
   const historyQuery = useQuery({
     queryKey: ['import', 'history'],
     queryFn: fetchImportHistory,
   });
   const items = historyQuery.data ?? [];
-  const sourceLabel: Record<string, string> = { csv: 'CSV', robinhood: 'Robinhood CSV', ocr: '截图识别' };
+  const sourceLabel: Record<string, string> = { csv: 'CSV', robinhood: 'Robinhood CSV', ocr: t('import.screenshot') };
 
   return (
     <Card>
@@ -597,7 +602,7 @@ function ImportHistoryCard() {
         {items.map((h) => (
           <div key={h.id} className="flex items-center gap-3 rounded-md border border-border px-3 py-2 text-sm">
             <Badge variant="outline" className="shrink-0 text-[10px]">{sourceLabel[h.source] ?? h.source}</Badge>
-            <span className="truncate text-foreground/90">{h.filename ?? '（无文件名）'}</span>
+            <span className="truncate text-foreground/90">{h.filename ?? t('import.noFilename')}</span>
             <span className="ml-auto shrink-0 text-xs text-muted-foreground">
               新建 {h.rowsImported}/{h.rowsTotal} · {new Date(h.createdAt).toLocaleString('zh-CN', { hour12: false })}
             </span>
