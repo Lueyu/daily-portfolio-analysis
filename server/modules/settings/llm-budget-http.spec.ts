@@ -29,15 +29,19 @@ test('pausing a council stops retry reservations after an in-flight provider fai
   } finally { axios.defaults.adapter = original; }
 });
 
-test('bounded DeepSeek council and connection calls disable thinking without raising output limits or switching models', async () => {
+test('all bounded DeepSeek calls disable thinking without raising output limits or switching models', async () => {
   const original = axios.defaults.adapter;
   const cases = [
     { url: 'https://api.deepseek.com', model: 'deepseek-flash', purpose: 'council:manager', disabled: true },
     { url: 'https://api.deepseek.com/v1', model: 'deepseek-v4-pro', purpose: 'connection-test', disabled: true },
     { url: 'https://api.deepseek.com', model: 'deepseek-v4-flash', purpose: 'council:researcher', disabled: true },
+    { url: 'https://api.deepseek.com', model: 'deepseek-flash', purpose: 'daily-analysis:debate', disabled: true },
+    { url: 'https://api.deepseek.com', model: 'deepseek-v4-pro', purpose: undefined, disabled: true },
     { url: 'https://provider.invalid/v1', model: 'deepseek-flash', purpose: 'council:manager', disabled: false },
     { url: 'https://api.deepseek.com.other.invalid/v1', model: 'deepseek-flash', purpose: 'council:manager', disabled: false },
-    { url: 'https://api.deepseek.com', model: 'deepseek-flash', purpose: 'analysis-rating', disabled: false },
+    { url: 'https://api.deepseek.com', model: 'deepseek-flash', purpose: 'analysis-rating', disabled: true },
+    { url: 'https://api.deepseek.com', model: 'deepseek-flash', purpose: 'builder-review', disabled: true },
+    { url: 'https://api.deepseek.com', model: 'deepseek-reasoner', purpose: 'builder-review', disabled: false },
   ];
   try {
     for (const item of cases) {
@@ -56,6 +60,31 @@ test('bounded DeepSeek council and connection calls disable thinking without rai
       const response = await new LlmService(settings(item.model, item.url), harness.service)
         .chatFast([{ role: 'user', content: 'OK only' }], 'alice', { purpose: item.purpose, maxOutputTokens: 16 });
       assert.equal(response.content, 'OK');
+      assert.equal(calls, 1);
+      assert.equal(harness.reservations.length, 1);
+    }
+  } finally { axios.defaults.adapter = original; }
+});
+
+test('DeepSeek bounded mode covers fast and slow text and JSON entry points', async () => {
+  const original = axios.defaults.adapter;
+  try {
+    for (const method of ['chatFast', 'chatSlow', 'chatFastJSON', 'chatSlowJSON'] as const) {
+      const harness = budgetHarness();
+      let calls = 0;
+      axios.defaults.adapter = async config => {
+        calls++;
+        const body = JSON.parse(String(config.data));
+        assert.deepEqual(body.thinking, { type: 'disabled' });
+        assert.equal(body.max_tokens, 16);
+        return { status: 200, statusText: '', headers: {}, config,
+          data: { choices: [{ message: { content: '{"ok":true}' }, finish_reason: 'stop' }],
+            usage: { prompt_tokens: 10, completion_tokens: 4, total_tokens: 14 } } };
+      };
+      const llm = new LlmService(settings('deepseek-flash', 'https://api.deepseek.com'), harness.service);
+      const result = await llm[method]([{ role: 'user', content: 'Reply with JSON {"ok":true}' }], 'alice', { maxOutputTokens: 16 });
+      if ('data' in result) assert.deepEqual(result.data, { ok: true });
+      else assert.equal(result.content, '{"ok":true}');
       assert.equal(calls, 1);
       assert.equal(harness.reservations.length, 1);
     }
