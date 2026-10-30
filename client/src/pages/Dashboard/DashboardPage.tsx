@@ -163,7 +163,7 @@ function RealtimeBadge({ marketStatus, holdings }: RealtimeBadgeProps) {
         'mr-1 inline-block size-1.5 rounded-full',
         isRealtime ? 'bg-success animate-pulse' : 'bg-muted-foreground/50'
       )} />
-      {isRealtime ? t('dash.realtime') : t('dash.closed')}
+      {isRealtime ? t('dash.realtime') : t('layout.closed')}
     </Badge>
   );
 }
@@ -211,8 +211,8 @@ export default function DashboardPage() {
       setHoldings(holdingsData || []);
       setDailyPl(plData || []);
     } catch (error) {
-      logger.error('加载仪表盘失败', error);
-      toast.error('加载失败，请刷新重试');
+      logger.error('Dashboard load failed', error);
+      toast.error(t('ui.dashboard.loadFailed'));
     } finally {
       setLoading(false);
     }
@@ -400,7 +400,7 @@ export default function DashboardPage() {
         }
         setHardRuleFailures(failures);
       } catch (error) {
-        logger.error('加载 AI 分析状态失败', error);
+        logger.error('AI analysis status load failed', error);
       } finally {
         if (mounted) {
           setAgentRunsLoading(false);
@@ -423,7 +423,7 @@ export default function DashboardPage() {
       <div className="flex flex-col items-start justify-between gap-3 md:flex-row md:items-center">
         <div>
           <h1 className="font-serif text-3xl font-semibold tracking-tight text-foreground">
-            投资仪表盘
+            {t('dash.title')}
           </h1>
           <p className="mt-1 flex flex-wrap items-center gap-1.5 text-sm text-muted-foreground">
             <MarketStatusBadges
@@ -433,7 +433,7 @@ export default function DashboardPage() {
             />
           </p>
           <p className="mt-1 text-sm text-muted-foreground">
-            全资产概览、按市场分组与每日盈亏
+            {t('dash.subtitle')}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -442,7 +442,7 @@ export default function DashboardPage() {
             onValueChange={(v) => setBaseCurrency(v as Currency)}
           >
             <SelectTrigger className="w-[160px]">
-              <SelectValue placeholder="选择本位币" />
+              <SelectValue placeholder={t('ui.dashboard.baseCurrency')} />
             </SelectTrigger>
             <SelectContent>
               {currencyOptions(t).map((opt) => (
@@ -455,11 +455,11 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
         {loading
           ? Array.from({ length: 6 }).map((_, i) => (
               <Card key={i}>
-                <CardContent className="p-4">
+                <CardContent className="min-w-0 p-3 sm:p-4">
                   <Skeleton className="mb-2 h-4 w-16" />
                   <Skeleton className="h-7 w-24" />
                 </CardContent>
@@ -473,15 +473,15 @@ export default function DashboardPage() {
                 : formatCurrencyWithCode(value, baseCurrency);
               return (
                 <Card key={m.key}>
-                  <CardContent className="p-4">
-                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                      <m.icon size={14} className="text-primary" />
-                      <span>{m.label}</span>
+                  <CardContent className="flex min-w-0 flex-col p-3 sm:p-4">
+                    <div className="flex min-h-8 items-start gap-1.5 text-xs leading-4 text-muted-foreground">
+                      <m.icon size={14} className="mt-0.5 shrink-0 text-primary" />
+                      <span className="min-w-0">{m.label}</span>
                     </div>
                     <div
                       className={cn(
-                        'mt-1.5 font-mono tabular-nums font-semibold',
-                        m.large ? 'text-xl md:text-2xl' : 'text-lg',
+                        'mt-1 min-w-0 whitespace-nowrap font-mono text-base font-semibold tabular-nums sm:text-lg',
+                        m.large ? 'xl:text-xl' : '',
                         colorCls
                       )}
                     >
@@ -499,13 +499,13 @@ export default function DashboardPage() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Sparkles size={16} className="text-primary" />
-                <CardTitle className="font-serif text-base">AI 分析状态</CardTitle>
+                <CardTitle className="font-serif text-base">{t('dash.aiStatus')}</CardTitle>
               </div>
               <Link
                 to="/analysis"
                 className="flex items-center gap-0.5 text-xs text-primary hover:underline"
               >
-                查看全部
+                {t('dash.viewAll')}
                 <ChevronDown size={12} className="-rotate-90" />
               </Link>
             </div>
@@ -527,7 +527,7 @@ export default function DashboardPage() {
                   <div className="rounded-md border border-border bg-muted/30 p-2 text-center">
                     <div className="flex items-center justify-center gap-1 text-xs text-muted-foreground">
                       <Loader2 size={11} className="animate-spin text-primary" />
-                      进行中
+                      {t('dash.inProgress')}
                     </div>
                     <div className="mt-0.5 font-mono text-lg font-semibold tabular-nums text-foreground">
                       {runStats.running}
@@ -536,7 +536,7 @@ export default function DashboardPage() {
                   <div className="rounded-md border border-border bg-muted/30 p-2 text-center">
                     <div className="flex items-center justify-center gap-1 text-xs text-muted-foreground">
                       <Eye size={11} className="text-amber-500" />
-                      待决策
+                      {t('dash.awaitingDecision')}
                     </div>
                     <div className="mt-0.5 font-mono text-lg font-semibold tabular-nums text-amber-600">
                       {runStats.awaiting}
@@ -545,7 +545,7 @@ export default function DashboardPage() {
                   <div className="rounded-md border border-border bg-muted/30 p-2 text-center">
                     <div className="flex items-center justify-center gap-1 text-xs text-muted-foreground">
                       <CheckCircle2 size={11} className="text-emerald-500" />
-                      已完成
+                      {t('dash.completed')}
                     </div>
                     <div className="mt-0.5 font-mono text-lg font-semibold tabular-nums text-emerald-600">
                       {runStats.completed}
@@ -554,7 +554,7 @@ export default function DashboardPage() {
                 </div>
 
                 <div className="rounded-md border border-border p-3">
-                  <div className="mb-1.5 text-xs text-muted-foreground">最近完成</div>
+                  <div className="mb-1.5 text-xs text-muted-foreground">{t('dash.recentCompleted')}</div>
                   {latestCompletedRun?.rating ? (
                     <div className="flex items-center justify-between">
                       <div className="font-medium text-foreground">
@@ -577,12 +577,12 @@ export default function DashboardPage() {
                       </div>
                     </div>
                   ) : (
-                    <div className="text-sm text-muted-foreground">今日暂无完成的分析</div>
+                    <div className="text-sm text-muted-foreground">{t('ui.dashboard.noCompletedToday')}</div>
                   )}
                 </div>
 
                 <div className="rounded-md border border-border p-3">
-                  <div className="mb-1.5 text-xs text-muted-foreground">风控告警</div>
+                  <div className="mb-1.5 text-xs text-muted-foreground">{t('dash.riskAlerts')}</div>
                   {riskGateLoading ? (
                     <div className="flex items-center gap-2">
                       <Skeleton className="h-4 w-32" />
@@ -591,14 +591,14 @@ export default function DashboardPage() {
                     <div className="flex items-center gap-2">
                       <AlertTriangle size={14} className="text-amber-500" />
                       <span className="text-sm font-medium text-amber-700">
-                        {hardRuleFailures} 条硬规则未通过
+                        {t('ui.dashboard.hardRulesFailed', { count: hardRuleFailures })}
                       </span>
                     </div>
                   ) : (
                     <div className="flex items-center gap-2">
                       <CheckCircle2 size={14} className="text-emerald-500" />
                       <span className="text-sm font-medium text-emerald-700">
-                        全部通过
+                        {t('dash.allPassed')}
                       </span>
                     </div>
                   )}
@@ -610,26 +610,26 @@ export default function DashboardPage() {
 
         <Card className="lg:col-span-2">
           <CardHeader className="pb-3">
-            <div className="flex flex-row items-center justify-between">
-              <div className="flex items-center gap-2">
-                <CardTitle className="font-serif text-lg">每日盈亏概览</CardTitle>
+            <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
+              <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                <CardTitle className="font-serif text-lg">{t('dash.dailyPlOverview')}</CardTitle>
               {lastUpdated && (
                 <span className="flex items-center gap-1 text-xs text-muted-foreground">
                   <Clock size={12} />
-                  最后更新 {formatTime(lastUpdated)}
+                  {t('dash.lastUpdate', { time: formatTime(lastUpdated) })}
                 </span>
               )}
               <RealtimeBadge marketStatus={marketStatus} holdings={holdings} />
             </div>
             <Select value={String(plRange)} onValueChange={(v) => setPlRange(parseInt(v, 10))}>
               <SelectTrigger className="w-[110px]">
-                <SelectValue placeholder="时间范围" />
+                <SelectValue placeholder={t('ui.dashboard.timeRange')} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="7">近 7 日</SelectItem>
-                <SelectItem value="30">近 30 日</SelectItem>
-                <SelectItem value="90">近 90 日</SelectItem>
-                <SelectItem value="180">近 180 日</SelectItem>
+                <SelectItem value="7">{t('ui.dashboard.lastDays', { count: 7 })}</SelectItem>
+                <SelectItem value="30">{t('dash.last30d')}</SelectItem>
+                <SelectItem value="90">{t('ui.dashboard.lastDays', { count: 90 })}</SelectItem>
+                <SelectItem value="180">{t('ui.dashboard.lastDays', { count: 180 })}</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -644,7 +644,7 @@ export default function DashboardPage() {
             <div className="space-y-5">
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
                 <div>
-                  <div className="text-xs text-muted-foreground">当日盈亏 ({baseCurrency})</div>
+                  <div className="text-xs text-muted-foreground">{t('ui.dashboard.dailyPlForCurrency', { currency: baseCurrency })}</div>
                   <div
                     className={cn(
                       'mt-1 font-mono text-2xl font-semibold tabular-nums',
@@ -663,18 +663,18 @@ export default function DashboardPage() {
                   </div>
                 </div>
                 <div>
-                  <div className="text-xs text-muted-foreground">最新净值</div>
+                  <div className="text-xs text-muted-foreground">{t('dash.latestNav')}</div>
                   <div className="mt-1 font-mono text-2xl font-semibold tabular-nums text-foreground">
                     {dailyPl.length > 0
                       ? formatCurrencyWithCode(dailyPl[dailyPl.length - 1].accountValue, baseCurrency)
                       : '—'}
                   </div>
                   <div className="mt-0.5 text-xs text-muted-foreground">
-                    账户总值
+                    {t('dash.accountValue')}
                   </div>
                 </div>
                 <div className="hidden md:block">
-                  <div className="text-xs text-muted-foreground">当日收益率</div>
+                  <div className="text-xs text-muted-foreground">{t('dash.dailyReturn')}</div>
                   <div
                     className={cn(
                       'mt-1 font-mono text-2xl font-semibold tabular-nums',
@@ -684,16 +684,16 @@ export default function DashboardPage() {
                     {formatPercent(dailyPlTotal.pct)}
                   </div>
                   <div className="mt-0.5 text-xs text-muted-foreground">
-                    较前一交易日
+                    {t('dash.vsPrevDay')}
                   </div>
                 </div>
               </div>
               <DailyPlChart data={dailyPl} baseCurrency={baseCurrency} />
               <div className="border-t border-border pt-4">
                 <div className="mb-2 flex items-center justify-between">
-                  <h3 className="text-sm font-medium">当日盈亏明细</h3>
+                  <h3 className="text-sm font-medium">{t('dash.plBreakdown')}</h3>
                   <span className="text-xs text-muted-foreground">
-                    按盈亏额降序 · 共 {holdings.length} 只持仓
+                    {t('dash.sortedByPl', { count: holdings.length })}
                   </span>
                 </div>
                 <DailyPnLBreakdown
@@ -711,9 +711,9 @@ export default function DashboardPage() {
 
       <Card>
         <CardHeader className="flex-row items-center justify-between pb-3">
-          <CardTitle className="font-serif text-lg">按市场分组</CardTitle>
+          <CardTitle className="font-serif text-lg">{t('dash.byMarket')}</CardTitle>
           <span className="text-xs text-muted-foreground">
-            按市值排序 · 共 {sortedMarkets.length} 个市场
+            {t('dash.sortedByMv', { count: sortedMarkets.length })}
           </span>
         </CardHeader>
         <CardContent>
@@ -726,8 +726,8 @@ export default function DashboardPage() {
           ) : sortedMarkets.length === 0 ? (
             <Empty className="py-10">
               <EmptyHeader>
-                <EmptyTitle>暂无市场数据</EmptyTitle>
-                <EmptyDescription>添加持仓后这里将显示按市场的汇总信息</EmptyDescription>
+                <EmptyTitle>{t('ui.dashboard.noMarketData')}</EmptyTitle>
+                <EmptyDescription>{t('ui.dashboard.addHoldingsForMarkets')}</EmptyDescription>
               </EmptyHeader>
             </Empty>
           ) : (
@@ -736,20 +736,20 @@ export default function DashboardPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>市场</TableHead>
-                      <TableHead className="text-right">持仓数</TableHead>
-                      <TableHead className="text-right">市值 (原币种)</TableHead>
-                      <TableHead className="text-right">成本</TableHead>
-                      <TableHead className="text-right">浮盈亏</TableHead>
-                      <TableHead className="text-right">收益率</TableHead>
-                      <TableHead className="text-right">市值占比</TableHead>
+                      <TableHead>{t('dash.market')}</TableHead>
+                      <TableHead className="text-right">{t('dash.holdingsCount')}</TableHead>
+                      <TableHead className="text-right">{t('dash.mvOriginal')}</TableHead>
+                      <TableHead className="text-right">{t('dash.cost')}</TableHead>
+                      <TableHead className="text-right">{t('dash.pl')}</TableHead>
+                      <TableHead className="text-right">{t('dash.returnPct')}</TableHead>
+                      <TableHead className="text-right">{t('dash.mvShare')}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {sortedMarkets.map((g) => (
                       <TableRow key={g.groupId || 'unknown'}>
                         <TableCell>
-                          <span className="font-medium">{g.groupName || '未分组'}</span>
+                          <span className="font-medium">{g.groupName || t('holdings.noGroup')}</span>
                         </TableCell>
                         <TableCell className="text-right font-mono tabular-nums">
                           {formatNumber(g.count, 0)}
@@ -791,7 +791,7 @@ export default function DashboardPage() {
                       <div className="flex items-center gap-2">
                         <span className="font-medium">{g.groupName}</span>
                         <span className="text-xs text-muted-foreground">
-                          {formatNumber(g.count, 0)} 只
+                          {formatNumber(g.count, 0)} {t('dash.holdingsUnit')}
                         </span>
                       </div>
                       <div className="text-right">
@@ -857,8 +857,8 @@ export default function DashboardPage() {
 
       <Card>
         <CardHeader className="flex-row items-center justify-between pb-3">
-          <CardTitle className="font-serif text-lg">现金明细</CardTitle>
-          <span className="text-xs text-muted-foreground">共 {dashboard?.cashByCurrency ? Object.keys(dashboard.cashByCurrency).length : 0} 个币种</span>
+          <CardTitle className="font-serif text-lg">{t('dash.cashDetail')}</CardTitle>
+          <span className="text-xs text-muted-foreground">{t('dash.currencies', { count: dashboard?.cashByCurrency ? Object.keys(dashboard.cashByCurrency).length : 0 })}</span>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -884,7 +884,7 @@ export default function DashboardPage() {
           ) : (
             <Empty className="py-8">
               <EmptyHeader>
-                <EmptyTitle>暂无现金数据</EmptyTitle>
+                <EmptyTitle>{t('ui.dashboard.noCashData')}</EmptyTitle>
               </EmptyHeader>
             </Empty>
           )}

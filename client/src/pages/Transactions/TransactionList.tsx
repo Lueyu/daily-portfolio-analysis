@@ -107,15 +107,15 @@ export default function TransactionList({
             <Receipt />
           </EmptyMedia>
           <EmptyHeader>
-            <EmptyTitle>暂无交易记录</EmptyTitle>
+            <EmptyTitle>{t('ui.tx.emptyTx')}</EmptyTitle>
             <EmptyDescription>
-              点击「添加交易」开始记录
+              {t('ui.tx.emptyTxHint')}
             </EmptyDescription>
           </EmptyHeader>
           <EmptyContent>
             <Button size="sm" onClick={onAdd}>
               <Plus className="size-4" />
-              添加交易
+              {t('tx.addTx')}
             </Button>
           </EmptyContent>
         </Empty>
@@ -178,19 +178,19 @@ export default function TransactionList({
 
               <div className="grid grid-cols-3 gap-2 mt-3 text-sm">
                 <div>
-                  <div className="text-xs text-muted-foreground">股数</div>
+                  <div className="text-xs text-muted-foreground">{t('tx.shares')}</div>
                   <div className="font-mono-nums">
                     {formatShares(tx.shares)}
                   </div>
                 </div>
                 <div>
-                  <div className="text-xs text-muted-foreground">价格</div>
+                  <div className="text-xs text-muted-foreground">{t('tx.price')}</div>
                   <div className="font-mono-nums">
                     {formatPrice(tx.price)}
                   </div>
                 </div>
                 <div>
-                  <div className="text-xs text-muted-foreground">手续费</div>
+                  <div className="text-xs text-muted-foreground">{t('tx.fees')}</div>
                   <div className="font-mono-nums">
                     {formatCurrency(tx.fees || '0')}
                   </div>

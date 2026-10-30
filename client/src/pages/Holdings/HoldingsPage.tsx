@@ -181,8 +181,8 @@ export default function HoldingsPage() {
       setCashAccounts(cash as CashAccount[]);
       setOverview(dash as DashboardOverview | null);
     } catch (err) {
-      setError('加载失败');
-      toast.error('加载失败');
+      setError(t('common.failed'));
+      toast.error(t('common.failed'));
     } finally {
       setLoading(false);
     }
@@ -300,7 +300,7 @@ export default function HoldingsPage() {
         <div>
           <h1 className="font-serif text-2xl md:text-3xl font-semibold tracking-tight flex items-center gap-2.5">
             <Briefcase className="size-6 text-primary" />
-            持仓
+            {t('holdings.title')}
           </h1>
           <p className="text-sm text-muted-foreground mt-1 flex items-center flex-wrap gap-1.5">
             <MarketStatusBadges
@@ -309,11 +309,11 @@ export default function HoldingsPage() {
               lastUpdated={lastUpdated}
             />
             <span className="mx-1">·</span>
-             共 {filtered.length} 只持仓 · 总市值{' '}
+            {t('ui.holdings.summaryCount', { count: filtered.length })}{' '}
             <span className="font-mono-nums">
               {formatCurrencyWithCode(totalMv, displayCurrency)}
             </span>{' '}
-            · 浮盈亏{' '}
+            · {t('ui.holdings.floatingPl')}{' '}
             <span
               className={cn(
                 'font-mono-nums font-medium',
@@ -337,11 +337,11 @@ export default function HoldingsPage() {
             <RefreshCw
               className={cn('size-4', loading && 'animate-spin')}
             />
-            刷新
+            {t('ui.tx.refresh')}
           </Button>
           <Button size="sm" onClick={() => setAddOpen(true)}>
             <Plus className="size-4" />
-            添加持仓
+            {t('holdings.addHolding')}
           </Button>
         </div>
       </div>
@@ -350,10 +350,10 @@ export default function HoldingsPage() {
       {awaitingHumanCount > 0 && (
         <Alert variant="warning">
           <AlertTriangle className="size-4" />
-          <AlertTitle className="font-medium">风控告警</AlertTitle>
+          <AlertTitle className="font-medium">{t('ui.holdings.riskAlert')}</AlertTitle>
           <AlertDescription className="flex items-center justify-between gap-4">
             <span>
-              {awaitingHumanCount} 条硬规则未通过，建议审查持仓敞口
+              {t('ui.holdings.riskMessage', { count: awaitingHumanCount })}
             </span>
             <Button
               variant="outline"
@@ -362,10 +362,10 @@ export default function HoldingsPage() {
               onClick={() => {
                 // 跳转到风控规则页（如 settings/rules）
                 // 简单实现：滚动到顶部提示
-                toast.info('请前往风控规则页查看详情');
+                toast.info(t('ui.holdings.riskDetail'));
               }}
             >
-              查看详情
+              {t('ui.holdings.viewDetails')}
               <ChevronRight className="size-3" />
             </Button>
           </AlertDescription>
@@ -415,7 +415,7 @@ export default function HoldingsPage() {
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
           <Input
-            placeholder="搜索代码或公司名称..."
+            placeholder={t('ui.holdings.searchPlaceholder')}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-9"
@@ -424,10 +424,10 @@ export default function HoldingsPage() {
         <div className="sm:w-48">
           <Select value={groupId} onValueChange={setGroupId}>
             <SelectTrigger className="w-full">
-              <SelectValue placeholder="全部分组" />
+              <SelectValue placeholder={t('ui.holdings.allGroups')} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">全部分组</SelectItem>
+              <SelectItem value="">{t('ui.holdings.allGroups')}</SelectItem>
               {groups.map((g) => (
                 <SelectItem key={g.id} value={g.id}>
                   {g.name}

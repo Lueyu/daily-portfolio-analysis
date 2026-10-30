@@ -26,6 +26,7 @@ import './i18n'; // i18n must load before any page renders
 import { createPortal } from 'react-dom';
 import { Toaster } from '@client/src/components/ui/sonner';
 import { useTheme } from './hooks/use-theme';
+import { useTranslation } from 'react-i18next';
 
 /**
  * Base path for the SPA, used as the router basename. Vite injects
@@ -46,14 +47,15 @@ const queryClient = new QueryClient({
 
 /** Root-level crash fallback: brand mark, the error, and a reload button. */
 function CrashFallback({ error, resetErrorBoundary }: { error: Error; resetErrorBoundary: () => void }) {
+  const { t } = useTranslation();
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-6">
       <div className="w-full max-w-md rounded-xl border border-border bg-card p-8 text-center shadow-lg">
-        <img src="/logo.svg" alt="吵股" className="mx-auto h-14 w-14" />
-        <h1 className="mt-4 text-lg font-semibold text-foreground">页面出了点问题</h1>
+        <img src="/logo.svg" alt="Squabble" className="mx-auto h-14 w-14" />
+        <h1 className="mt-4 text-lg font-semibold text-foreground">{t('ui.common.crashTitle')}</h1>
         <p className="mt-2 break-all text-sm text-muted-foreground">{error.message}</p>
         <Button className="mt-6 w-full" onClick={() => resetErrorBoundary()}>
-          重试
+          {t('common.retry')}
         </Button>
       </div>
     </div>

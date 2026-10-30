@@ -51,7 +51,7 @@ function RegisterPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background p-4 safe-top safe-bottom">
+    <div className="flex min-h-screen items-center justify-center bg-background p-4 text-foreground safe-top safe-bottom">
       <div className="w-full max-w-sm">
         <div className="rounded-xl border border-border bg-card p-8 shadow-lg">
           <div className="flex flex-col items-center text-center">

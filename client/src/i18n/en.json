@@ -274,7 +274,7 @@
     "edit": "Edit", "close": "Close", "loading": "Loading…", "saving": "Saving…",
     "success": "Success", "failed": "Failed", "notFound": "404",
     "notFoundText": "The bull and bear searched every corner but couldn't find this page — they argued about it.",
-    "goHome": "Go Home", "currency": "Currency",
+    "goHome": "Go Home", "currency": "Currency", "retry": "Retry",
     "usMarket": "US", "hkMarket": "HK", "cnMarket": "CN",
     "usd": "USD", "hkd": "HKD", "cny": "CNY"
   }

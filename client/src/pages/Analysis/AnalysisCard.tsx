@@ -113,6 +113,23 @@ function actionTextColor(action: string | null | undefined): string {
   }
 }
 
+function localizedActionLabel(action: string | null | undefined, t: (key: string) => string): string {
+  const label = actionShortLabel(action);
+  const keys: Record<string, string> = {
+    '加仓': 'analysis.add', '买入': 'analysis.buy', '持有': 'analysis.hold',
+    '减仓': 'analysis.reduce', '卖出': 'analysis.sell', '观望': 'analysis.watch',
+  };
+  return keys[label] ? t(keys[label]) : label;
+}
+
+function localizedRating(value: string | null, t: (key: string) => string): string {
+  const keys: Record<string, string> = {
+    'Strong Buy': 'analysis.strongBuy', Buy: 'analysis.buy', Hold: 'analysis.hold',
+    Sell: 'analysis.sell', 'Strong Sell': 'analysis.strongSell',
+  };
+  return value && keys[value] ? t(keys[value]) : value ?? '';
+}
+
 /** Props for {@link AnalysisCard}. */
 interface AnalysisCardProps {
   analysis: AnalysisType;
@@ -166,11 +183,11 @@ function AnalysisCard({ analysis, companyName, deepReportRunId }: AnalysisCardPr
             <div className="flex items-center gap-2">
               <Sparkles className="h-5 w-5 text-primary" />
               <CardTitle className="font-serif text-lg text-primary">
-                组合策略复盘
+                {t('ui.analysis.portfolioReview')}
               </CardTitle>
             </div>
             <CardDescription>
-              当日整体市场判断与组合操作策略
+              {t('ui.analysis.portfolioDescription')}
             </CardDescription>
           </div>
         ) : (
@@ -186,7 +203,7 @@ function AnalysisCard({ analysis, companyName, deepReportRunId }: AnalysisCardPr
                 )}
                 {analysis.targetPrice && (
                   <span className="font-mono-nums text-xs shrink-0">
-                    目标价 {formatPriceWithCurrency(analysis.targetPrice, targetCurrency)}
+                    {t('ui.analysis.targetPrice')} {formatPriceWithCurrency(analysis.targetPrice, targetCurrency)}
                   </span>
                 )}
               </CardDescription>
@@ -200,7 +217,7 @@ function AnalysisCard({ analysis, companyName, deepReportRunId }: AnalysisCardPr
                     ratingColor(analysis.rating)
                   )}
                 >
-                  {analysis.rating}
+                  {localizedRating(analysis.rating, t)}
                 </Badge>
               )}
               {deepReportRunId && (
@@ -210,11 +227,11 @@ function AnalysisCard({ analysis, companyName, deepReportRunId }: AnalysisCardPr
                 >
                   <Badge
                     variant="outline"
-                    title="仅完成深度分析的股票会显示此入口"
+                    title={t('ui.analysis.deepReportTooltip')}
                     className="gap-1 border-amber-500/50 bg-amber-500/10 text-amber-600 dark:text-amber-400 font-medium text-[11px] rounded-md hover:bg-amber-500/20 transition-colors"
                   >
                     <Sparkles size={11} />
-                    深度报告
+                    {t('ui.analysis.deepReport')}
                   </Badge>
                 </button>
               )}
@@ -231,7 +248,7 @@ function AnalysisCard({ analysis, companyName, deepReportRunId }: AnalysisCardPr
           {/* Target price */}
           <div className="flex flex-col items-center justify-center rounded-md bg-muted/30 px-2 py-3">
             <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
-              目标价
+              {t('ui.analysis.targetPrice')}
             </span>
             <span className="mt-0.5 font-serif text-3xl font-bold text-foreground sm:text-2xl">
               {analysis.targetPrice ? formatPriceWithCurrency(analysis.targetPrice, targetCurrency) : '—'}
@@ -240,7 +257,7 @@ function AnalysisCard({ analysis, companyName, deepReportRunId }: AnalysisCardPr
           {/* Action - short label */}
           <div className="flex flex-col items-center justify-center rounded-md bg-muted/30 px-2 py-3">
             <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
-              操作建议
+              {t('ui.analysis.actionAdvice')}
             </span>
             <span
               className={cn(
@@ -248,7 +265,7 @@ function AnalysisCard({ analysis, companyName, deepReportRunId }: AnalysisCardPr
                 actionTextColor(analysis.action),
               )}
             >
-              {analysis.action ? actionShortLabel(analysis.action) : '—'}
+              {analysis.action ? localizedActionLabel(analysis.action, t) : '—'}
             </span>
           </div>
         </div>
@@ -258,7 +275,7 @@ function AnalysisCard({ analysis, companyName, deepReportRunId }: AnalysisCardPr
         <div className="px-5 pt-4">
           <div className="flex items-center gap-2">
             <Target className="h-3.5 w-3.5 text-muted-foreground" />
-            <span className="text-xs text-muted-foreground">目标价</span>
+            <span className="text-xs text-muted-foreground">{t('ui.analysis.targetPrice')}</span>
             <span className="font-mono-nums text-sm font-semibold text-foreground">
               {formatPriceWithCurrency(analysis.targetPrice, targetCurrency)}
             </span>
@@ -272,7 +289,7 @@ function AnalysisCard({ analysis, companyName, deepReportRunId }: AnalysisCardPr
           <div className="space-y-2">
             <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
               <Target className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
-              操作建议
+              {t('ui.analysis.actionAdvice')}
             </div>
             <p className={cn(
               'whitespace-pre-wrap break-words text-sm font-medium leading-relaxed',
@@ -288,7 +305,7 @@ function AnalysisCard({ analysis, companyName, deepReportRunId }: AnalysisCardPr
           <div className="space-y-2">
             <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
               <Target className="h-3.5 w-3.5 text-primary" />
-              {isPortfolio ? '策略观点' : '分析结论'}
+              {isPortfolio ? t('ui.analysis.strategyView') : t('ui.analysis.conclusion')}
             </div>
             <p
               className={cn(
@@ -311,7 +328,7 @@ function AnalysisCard({ analysis, companyName, deepReportRunId }: AnalysisCardPr
                 <div className="space-y-2">
                   <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
                     <TrendingUp className="h-3.5 w-3.5 text-success" />
-                    关键催化剂
+                    {t('ui.analysis.keyCatalysts')}
                   </div>
                   <ul className="space-y-1 text-sm">
                     {displayCatalysts.map((c, i) => (
@@ -324,7 +341,7 @@ function AnalysisCard({ analysis, companyName, deepReportRunId }: AnalysisCardPr
                     ))}
                     {hasDeepReport && catalysts && catalysts.length > 3 && (
                       <li className="text-xs text-muted-foreground">
-                        还有 {catalysts.length - 3} 条催化剂，查看深度报告了解更多
+                        {t('ui.analysis.moreCatalysts', { count: catalysts.length - 3 })}
                       </li>
                     )}
                   </ul>
@@ -333,7 +350,7 @@ function AnalysisCard({ analysis, companyName, deepReportRunId }: AnalysisCardPr
                 <div className="space-y-2">
                   <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
                     <TrendingUp className="h-3.5 w-3.5 text-success" />
-                    关键催化剂
+                    {t('ui.analysis.keyCatalysts')}
                   </div>
                   <p className="text-sm text-foreground/75">
                     {hasDeepReport && analysis.catalysts.length > 150
@@ -347,7 +364,7 @@ function AnalysisCard({ analysis, companyName, deepReportRunId }: AnalysisCardPr
                 <div className="space-y-2">
                   <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
                     <AlertTriangle className="h-3.5 w-3.5 text-destructive" />
-                    风险提示
+                    {t('ui.analysis.riskNotes')}
                   </div>
                   <ul className="space-y-1 text-sm">
                     {displayRisks.map((r, i) => (
@@ -360,7 +377,7 @@ function AnalysisCard({ analysis, companyName, deepReportRunId }: AnalysisCardPr
                     ))}
                     {hasDeepReport && risks && risks.length > 3 && (
                       <li className="text-xs text-muted-foreground">
-                        还有 {risks.length - 3} 条风险提示，查看深度报告了解更多
+                        {t('ui.analysis.moreRisks', { count: risks.length - 3 })}
                       </li>
                     )}
                   </ul>
@@ -369,7 +386,7 @@ function AnalysisCard({ analysis, companyName, deepReportRunId }: AnalysisCardPr
                 <div className="space-y-2">
                   <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
                     <AlertTriangle className="h-3.5 w-3.5 text-destructive" />
-                    风险提示
+                    {t('ui.analysis.riskNotes')}
                   </div>
                   <p className="text-sm text-foreground/75">
                     {hasDeepReport && analysis.risks.length > 150
@@ -396,7 +413,7 @@ function AnalysisCard({ analysis, companyName, deepReportRunId }: AnalysisCardPr
             ) : (
               <ChevronDown className="mr-1 h-3.5 w-3.5" />
             )}
-            {expanded ? '收起' : t('analysis.expandDetail')}
+            {expanded ? t('ui.analysis.collapse') : t('analysis.expandDetail')}
           </Button>
         </div>
       )}
@@ -412,7 +429,7 @@ function AnalysisCard({ analysis, companyName, deepReportRunId }: AnalysisCardPr
             >
               <span className="flex items-center gap-1.5">
                 <Sparkles size={12} />
-                查看深度报告
+                {t('ui.analysis.viewDeepReport')}
               </span>
               <ChevronRight size={14} />
             </button>

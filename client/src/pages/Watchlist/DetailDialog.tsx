@@ -8,6 +8,7 @@
  * dialog handles deletion.
  */
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Pencil, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { WatchItem, Signal } from '@shared/api.interface';
@@ -45,6 +46,16 @@ interface DetailDialogProps {
 const SIGNAL_OPTIONS: Signal[] = ['强烈买入', '买入', '观望', '回避'];
 /** Selectable rating values. */
 const RATING_OPTIONS = ['Strong Buy', 'Buy', 'Hold', 'Sell', 'Strong Sell'];
+
+function localizedSignal(signal: string, t: (key: string) => string): string {
+  const keys: Record<string, string> = {
+    '强烈买入': 'analysis.strongBuy', 'Strong Buy': 'analysis.strongBuy',
+    '买入': 'analysis.buy', Buy: 'analysis.buy',
+    '观望': 'analysis.watch', Watch: 'analysis.watch',
+    '回避': 'analysis.avoid', Avoid: 'analysis.avoid',
+  };
+  return keys[signal] ? t(keys[signal]) : signal;
+}
 
 /**
  * Convert a WatchItem into the controlled form shape. Date is normalized to
@@ -113,6 +124,7 @@ function DetailDialog({
   onUpdated,
   onDeleted,
 }: DetailDialogProps) {
+  const { t } = useTranslation();
   const [editMode, setEditMode] = useState(false);
   const [formData, setFormData] = useState<WatchFormData>(toFormData(item));
   const [submitting, setSubmitting] = useState(false);
@@ -143,13 +155,13 @@ function DetailDialog({
         signal: formData.signal || undefined,
         analysis: formData.analysis.trim() || undefined,
       });
-      toast.success('已保存修改');
+      toast.success(t('watchlist.saved'));
       setEditMode(false);
       onUpdated();
       onOpenChange(false);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : '更新失败';
-      toast.error('保存失败', { description: msg });
+      const msg = err instanceof Error ? err.message : t('ui.watchlist.saveFailed');
+      toast.error(t('ui.watchlist.saveFailed'), { description: msg });
     } finally {
       setSubmitting(false);
     }
@@ -161,13 +173,13 @@ function DetailDialog({
     setSubmitting(true);
     try {
       await deleteWatchItem(item.id);
-      toast.success('已移除关注');
+      toast.success(t('ui.watchlist.signalRemoved'));
       setConfirmDelete(false);
       onDeleted();
       onOpenChange(false);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : '删除失败';
-      toast.error('删除失败', { description: msg });
+      const msg = err instanceof Error ? err.message : t('watchlist.deleteFailed');
+      toast.error(t('watchlist.deleteFailed'), { description: msg });
     } finally {
       setSubmitting(false);
     }
@@ -204,7 +216,7 @@ function DetailDialog({
                       signalColor(item.signal)
                     )}
                   >
-                    {item.signal}
+                    {localizedSignal(item.signal, t)}
                   </Badge>
                 )}
                 {item?.rating && (
@@ -225,21 +237,21 @@ function DetailDialog({
 
               <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
                 <Stat
-                  label="加入日期"
+                  label={t('ui.watchlist.joinedDate')}
                   value={formatDate(item?.dateAdded)}
                 />
                 <Stat
-                  label="买入价"
+                  label={t('ui.watchlist.entryPrice')}
                   value={formatPrice(item?.entryPrice)}
                   mono
                 />
                 <Stat
-                  label="现价"
+                  label={t('watchlist.currentPrice')}
                   value={formatPrice(item?.currentPrice)}
                   mono
                 />
                 <Stat
-                  label="目标买入价"
+                  label={t('watchlist.targetBuyPrice')}
                   value={formatPrice(item?.targetBuy)}
                   mono
                 />
@@ -247,18 +259,16 @@ function DetailDialog({
 
               {belowPct !== null && (
                 <div className="rounded-md bg-success/10 px-3 py-2 text-sm text-success">
-                  现价低于目标买入价{' '}
-                  <span className="font-mono-nums font-semibold">
-                    {formatPercent(belowPct).replace('+', '')}
-                  </span>
-                  ，可能是买入机会
+                  {t('ui.watchlist.opportunityMessage', {
+                    percent: formatPercent(belowPct).replace('+', ''),
+                  })}
                 </div>
               )}
 
               {item?.analysis && (
                 <div className="space-y-2">
                   <h4 className="font-serif text-sm font-semibold text-foreground">
-                    分析
+                    {t('ui.holdings.analysis')}
                   </h4>
                   <p className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
                     {item.analysis}
@@ -272,14 +282,14 @@ function DetailDialog({
                   onClick={() => setConfirmDelete(true)}
                 >
                   <Trash2 className="h-4 w-4" />
-                  删除
+                  {t('common.delete')}
                 </Button>
                 <Button
                   variant="outline"
                   onClick={() => setEditMode(true)}
                 >
                   <Pencil className="h-4 w-4" />
-                  编辑
+                  {t('common.edit')}
                 </Button>
               </DialogFooter>
             </div>
@@ -291,10 +301,10 @@ function DetailDialog({
                   variant="outline"
                   onClick={() => setEditMode(false)}
                 >
-                  取消
+                  {t('common.cancel')}
                 </Button>
                 <Button onClick={handleUpdate} disabled={submitting}>
-                  {submitting ? '保存中…' : '保存'}
+                  {submitting ? t('common.saving') : t('common.save')}
                 </Button>
               </DialogFooter>
             </>
@@ -306,28 +316,24 @@ function DetailDialog({
       <Dialog open={confirmDelete} onOpenChange={setConfirmDelete}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle className="font-serif">确认删除</DialogTitle>
+            <DialogTitle className="font-serif">{t('watchlist.confirmRemove')}</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            确定要移除对{' '}
-            <span className="font-mono-nums font-semibold text-foreground">
-              {item?.ticker}
-            </span>{' '}
-            的关注吗？此操作无法撤销。
+            {t('ui.watchlist.confirmRemoveText', { ticker: item?.ticker })}
           </p>
           <DialogFooter>
             <Button
               variant="outline"
               onClick={() => setConfirmDelete(false)}
             >
-              取消
+              {t('common.cancel')}
             </Button>
             <Button
               variant="destructive"
               onClick={handleDelete}
               disabled={submitting}
             >
-              {submitting ? '删除中…' : '确认删除'}
+              {submitting ? t('watchlist.deleting') : t('common.confirm')}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -251,7 +251,7 @@
     "edit": "编辑", "close": "关闭", "loading": "加载中…", "saving": "保存中…",
     "success": "操作成功", "failed": "操作失败", "notFound": "404",
     "notFoundText": "牛牛和熊熊找遍了每个角落，也没找到这个页面——它们为此又吵了一架。",
-    "goHome": "回首页", "currency": "币种",
+    "goHome": "回首页", "currency": "币种", "retry": "重试",
     "usMarket": "美股", "hkMarket": "港股", "cnMarket": "A股",
     "usd": "USD / 美元", "hkd": "HKD / 港币", "cny": "CNY / 人民币"
   }

@@ -88,37 +88,23 @@ import { useTranslation } from 'react-i18next';
 /** Ordered list of rule categories for grouping and rendering. */
 const CATEGORY_ORDER: Array<{
   key: RuleCategory | 'other';
-  label: string;
+  labelKey: string;
   icon?: string;
 }> = [
-  { key: 'position_concentration', label: '仓位与集中度' },
-  { key: 'stop_loss_take_profit', label: '止损止盈' },
-  { key: 'buy_conditions', label: '买入条件' },
-  { key: 'cash_management', label: '现金管理' },
-  { key: 'risk_gate', label: '风控闸门' },
-  { key: 'other', label: '其他' },
+  { key: 'position_concentration', labelKey: 'rules.concentration' },
+  { key: 'stop_loss_take_profit', labelKey: 'rules.stopLoss' },
+  { key: 'buy_conditions', labelKey: 'rules.buyCond' },
+  { key: 'cash_management', labelKey: 'rules.cashMgmt' },
+  { key: 'risk_gate', labelKey: 'ui.rules.riskGate' },
+  { key: 'other', labelKey: 'ui.rules.other' },
 ];
 
-/** Display labels for each category. */
-const CATEGORY_LABELS: Record<RuleCategory | 'other', string> = {
-  position_concentration: '仓位与集中度',
-  stop_loss_take_profit: '止损止盈',
-  buy_conditions: '买入条件',
-  cash_management: '现金管理',
-  risk_gate: '风控闸门',
-  other: '其他',
+const SEVERITY_LABEL_KEYS: Record<RuleSeverity, string> = {
+  hard_block: 'rules.hardBlock', warning: 'rules.warning',
 };
 
-/** Severity label map (translated at render time via the key). */
-const SEVERITY_LABELS: Record<RuleSeverity, string> = {
-  hard_block: '硬阻断',
-  warning: '警告',
-};
-
-/** Rule-type label map (hard = blocks auto-rating, soft = advisory only). */
-const RULE_TYPE_LABELS: Record<RuleType, string> = {
-  hard: '硬性',
-  soft: '软性',
+const RULE_TYPE_LABEL_KEYS: Record<RuleType, string> = {
+  hard: 'rules.hardRule', soft: 'rules.softRule',
 };
 
 // ── Helpers ──────────────────────────────────────────────
@@ -158,6 +144,7 @@ function groupRules(rules: StrategyRule[]): Record<string, StrategyRule[]> {
 function formatThreshold(
   threshold: string | number | null,
   unit: string | null,
+  t: (key: string, options?: Record<string, unknown>) => string,
 ): string {
   if (threshold === null || threshold === '') return '—';
   const num = typeof threshold === 'number' ? threshold : parseFloat(threshold);
@@ -165,7 +152,7 @@ function formatThreshold(
   const numStr = String(num);
   const u = (unit ?? '').trim().toLowerCase();
   if (u === 'pct' || u === '%') return `${numStr}%`;
-  if (u === 'days' || u === 'day') return `${numStr}天`;
+  if (u === 'days' || u === 'day') return t('ui.rules.days', { count: num });
   if (u === 'usd') return `$${numStr}`;
   if (!u) return numStr;
   return `${numStr} ${unit}`;
@@ -239,14 +226,14 @@ function StrategyRulesPage() {
       const data = (await getStrategyRules()) as StrategyRule[];
       setRules(data);
     } catch (err) {
-      const message = err instanceof Error ? err.message : '加载失败';
+      const message = err instanceof Error ? err.message : t('common.failed');
       setError(message);
       logger.error('加载策略规则失败', err);
-      toast.error('加载策略规则失败');
+      toast.error(t('rules.loadFailed'));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     void loadRules();
@@ -271,19 +258,22 @@ function StrategyRulesPage() {
       );
       try {
         await updateStrategyRule(rule.id, { enabled: nextEnabled });
-        toast.success(`${rule.ruleName} 已${nextEnabled ? '启用' : '禁用'}`);
+        toast.success(t('ui.rules.statusChanged', {
+          name: rule.ruleName,
+          status: t(nextEnabled ? 'ui.rules.enabled' : 'ui.rules.disabled'),
+        }));
       } catch (err) {
         setRules((prev) =>
           prev.map((r) =>
             r.id === rule.id ? { ...r, enabled: previous } : r,
           ),
         );
-        const message = err instanceof Error ? err.message : '操作失败';
+        const message = err instanceof Error ? err.message : t('ui.rules.toggleFailed');
         logger.error('更新规则状态失败', err);
-        toast.error(`更新失败：${message}`);
+        toast.error(t('ui.rules.toggleFailed'), { description: message });
       }
     },
-    [],
+    [t],
   );
 
   // ── Create rule ────────────────────────────────────────────
@@ -326,7 +316,7 @@ function StrategyRulesPage() {
    */
   const handleSaveDialog = useCallback(async () => {
     if (!formData.ruleKey.trim() || !formData.ruleName.trim()) {
-      toast.error('请填写规则 Key 和规则名称');
+      toast.error(t('ui.rules.fillRequired'));
       return;
     }
 
@@ -338,7 +328,7 @@ function StrategyRulesPage() {
       formData.threshold.trim() !== '' &&
       (Number.isNaN(thresholdNum) || !isFinite(thresholdNum))
     ) {
-      toast.error('阈值必须是有效数字');
+      toast.error(t('ui.rules.validThreshold'));
       return;
     }
 
@@ -358,23 +348,23 @@ function StrategyRulesPage() {
 
       if (editingRule) {
         await updateStrategyRule(editingRule.id, payload as unknown as Record<string, unknown>);
-        toast.success('规则已更新');
+        toast.success(t('ui.rules.ruleUpdated'));
       } else {
         await createStrategyRule(payload as unknown as Record<string, unknown>);
-        toast.success('规则已创建');
+        toast.success(t('ui.rules.ruleCreated'));
       }
 
       setDialogOpen(false);
       setEditingRule(null);
       await loadRules();
     } catch (err) {
-      const message = err instanceof Error ? err.message : '保存失败';
+      const message = err instanceof Error ? err.message : t('rules.saveFailed');
       logger.error('保存规则失败', err);
-      toast.error(`保存失败：${message}`);
+      toast.error(t('rules.saveFailed'), { description: message });
     } finally {
       setSaving(false);
     }
-  }, [formData, editingRule, loadRules]);
+  }, [formData, editingRule, loadRules, t]);
 
   // ── Delete rule ────────────────────────────────────────────
   /** Confirm-and-delete the rule held in `deleteTarget`. */
@@ -384,17 +374,17 @@ function StrategyRulesPage() {
     const target = deleteTarget;
     try {
       await deleteStrategyRule(target.id);
-      toast.success(`${target.ruleName} 已删除`);
+      toast.success(t('ui.rules.ruleDeleted', { name: target.ruleName }));
       setDeleteTarget(null);
       await loadRules();
     } catch (err) {
-      const message = err instanceof Error ? err.message : '删除失败';
+      const message = err instanceof Error ? err.message : t('rules.deleteFailed');
       logger.error('删除规则失败', err);
-      toast.error(`删除失败：${message}`);
+      toast.error(t('rules.deleteFailed'), { description: message });
     } finally {
       setDeleting(false);
     }
-  }, [deleteTarget, loadRules]);
+  }, [deleteTarget, loadRules, t]);
 
   // ── Reset to defaults ────────────────────────────────────
   /** Reset all rules to the system default set, then refetch. */
@@ -402,17 +392,17 @@ function StrategyRulesPage() {
     setResetting(true);
     try {
       await resetStrategyRules();
-      toast.success('已恢复默认规则');
+      toast.success(t('ui.rules.rulesRestored'));
       setResetOpen(false);
       await loadRules();
     } catch (err) {
-      const message = err instanceof Error ? err.message : '恢复失败';
+      const message = err instanceof Error ? err.message : t('rules.restoreFailed');
       logger.error('恢复默认规则失败', err);
-      toast.error(`恢复失败：${message}`);
+      toast.error(t('rules.restoreFailed'), { description: message });
     } finally {
       setResetting(false);
     }
-  }, [loadRules]);
+  }, [loadRules, t]);
 
   // ── Drag-and-drop reordering ────────────────────────────────────
   /** Track the dragged rule id + its category bucket. */
@@ -469,7 +459,7 @@ function StrategyRulesPage() {
 
       if (!draggedId || draggedId === targetRule.id) return;
       if (dragCat !== targetCat) {
-        toast.error('只能在同一分组内调整顺序');
+        toast.error(t('ui.rules.sameCategoryOnly'));
         return;
       }
 
@@ -498,18 +488,18 @@ function StrategyRulesPage() {
       setReordering(true);
       try {
         await reorderStrategyRules(reordered);
-        toast.success('排序已保存');
+        toast.success(t('ui.rules.orderSaved'));
       } catch (err) {
         // 失败回滚
         setRules(rules);
-        const message = err instanceof Error ? err.message : '保存失败';
+        const message = err instanceof Error ? err.message : t('rules.saveFailed');
         logger.error('保存排序失败', err);
-        toast.error(`排序保存失败：${message}`);
+        toast.error(t('rules.saveFailed'), { description: message });
       } finally {
         setReordering(false);
       }
     },
-    [grouped, rules],
+    [grouped, rules, t],
   );
 
   /** Clear drag refs after the drag ends. */
@@ -544,7 +534,7 @@ function StrategyRulesPage() {
       }
       const numValue = Number(thresholdValue);
       if (Number.isNaN(numValue) || !isFinite(numValue)) {
-        toast.error('请输入有效的数字');
+        toast.error(t('ui.rules.validNumber'));
         return;
       }
       const previous = rule.threshold;
@@ -555,7 +545,7 @@ function StrategyRulesPage() {
       );
       try {
         await updateStrategyRule(rule.id, { threshold: numValue });
-        toast.success(`${rule.ruleName} 阈值已更新`);
+        toast.success(t('ui.rules.thresholdSaved', { name: rule.ruleName }));
         setEditingThresholdId(null);
         setThresholdValue('');
       } catch (err) {
@@ -564,12 +554,12 @@ function StrategyRulesPage() {
             r.id === rule.id ? { ...r, threshold: previous } : r,
           ),
         );
-        const message = err instanceof Error ? err.message : '保存失败';
+        const message = err instanceof Error ? err.message : t('rules.saveFailed');
         logger.error('更新阈值失败', err);
-        toast.error(`保存失败：${message}`);
+        toast.error(t('rules.saveFailed'), { description: message });
       }
     },
-    [thresholdValue, cancelThresholdEdit],
+    [thresholdValue, cancelThresholdEdit, t],
   );
 
   // ── 渲染 ────────────────────────────────────────────────
@@ -579,10 +569,10 @@ function StrategyRulesPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="space-y-1">
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-            策略规则
+            {t('rules.title')}
           </h1>
           <p className="text-sm text-muted-foreground">
-            管理风控检查的阈值、开关和优先级。拖拽可调整组内顺序，支持按分类分组管理。
+            {t('ui.rules.pageDescription')}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -592,11 +582,11 @@ function StrategyRulesPage() {
             className="border-amber-600/40 text-amber-500 hover:bg-amber-500/10 hover:text-amber-400"
           >
             <RotateCcw size={16} />
-            恢复默认
+            {t('ui.rules.resetDefaults')}
           </Button>
           <Button variant="default" onClick={openCreateDialog}>
             <Plus size={16} />
-            新增规则
+            {t('rules.addRule')}
           </Button>
         </div>
       </div>
@@ -610,7 +600,7 @@ function StrategyRulesPage() {
                 <Shield size={18} />
               </div>
               <CardTitle className="text-base text-rose-200">
-                硬规则
+                {t('rules.hardRule')}
               </CardTitle>
               <Badge
                 variant="outline"
@@ -622,14 +612,14 @@ function StrategyRulesPage() {
           </CardHeader>
           <CardContent>
             <p className="text-sm text-rose-200/80">
-              触发后评级结果将进入「待人工决策」状态，必须由人工确认后才能生效。用于关键风险控制，
+              {t('ui.rules.hardDescription')}
               <span className="font-medium text-rose-300">
-                不建议随意关闭
+                {t('ui.rules.hardEmphasis')}
               </span>
               。
             </p>
             <p className="mt-2 text-xs text-rose-400/70">
-              当前共有 {hardCount} 条硬规则
+              {t('ui.rules.hardCount', { count: hardCount })}
             </p>
           </CardContent>
         </Card>
@@ -641,7 +631,7 @@ function StrategyRulesPage() {
                 <Lightbulb size={18} />
               </div>
               <CardTitle className="text-base text-amber-200">
-                软规则
+                {t('rules.softRule')}
               </CardTitle>
               <Badge
                 variant="outline"
@@ -653,10 +643,10 @@ function StrategyRulesPage() {
           </CardHeader>
           <CardContent>
             <p className="text-sm text-amber-200/80">
-              触发后仅在评级结果中给出提示，不会阻止评级自动生效。用于辅助参考类检查，可根据需要灵活开关。
+              {t('ui.rules.softDescription')}
             </p>
             <p className="mt-2 text-xs text-amber-400/70">
-              当前共有 {softCount} 条软规则
+              {t('ui.rules.softCount', { count: softCount })}
             </p>
           </CardContent>
         </Card>
@@ -667,7 +657,7 @@ function StrategyRulesPage() {
         <div className="flex items-start gap-3 rounded-md border border-rose-500/30 bg-rose-950/30 p-4 text-sm text-rose-300">
           <AlertTriangle size={18} className="mt-0.5 shrink-0" />
           <div>
-            <div className="font-medium">加载失败</div>
+            <div className="font-medium">{t('rules.loadFailed')}</div>
             <div className="text-rose-300/80">{error}</div>
           </div>
         </div>
@@ -696,7 +686,7 @@ function StrategyRulesPage() {
                 {/* 分组标题 */}
                 <div className="mb-3 flex items-center gap-2">
                   <h2 className="text-base font-semibold text-foreground">
-                    {cat.label}
+                    {t(cat.labelKey)}
                   </h2>
                   <Badge
                     variant="outline"
@@ -711,7 +701,7 @@ function StrategyRulesPage() {
                 {groupRulesList.length === 0 ? (
                   <div className="rounded-lg border border-dashed border-border p-4">
                     <p className="text-center text-xs text-muted-foreground">
-                      暂无该分类的规则，可点击「新增规则」添加
+                      {t('ui.rules.emptyCategory')}
                     </p>
                   </div>
                 ) : (
@@ -751,45 +741,45 @@ function StrategyRulesPage() {
         <DialogContent className="max-w-xl">
           <DialogHeader>
             <DialogTitle>
-              {editingRule ? '编辑规则' : '新增规则'}
+              {t(editingRule ? 'ui.rules.editTitle' : 'ui.rules.createTitle')}
             </DialogTitle>
             <DialogDescription>
               {editingRule
-                ? '修改规则的名称、类型、阈值等属性。'
-                : '创建一条新的策略规则，填写以下信息。'}
+                ? t('ui.rules.editDescription')
+                : t('ui.rules.createDescription')}
             </DialogDescription>
           </DialogHeader>
 
           <div className="grid gap-4 py-2">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="ruleKey">规则 Key</Label>
+                <Label htmlFor="ruleKey">{t('ui.rules.ruleKey')}</Label>
                 <Input
                   id="ruleKey"
                   value={formData.ruleKey}
                   onChange={(e) =>
                     setFormData({ ...formData, ruleKey: e.target.value })
                   }
-                  placeholder="例如: max_position_weight"
+                  placeholder={t('ui.rules.ruleKeyPlaceholder')}
                   disabled={!!editingRule}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="ruleName">规则名称</Label>
+                <Label htmlFor="ruleName">{t('ui.rules.ruleName')}</Label>
                 <Input
                   id="ruleName"
                   value={formData.ruleName}
                   onChange={(e) =>
                     setFormData({ ...formData, ruleName: e.target.value })
                   }
-                  placeholder="例如: 单只股票最大仓位"
+                  placeholder={t('ui.rules.ruleNamePlaceholder')}
                 />
               </div>
             </div>
 
             <div className="grid grid-cols-3 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="ruleType">规则类型</Label>
+                <Label htmlFor="ruleType">{t('ui.rules.ruleType')}</Label>
                 <Select
                   value={formData.ruleType}
                   onValueChange={(v) =>
@@ -803,38 +793,38 @@ function StrategyRulesPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="hard">硬性 (Hard)</SelectItem>
-                    <SelectItem value="soft">软性 (Soft)</SelectItem>
+                    <SelectItem value="hard">{t('rules.hardRule')}</SelectItem>
+                    <SelectItem value="soft">{t('rules.softRule')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="threshold">阈值</Label>
+                <Label htmlFor="threshold">{t('ui.rules.threshold')}</Label>
                 <Input
                   id="threshold"
                   value={formData.threshold}
                   onChange={(e) =>
                     setFormData({ ...formData, threshold: e.target.value })
                   }
-                  placeholder="例如: 25"
+                  placeholder={t('ui.rules.thresholdExample')}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="unit">单位</Label>
+                <Label htmlFor="unit">{t('rules.unit')}</Label>
                 <Input
                   id="unit"
                   value={formData.unit}
                   onChange={(e) =>
                     setFormData({ ...formData, unit: e.target.value })
                   }
-                  placeholder="例如: %"
+                  placeholder={t('ui.rules.unitExample')}
                 />
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="category">分类</Label>
+                <Label htmlFor="category">{t('ui.rules.category')}</Label>
                 <Select
                   value={formData.category}
                   onValueChange={(v) =>
@@ -851,16 +841,16 @@ function StrategyRulesPage() {
                     {CATEGORY_ORDER.filter((c) => c.key !== 'other').map(
                       (c) => (
                         <SelectItem key={c.key} value={c.key}>
-                          {c.label}
+                          {t(c.labelKey)}
                         </SelectItem>
                       ),
                     )}
-                    <SelectItem value="none">未分类</SelectItem>
+                    <SelectItem value="none">{t('ui.rules.uncategorized')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="severity">严重级别</Label>
+                <Label htmlFor="severity">{t('ui.rules.severity')}</Label>
                 <Select
                   value={formData.severity}
                   onValueChange={(v) =>
@@ -874,22 +864,22 @@ function StrategyRulesPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="warning">警告</SelectItem>
-                    <SelectItem value="hard_block">硬阻断</SelectItem>
+                    <SelectItem value="warning">{t('rules.warning')}</SelectItem>
+                    <SelectItem value="hard_block">{t('rules.hardBlock')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="description">说明</Label>
+              <Label htmlFor="description">{t('ui.rules.description')}</Label>
               <Textarea
                 id="description"
                 value={formData.description}
                 onChange={(e) =>
                   setFormData({ ...formData, description: e.target.value })
                 }
-                placeholder="描述该规则的用途和触发场景"
+                placeholder={t('ui.rules.descriptionPlaceholder')}
                 rows={3}
               />
             </div>
@@ -901,10 +891,10 @@ function StrategyRulesPage() {
               onClick={() => setDialogOpen(false)}
               disabled={saving}
             >
-              取消
+              {t('common.cancel')}
             </Button>
             <Button onClick={() => void handleSaveDialog()} disabled={saving}>
-              {saving ? '保存中...' : editingRule ? '保存修改' : '创建规则'}
+              {saving ? t('common.saving') : editingRule ? t('ui.rules.saveChanges') : t('ui.rules.createRule')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -921,14 +911,10 @@ function StrategyRulesPage() {
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
               <AlertTriangle className="h-5 w-5 text-rose-500" />
-              删除规则确认
+              {t('ui.rules.deleteTitle')}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              确定要删除{' '}
-              <span className="font-medium text-foreground">
-                {deleteTarget?.ruleName}
-              </span>{' '}
-              吗？删除后无法自动恢复。
+              {t('ui.rules.deleteDescription', { name: deleteTarget?.ruleName })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -936,14 +922,14 @@ function StrategyRulesPage() {
               onClick={() => setDeleteTarget(null)}
               disabled={deleting}
             >
-              取消
+              {t('common.cancel')}
             </AlertDialogCancel>
             <AlertDialogAction
               className="bg-rose-600 hover:bg-rose-700"
               onClick={() => void handleDelete()}
               disabled={deleting}
             >
-              {deleting ? '删除中...' : t('rules.deleteConfirm')}
+              {deleting ? t('rules.deleting') : t('ui.rules.confirmDelete')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -955,14 +941,10 @@ function StrategyRulesPage() {
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
               <RotateCcw className="h-5 w-5 text-amber-500" />
-              恢复默认规则
+              {t('ui.rules.resetTitle')}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              将重置所有策略规则为系统默认值，
-              <span className="font-medium text-amber-500">
-                您的自定义修改将被覆盖
-              </span>
-              。确认继续吗？
+              {t('ui.rules.resetDescription')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -970,14 +952,14 @@ function StrategyRulesPage() {
               onClick={() => setResetOpen(false)}
               disabled={resetting}
             >
-              取消
+              {t('common.cancel')}
             </AlertDialogCancel>
             <AlertDialogAction
               className="bg-amber-600 hover:bg-amber-700"
               onClick={() => void handleReset()}
               disabled={resetting}
             >
-              {resetting ? '恢复中...' : t('rules.restoreConfirm')}
+              {resetting ? t('rules.restoring') : t('rules.restoreConfirm')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -1039,6 +1021,7 @@ function RuleCard({
   isDragOver,
   isReordering,
 }: RuleCardProps) {
+  const { t } = useTranslation();
   const isEditing = editingThresholdId === rule.id;
   const hasThreshold = rule.threshold !== null && rule.threshold !== undefined;
 
@@ -1062,7 +1045,7 @@ function RuleCard({
           {/* 拖拽手柄 */}
           <div
             className="flex shrink-0 cursor-grab items-center justify-center text-muted-foreground/60 transition-colors hover:text-muted-foreground active:cursor-grabbing"
-            title="拖拽排序"
+            title={t('ui.rules.dragSort')}
           >
             <GripVertical size={18} />
           </div>
@@ -1114,7 +1097,7 @@ function RuleCard({
                 size="icon"
                 className="h-8 w-8 text-emerald-500 hover:bg-emerald-500/10 hover:text-emerald-400"
                 onClick={() => void saveThreshold(rule)}
-                title="保存"
+                title={t('common.save')}
               >
                 <Check size={16} />
               </Button>
@@ -1123,7 +1106,7 @@ function RuleCard({
                 size="icon"
                 className="h-8 w-8 text-muted-foreground hover:text-foreground"
                 onClick={cancelThresholdEdit}
-                title="取消"
+                title={t('common.cancel')}
               >
                 <X size={16} />
               </Button>
@@ -1142,10 +1125,10 @@ function RuleCard({
                     : 'cursor-default'
                 }
               `}
-              title={hasThreshold ? '点击编辑阈值' : '无阈值参数'}
+              title={hasThreshold ? t('ui.rules.editThreshold') : t('ui.rules.noThreshold')}
             >
               <span className="font-mono-nums font-medium text-foreground">
-                {hasThreshold ? formatThreshold(rule.threshold, rule.unit) : '—'}
+                {hasThreshold ? formatThreshold(rule.threshold, rule.unit, t) : '—'}
               </span>
               {hasThreshold && (
                 <Pencil
@@ -1168,7 +1151,7 @@ function RuleCard({
                 : 'border-amber-500/40 bg-amber-500/10 text-amber-400'
             }
           >
-            {SEVERITY_LABELS[rule.severity]}
+            {t(SEVERITY_LABEL_KEYS[rule.severity])}
           </Badge>
 
           {/* ruleType 徽章 */}
@@ -1180,7 +1163,7 @@ function RuleCard({
                 : 'border-slate-500/40 bg-slate-500/10 text-slate-400'
             }
           >
-            {RULE_TYPE_LABELS[rule.ruleType]}
+            {t(RULE_TYPE_LABEL_KEYS[rule.ruleType])}
           </Badge>
 
           {/* 启停开关 */}
@@ -1197,7 +1180,7 @@ function RuleCard({
             size="icon"
             className="h-8 w-8 text-muted-foreground hover:text-foreground"
             onClick={() => onEdit(rule)}
-            title="编辑规则"
+            title={t('ui.rules.editRule')}
           >
             <Pencil size={16} />
           </Button>
@@ -1208,7 +1191,7 @@ function RuleCard({
             size="icon"
             className="h-8 w-8 text-muted-foreground hover:bg-rose-500/10 hover:text-rose-400"
             onClick={() => onDelete(rule)}
-            title="删除规则"
+            title={t('ui.rules.deleteRule')}
           >
             <Trash2 size={16} />
           </Button>

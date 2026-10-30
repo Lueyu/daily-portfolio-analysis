@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/empty';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { useTranslation } from 'react-i18next';
 import DeepReportView from '@/components/MultiAgent/DeepReportView';
 
 /**
@@ -29,6 +30,7 @@ import DeepReportView from '@/components/MultiAgent/DeepReportView';
 function DeepReportPage() {
   const { runId = '' } = useParams<{ runId: string }>();
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const [report, setReport] = useState<DeepReportType | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -45,9 +47,9 @@ function DeepReportPage() {
         setReport(data);
       } catch (err: unknown) {
         if (cancelled) return;
-        const msg = err instanceof Error ? err.message : '加载失败';
+        const msg = err instanceof Error ? err.message : t('ui.analysis.contentLoadFailed');
         setError(msg);
-        toast.error('加载深度报告失败', { description: msg });
+        toast.error(t('ui.report.loadDeepReportFailed'), { description: msg });
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -55,20 +57,20 @@ function DeepReportPage() {
     return () => {
       cancelled = true;
     };
-  }, [runId]);
+  }, [runId, t]);
 
   return (
-    <div className="min-h-screen bg-[#0a1a1a]">
+    <div className="min-h-screen bg-background text-foreground">
       {/* Top bar */}
-      <div className="sticky top-0 z-20 border-b border-slate-800/60 bg-[#0a1a1a]/80 backdrop-blur-sm">
+      <div className="sticky top-0 z-20 border-b border-border bg-background/90 backdrop-blur-sm">
         <div className="flex items-center justify-end px-2 sm:px-4 py-3">
           {report && (
             <Badge
               variant="outline"
-              className="gap-1 border-amber-500/50 bg-amber-500/10 text-amber-400 font-medium"
+              className="gap-1 border-amber-500/50 bg-amber-500/10 text-amber-700 dark:text-amber-400 font-medium"
             >
               <Sparkles size={12} />
-              深度报告
+              {t('ui.report.deepReport')}
             </Badge>
           )}
         </div>
@@ -76,9 +78,9 @@ function DeepReportPage() {
 
       {/* Loading */}
       {loading && (
-        <div className="flex items-center justify-center p-16 text-slate-400">
+        <div className="flex items-center justify-center p-16 text-muted-foreground">
           <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-          加载深度报告中...
+          {t('ui.report.loadingDeepReport')}
         </div>
       )}
 
@@ -90,14 +92,14 @@ function DeepReportPage() {
               <Sparkles className="h-5 w-5" />
             </EmptyMedia>
             <EmptyContent>
-              <EmptyTitle className="font-serif text-slate-100">
-                加载失败
+              <EmptyTitle className="font-serif text-foreground">
+                {t('ui.analysis.contentLoadFailed')}
               </EmptyTitle>
-              <EmptyDescription className="text-slate-400">
+              <EmptyDescription className="text-muted-foreground">
                 {error}
               </EmptyDescription>
               <div className="mt-4">
-                <Button onClick={() => window.location.reload()}>重试</Button>
+                <Button onClick={() => window.location.reload()}>{t('common.retry')}</Button>
               </div>
             </EmptyContent>
           </Empty>
@@ -112,11 +114,11 @@ function DeepReportPage() {
               <Sparkles className="h-5 w-5" />
             </EmptyMedia>
             <EmptyContent>
-              <EmptyTitle className="font-serif text-slate-100">
-                该分析暂无深度报告
+              <EmptyTitle className="font-serif text-foreground">
+                {t('ui.report.noDeepReport')}
               </EmptyTitle>
-              <EmptyDescription className="text-slate-400">
-                深度报告仅在完整 Multi-Agent 分析完成后生成
+              <EmptyDescription className="text-muted-foreground">
+                {t('ui.report.deepReportGeneratedAfterRun')}
               </EmptyDescription>
             </EmptyContent>
           </Empty>

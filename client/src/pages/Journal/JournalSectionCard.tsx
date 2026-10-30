@@ -25,19 +25,19 @@ import { useTranslation } from 'react-i18next';
 export interface JournalSection {
   /** Which JournalEntry field this section maps to. */
   key: keyof Pick<JournalEntry, 'marketSummary' | 'portfolioSummary' | 'actions' | 'plan' | 'lessons'>;
-  /** Display label. */
-  label: string;
+  /** Translation key suffix. */
+  labelKey: string;
   /** Lucide icon component. */
   icon: typeof Globe;
 }
 
 /** The five journal sections, in display order. */
 export const sections: JournalSection[] = [
-  { key: 'marketSummary', label: '市场与宏观', icon: Globe },
-  { key: 'portfolioSummary', label: '组合表现归因', icon: Target },
-  { key: 'actions', label: '当日操作', icon: ClipboardList },
-  { key: 'plan', label: '明日计划', icon: BookOpen },
-  { key: 'lessons', label: '心得纪律', icon: Lightbulb },
+  { key: 'marketSummary', labelKey: 'marketSummary', icon: Globe },
+  { key: 'portfolioSummary', labelKey: 'portfolioSummary', icon: Target },
+  { key: 'actions', labelKey: 'actions', icon: ClipboardList },
+  { key: 'plan', labelKey: 'plan', icon: BookOpen },
+  { key: 'lessons', labelKey: 'lessons', icon: Lightbulb },
 ];
 
 /** Props for {@link JournalSectionCard}. */
@@ -65,6 +65,7 @@ export function JournalSectionCard({
 }: JournalSectionCardProps) {
   const { t } = useTranslation();
   const SectionIcon = section.icon;
+  const sectionLabel = t(`journal.${section.labelKey}`);
 
   if (editing) {
     return (
@@ -72,14 +73,14 @@ export function JournalSectionCard({
         <CardHeader className="pb-2">
           <div className="flex items-center gap-2">
             <SectionIcon size={16} className="text-primary" />
-            <CardTitle className="font-serif text-base">{section.label}</CardTitle>
+            <CardTitle className="font-serif text-base">{sectionLabel}</CardTitle>
           </div>
         </CardHeader>
         <CardContent>
           <Textarea
             value={editValue}
             onChange={(e) => onEditChange(e.target.value)}
-            placeholder={`记录${section.label}...`}
+            placeholder={t('ui.journal.recordSection', { section: sectionLabel })}
             className="min-h-[120px] text-sm leading-relaxed"
           />
         </CardContent>
@@ -92,7 +93,7 @@ export function JournalSectionCard({
       <CardHeader className="pb-2">
         <div className="flex items-center gap-2">
           <SectionIcon size={16} className="text-primary" />
-          <CardTitle className="font-serif text-base">{section.label}</CardTitle>
+          <CardTitle className="font-serif text-base">{sectionLabel}</CardTitle>
         </div>
       </CardHeader>
       <CardContent>
@@ -102,7 +103,7 @@ export function JournalSectionCard({
           </div>
         ) : (
           <div className="py-4 text-center text-sm text-muted-foreground">
-            暂无记录
+            {t('ui.journal.noRecord')}
           </div>
         )}
       </CardContent>

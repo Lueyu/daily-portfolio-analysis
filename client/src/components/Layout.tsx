@@ -11,7 +11,7 @@
  * user menu reads the profile from GET /api/auth/me.
  */
 import { Outlet, NavLink, useLocation, useNavigate, Navigate } from 'react-router-dom';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { fetchMyProfile } from '@/api';
@@ -75,6 +75,7 @@ function Layout() {
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
   const location = useLocation();
+  const pageScrollRef = useRef<HTMLElement>(null);
 
   const toggleLang = () => {
     const next = i18n.language === 'zh-CN' ? 'en' : 'zh-CN';
@@ -83,6 +84,7 @@ function Layout() {
 
   useEffect(() => {
     setMobileOpen(false);
+    if (pageScrollRef.current) pageScrollRef.current.scrollTop = 0;
   }, [location.pathname]);
 
   if (!hasSession()) {
@@ -100,7 +102,7 @@ function Layout() {
         <div className="flex h-full flex-col">
           <div className="flex h-14 items-center justify-between border-b border-sidebar-border px-4">
             <div className="flex items-center gap-2">
-              <img src="/logo.svg" alt="吵股" className="h-8 w-8" />
+              <img src="/logo.svg" alt={t('layout.appName')} className="h-8 w-8" />
               <span className="font-serif text-lg font-semibold tracking-wide">
                 吵股
               </span>
@@ -140,7 +142,7 @@ function Layout() {
               className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
             >
               {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
-              <span>{theme === 'dark' ? '浅色模式' : '深色模式'}</span>
+              <span>{t(theme === 'dark' ? 'layout.darkMode' : 'layout.lightMode')}</span>
             </button>
             <button
               onClick={toggleLang}
@@ -187,7 +189,7 @@ function Layout() {
         </header>
 
         {/* Page content */}
-        <main className="flex-1 overflow-y-auto p-4 md:p-6 safe-bottom">
+        <main ref={pageScrollRef} className="flex-1 overflow-y-auto p-4 md:p-6 safe-bottom">
           <Outlet />
         </main>
       </div>
@@ -229,12 +231,12 @@ function MarketStatusIndicator() {
           </div>
         </TooltipTrigger>
         <TooltipContent side="bottom">
-          美股 21:30–04:00 · 港股 09:30–16:00 · A股 09:30–15:00（北京时间）；绿涨红跌
+          {t('layout.marketHours')}
         </TooltipContent>
       </Tooltip>
       <button
         className="rounded-md p-1 text-muted-foreground hover:bg-secondary hover:text-foreground"
-        title="刷新行情"
+        title={t('layout.refreshQuotes')}
         onClick={() => forceRefreshAllQuotes()}
       >
         <RefreshCw size={16} />
@@ -248,6 +250,7 @@ function MarketStatusIndicator() {
  * Fetches GET /api/auth/me (react-query); shows skeletons until resolved.
  */
 function SidebarUserBlock() {
+  const { t } = useTranslation();
   const { data: profile, isLoading } = useQuery<SidebarProfile>({
     queryKey: ['auth', 'me'],
     queryFn: fetchMyProfile,
@@ -265,7 +268,7 @@ function SidebarUserBlock() {
       </div>
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-medium text-sidebar-foreground">
-          {isLoading ? <Skeleton className="h-4 w-16" /> : name || '未知用户'}
+          {isLoading ? <Skeleton className="h-4 w-16" /> : name || t('layout.unknownUser')}
         </div>
         <div className="truncate text-xs text-sidebar-foreground/50">
           {isLoading ? <Skeleton className="mt-1 h-3 w-12" /> : `@${profile?.username ?? ''}`}
@@ -277,6 +280,7 @@ function SidebarUserBlock() {
 
 /** Sign out: drop the local session and return to the login page. */
 function LogoutButton() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -292,7 +296,7 @@ function LogoutButton() {
       className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
     >
       <LogOut size={18} />
-      <span>退出登录</span>
+      <span>{t('layout.logout')}</span>
     </button>
   );
 }

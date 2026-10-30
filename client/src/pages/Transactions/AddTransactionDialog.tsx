@@ -9,6 +9,7 @@
  * manual Deposit for the shortfall amount.
  */
 import { useState, useEffect, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import type { TxType, Currency, StockSearchResult } from '@shared/api.interface';
 import { createTransaction, createTransactionWithAutoDeposit } from '@/api';
@@ -65,6 +66,7 @@ export default function AddTransactionDialog({
   defaultCurrency = 'USD',
   defaultTxType = 'Buy',
 }: AddTransactionDialogProps) {
+  const { t } = useTranslation();
   const [saving, setSaving] = useState(false);
   const [tickerInvalid, setTickerInvalid] = useState(false);
   const [form, setForm] = useState({
@@ -117,7 +119,7 @@ export default function AddTransactionDialog({
 
   /** Extract a human-readable error message from an unknown thrown value. */
   const extractErrMsg = (err: unknown): string => {
-    const rawMsg = err instanceof Error ? err.message : '添加失败';
+    const rawMsg = err instanceof Error ? err.message : t('ui.tx.failed');
     const respErr = (err as { response?: { data?: { message?: string; error?: string } } })
       ?.response?.data;
     return respErr?.message || respErr?.error || rawMsg;
@@ -166,27 +168,27 @@ export default function AddTransactionDialog({
   /** Validate and submit; on insufficient-cash error for a Buy, open the recovery dialog. */
   const handleSubmit = async () => {
     if (!form.txDate) {
-      toast.error('请选择日期');
+      toast.error(t('ui.tx.chooseDate'));
       return;
     }
     if (!isCashFlow && !form.ticker.trim()) {
       setTickerInvalid(true);
-      toast.error('请选择或输入股票代码');
+      toast.error(t('ui.tx.chooseStock'));
       return;
     }
     if (!form.shares || parseFloat(form.shares) <= 0) {
-      toast.error(isCashFlow ? '请输入有效的金额' : '请输入有效的股数');
+      toast.error(isCashFlow ? t('ui.tx.validAmount') : t('ui.tx.validShares'));
       return;
     }
     if (!isCashFlow && (!form.price || parseFloat(form.price) <= 0)) {
-      toast.error('请输入有效的价格');
+      toast.error(t('ui.tx.validPrice'));
       return;
     }
     setSaving(true);
     try {
       const payload = buildPayload();
       await createTransaction(payload);
-      toast.success(isCashFlow ? '现金变动已记录' : '交易已记录');
+      toast.success(isCashFlow ? t('ui.tx.cashRecorded') : t('ui.tx.tradeRecorded'));
       onOpenChange(false);
       onCreated();
     } catch (err: unknown) {
@@ -210,7 +212,7 @@ export default function AddTransactionDialog({
     try {
       const payload = buildPayload();
       await createTransactionWithAutoDeposit(payload);
-      toast.success('已自动充值并完成买入');
+      toast.success(t('ui.tx.autoDepositSuccess'));
       setCashShortfallOpen(false);
       setShortfallInfo(null);
       onOpenChange(false);
@@ -256,17 +258,17 @@ export default function AddTransactionDialog({
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="font-serif text-xl">
-              {isCashFlow ? '记录现金变动' : '添加交易记录'}
+              {isCashFlow ? t('ui.tx.cashFlowTitle') : t('ui.tx.tradeTitle')}
             </DialogTitle>
             <DialogDescription>
-              {isCashFlow ? '记录一笔存入或取款' : '记录一笔买入或卖出交易'}
+              {isCashFlow ? t('ui.tx.cashFlowDesc') : t('ui.tx.tradeDesc')}
             </DialogDescription>
           </DialogHeader>
 
           <div className="grid grid-cols-2 gap-4 py-2">
             <div className="space-y-1.5">
               <Label>
-                日期 <span className="text-destructive">*</span>
+                {t('ui.tx.date')} <span className="text-destructive">*</span>
               </Label>
               <Input
                 type="date"
@@ -276,7 +278,7 @@ export default function AddTransactionDialog({
             </div>
             <div className="space-y-1.5">
               <Label>
-                类型 <span className="text-destructive">*</span>
+                {t('ui.tx.type')} <span className="text-destructive">*</span>
               </Label>
               <Select
                 value={form.txType}
@@ -286,16 +288,16 @@ export default function AddTransactionDialog({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Buy">买入 (Buy)</SelectItem>
-                  <SelectItem value="Sell">卖出 (Sell)</SelectItem>
-                  <SelectItem value="Deposit">存入 (Deposit)</SelectItem>
-                  <SelectItem value="Withdrawal">取款 (Withdrawal)</SelectItem>
+                  <SelectItem value="Buy">{t('ui.tx.buy')}</SelectItem>
+                  <SelectItem value="Sell">{t('ui.tx.sell')}</SelectItem>
+                  <SelectItem value="Deposit">{t('ui.tx.deposit')}</SelectItem>
+                  <SelectItem value="Withdrawal">{t('ui.tx.withdrawal')}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-1.5">
               <Label>
-                币种 <span className="text-destructive">*</span>
+                {t('ui.tx.currency')} <span className="text-destructive">*</span>
               </Label>
               <Select
                 value={form.currency}
@@ -305,16 +307,16 @@ export default function AddTransactionDialog({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="USD">USD / 美元</SelectItem>
-                  <SelectItem value="HKD">HKD / 港币</SelectItem>
-                  <SelectItem value="CNY">CNY / 人民币</SelectItem>
+                  <SelectItem value="USD">{t('common.usd')}</SelectItem>
+                  <SelectItem value="HKD">{t('common.hkd')}</SelectItem>
+                  <SelectItem value="CNY">{t('common.cny')}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             {!isCashFlow && (
               <div className="space-y-1.5 col-span-2">
                 <Label>
-                  股票 <span className="text-destructive">*</span>
+                  {t('ui.tx.stockLabel')} <span className="text-destructive">*</span>
                 </Label>
                 <TickerSearch
                   value={form.ticker}
@@ -323,19 +325,19 @@ export default function AddTransactionDialog({
                     setTickerInvalid(false);
                   }}
                   onSelect={handleTickerSelect}
-                  placeholder="输入代码或公司名，如 AAPL / 腾讯 / 茅台"
+                  placeholder={t('ui.tx.stockPlaceholder')}
                   invalid={tickerInvalid}
                 />
                 {tickerInvalid && (
                   <p className="text-xs text-destructive">
-                    请从下拉列表中选择，或确认代码格式正确
+                    {t('ui.tx.selectStockHint')}
                   </p>
                 )}
               </div>
             )}
             <div className="space-y-1.5">
               <Label>
-                {isCashFlow ? '金额' : '股数'}{' '}
+                {isCashFlow ? t('ui.tx.amountLabel') : t('ui.tx.shares')}{' '}
                 <span className="text-destructive">*</span>
               </Label>
               <Input
@@ -348,7 +350,7 @@ export default function AddTransactionDialog({
             {!isCashFlow && (
               <div className="space-y-1.5">
                 <Label>
-                  价格 <span className="text-destructive">*</span>
+                  {t('ui.tx.price')} <span className="text-destructive">*</span>
                 </Label>
                 <Input
                   type="number"
@@ -359,7 +361,7 @@ export default function AddTransactionDialog({
               </div>
             )}
             <div className="space-y-1.5 col-span-2">
-              <Label>手续费</Label>
+              <Label>{t('ui.tx.fees')}</Label>
               <Input
                 type="number"
                 step="0.01"
@@ -369,22 +371,22 @@ export default function AddTransactionDialog({
               />
             </div>
             <div className="space-y-1.5 col-span-2">
-              <Label>备注</Label>
+              <Label>{t('tx.notes')}</Label>
               <Textarea
                 rows={3}
                 value={form.notes}
                 onChange={(e) => setForm({ ...form, notes: e.target.value })}
-                placeholder="交易原因、策略说明等"
+                placeholder={t('ui.tx.notePlaceholder')}
               />
             </div>
           </div>
 
           <DialogFooter>
             <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
-              取消
+              {t('common.cancel')}
             </Button>
             <Button size="sm" onClick={handleSubmit} disabled={saving}>
-              {saving ? '保存中...' : '保存'}
+              {saving ? t('ui.tx.saving') : t('ui.tx.save')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -394,19 +396,22 @@ export default function AddTransactionDialog({
         <AlertDialogContent className="max-w-md">
           <AlertDialogHeader>
             <AlertDialogTitle className="font-serif text-lg">
-              现金不足
+              {t('ui.tx.insufficientCash')}
             </AlertDialogTitle>
             <AlertDialogDescription asChild>
               <div className="space-y-3 text-sm">
                 <p>
-                  本次买入需要 <span className="font-semibold text-foreground">{shortfallInfo?.currency} {shortfallInfo?.required.toFixed(2)}</span>，
-                  当前余额仅 <span className="font-semibold text-foreground">{shortfallInfo?.currency} {shortfallInfo?.currentBalance.toFixed(2)}</span>，
-                  缺口 <span className="font-semibold text-destructive">{shortfallInfo?.currency} {shortfallInfo?.shortfall.toFixed(2)}</span>。
+                  {t('ui.tx.shortfallMessage', {
+                    currency: shortfallInfo?.currency,
+                    required: shortfallInfo?.required.toFixed(2),
+                    balance: shortfallInfo?.currentBalance.toFixed(2),
+                    shortfall: shortfallInfo?.shortfall.toFixed(2),
+                  })}
                 </p>
                 <div className="rounded-lg bg-muted/50 p-3 space-y-1 text-xs text-muted-foreground">
-                  <div>成交金额：{form.shares} × {form.price} = {(parseFloat(form.shares) * parseFloat(form.price)).toFixed(2)}</div>
-                  <div>手续费：{form.fees || '0.00'}</div>
-                  <div className="font-semibold text-foreground pt-1">合计所需：{requiredAmount.toFixed(2)} {shortfallInfo?.currency}</div>
+                  <div>{t('ui.tx.tradeAmount')}: {form.shares} × {form.price} = {(parseFloat(form.shares) * parseFloat(form.price)).toFixed(2)}</div>
+                  <div>{t('ui.tx.fees')}: {form.fees || '0.00'}</div>
+                  <div className="font-semibold text-foreground pt-1">{t('ui.tx.totalRequired')}: {requiredAmount.toFixed(2)} {shortfallInfo?.currency}</div>
                 </div>
               </div>
             </AlertDialogDescription>
@@ -414,14 +419,14 @@ export default function AddTransactionDialog({
           <AlertDialogFooter className="flex-col sm:flex-row gap-2">
             <AlertDialogCancel asChild>
               <Button variant="outline" size="sm">
-                取消
+                {t('common.cancel')}
               </Button>
             </AlertDialogCancel>
             <Button variant="outline" size="sm" onClick={handleGoToDeposit}>
-              手动去存入
+              {t('ui.tx.manualDeposit')}
             </Button>
             <Button size="sm" onClick={handleAutoDeposit} disabled={autoDepositing}>
-              {autoDepositing ? '处理中...' : '自动充值并完成买入'}
+              {autoDepositing ? t('ui.tx.processing') : t('ui.tx.autoDepositBuy')}
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>

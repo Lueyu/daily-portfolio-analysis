@@ -49,11 +49,11 @@ export default function DailyPlChart({ data, baseCurrency = 'USD' }: DailyPlChar
           const parts = [`<strong>${params[0].name}</strong>`];
           for (const p of params) {
             if (p.seriesName === t('dash.accountNav')) {
-              parts.push(`账户净值: <strong>${symbol}${p.value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>`);
+              parts.push(`${t('dash.accountNav')}: <strong>${symbol}${p.value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>`);
             } else {
               const sign = p.value >= 0 ? '+' : '';
               const color = p.value >= 0 ? '#16a34a' : '#dc2626';
-              parts.push(`日盈亏: <strong style="color:${color}">${sign}${symbol}${p.value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>`);
+              parts.push(`${t('dash.dailyPlLabel')}: <strong style="color:${color}">${sign}${symbol}${p.value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>`);
             }
           }
           return parts.join('<br/>');
@@ -61,41 +61,39 @@ export default function DailyPlChart({ data, baseCurrency = 'USD' }: DailyPlChar
       },
       legend: {
         data: [t('dash.accountNav'), t('dash.dailyPlLabel')],
-        top: 0,
-        right: 10,
-        textStyle: { fontSize: 11, color: '#64748b' },
+        top: 4,
+        left: 'center',
+        orient: 'horizontal',
+        itemGap: 16,
+        textStyle: { fontSize: 11, color: '#78828c' },
       },
-      grid: { top: 40, right: 50, bottom: 40, left: 60 },
+      grid: { top: 38, right: 50, bottom: 40, left: 54 },
       xAxis: {
         type: 'category',
         data: dates,
-        axisLabel: { fontSize: 10, color: '#94a3b8', rotate: data.length > 20 ? 45 : 0 },
-        axisLine: { lineStyle: { color: '#e2e8f0' } },
+        axisLabel: { fontSize: 10, color: '#78828c', rotate: data.length > 20 ? 45 : 0 },
+        axisLine: { lineStyle: { color: 'rgba(120,130,140,0.38)' } },
         axisTick: { show: false },
       },
       yAxis: [
         {
           type: 'value',
-          name: t('dash.nav'),
-          nameTextStyle: { fontSize: 10, color: '#94a3b8' },
           axisLabel: {
             fontSize: 10,
-            color: '#94a3b8',
+            color: '#78828c',
             formatter: (val: number) => {
               if (Math.abs(val) >= 1e6) return `${(val / 1e6).toFixed(1)}M`;
               if (Math.abs(val) >= 1e3) return `${(val / 1e3).toFixed(0)}k`;
               return val.toFixed(0);
             },
           },
-          splitLine: { lineStyle: { color: '#f1f5f9', type: 'dashed' } },
+          splitLine: { lineStyle: { color: 'rgba(120,130,140,0.24)', type: 'dashed' } },
         },
         {
           type: 'value',
-          name: t('dash.dailyPlLabel'),
-          nameTextStyle: { fontSize: 10, color: '#94a3b8' },
           axisLabel: {
             fontSize: 10,
-            color: '#94a3b8',
+            color: '#78828c',
             formatter: (val: number) => {
               if (Math.abs(val) >= 1e3) return `${(val / 1e3).toFixed(0)}k`;
               return val.toFixed(0);
@@ -142,12 +140,12 @@ export default function DailyPlChart({ data, baseCurrency = 'USD' }: DailyPlChar
         },
       ],
     };
-  }, [data, symbol]);
+  }, [data, symbol, t]);
 
   if (data.length === 0) {
     return (
       <div className="flex h-[280px] items-center justify-center text-sm text-muted-foreground">
-        暂无净值数据
+        {t('ui.dashboard.dailyChartNoData')}
       </div>
     );
   }

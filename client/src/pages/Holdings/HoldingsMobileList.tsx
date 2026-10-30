@@ -8,6 +8,7 @@
  * recommendation, AI rating, group, and a "view detail" button.
  */
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ChevronRight, Briefcase, Plus, Eye } from 'lucide-react';
 import type { Group, Market, Currency, AgentRating, AgentConfidence } from '@shared/api.interface';
 import RatingBadge from '@/components/MultiAgent/RatingBadge';
@@ -88,10 +89,22 @@ export default function HoldingsMobileList({
   aiRatings,
   onViewAiAnalysis,
 }: HoldingsMobileListProps) {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState<string | null>(null);
 
   const groupName = (id: string | null) =>
-    groups.find((g) => g.id === id)?.name ?? '未分组';
+    groups.find((g) => g.id === id)?.name ?? t('holdings.noGroup');
+  const actionLabel = (value: string) => {
+    const keys: Record<string, string> = {
+      '加仓': 'analysis.add', Add: 'analysis.add',
+      '买入': 'analysis.buy', Buy: 'analysis.buy',
+      '持有': 'analysis.hold', Hold: 'analysis.hold',
+      '减仓': 'analysis.reduce', Reduce: 'analysis.reduce',
+      '卖出': 'analysis.sell', Sell: 'analysis.sell',
+      '观望': 'analysis.watch', Watch: 'analysis.watch',
+    };
+    return keys[value] ? t(keys[value]) : value;
+  };
 
   const hasAnyAiRating = Object.keys(aiRatings ?? {}).length > 0;
 
@@ -132,15 +145,15 @@ export default function HoldingsMobileList({
             <Briefcase />
           </EmptyMedia>
           <EmptyHeader>
-            <EmptyTitle>暂无持仓</EmptyTitle>
+            <EmptyTitle>{t('holdings.noHoldings')}</EmptyTitle>
             <EmptyDescription>
-              点击右上角「添加持仓」开始记录
+              {t('ui.holdings.emptyMobileHint')}
             </EmptyDescription>
           </EmptyHeader>
           <EmptyContent>
             <Button size="sm" onClick={onAdd}>
               <Plus className="size-4" />
-              添加持仓
+              {t('holdings.addHolding')}
             </Button>
           </EmptyContent>
         </Empty>
@@ -196,25 +209,25 @@ export default function HoldingsMobileList({
 
               <div className="grid grid-cols-2 gap-x-4 gap-y-2 mt-3 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">股数</span>
+                    <span className="text-muted-foreground">{t('holdings.shares')}</span>
                   <span className="font-mono-nums">
                     {formatShares(h.shares)}
                   </span>
                 </div>
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">市值</span>
+                    <span className="text-muted-foreground">{t('ui.holdings.marketValue')}</span>
                     <span className="font-mono-nums">
                       {formatCurrencyWithCurrency(h.marketValue, h.currency)}
                     </span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">成本</span>
+                    <span className="text-muted-foreground">{t('ui.holdings.cost')}</span>
                     <span className="font-mono-nums">
                       {formatCurrencyWithCurrency(h.cost, h.currency)}
                     </span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">浮盈亏</span>
+                    <span className="text-muted-foreground">{t('ui.holdings.pl')}</span>
                     <span
                       className={cn(
                         'font-mono-nums font-medium',
@@ -229,20 +242,20 @@ export default function HoldingsMobileList({
               {expanded === h.id && (
                 <div className="mt-3 pt-3 border-t space-y-2 text-sm">
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">买入价</span>
+                    <span className="text-muted-foreground">{t('holdings.buyPrice')}</span>
                     <span className="font-mono-nums">
                       {formatPriceWithCurrency(h.buyPrice, h.currency)}
                     </span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">操作建议</span>
+                    <span className="text-muted-foreground">{t('ui.holdings.actions')}</span>
                     <span>
                       {h.action ? (
                         <Badge
                           className={cn(actionColor(h.action))}
                           variant="outline"
                         >
-                          {h.action}
+                          {actionLabel(h.action)}
                         </Badge>
                       ) : (
                         '—'
@@ -251,7 +264,7 @@ export default function HoldingsMobileList({
                   </div>
                   {hasAnyAiRating && (
                   <div className="flex justify-between items-center">
-                    <span className="text-muted-foreground">AI 评级</span>
+                    <span className="text-muted-foreground">{t('ui.holdings.aiRating')}</span>
                     {aiRatings?.[h.ticker] ? (
                       <div className="flex items-center gap-1.5">
                         <RatingBadge
@@ -275,12 +288,12 @@ export default function HoldingsMobileList({
                         </Button>
                       </div>
                     ) : (
-                      <span className="text-xs text-muted-foreground/70">暂无评级</span>
+                      <span className="text-xs text-muted-foreground/70">{t('ui.holdings.notRated')}</span>
                     )}
                   </div>
                   )}
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">分组</span>
+                    <span className="text-muted-foreground">{t('ui.holdings.group')}</span>
                     <span className="text-xs">{groupName(h.groupId)}</span>
                   </div>
                   <Button
@@ -292,7 +305,7 @@ export default function HoldingsMobileList({
                       onDetail(h);
                     }}
                   >
-                    查看详情
+                    {t('ui.holdings.viewDetails')}
                     <ChevronRight className="size-4" />
                   </Button>
                 </div>

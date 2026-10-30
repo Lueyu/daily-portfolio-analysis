@@ -112,22 +112,22 @@ const orderStatusStyles: Record<string, string> = {
   failed: 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border-rose-500/30',
 };
 const orderStatusLabel: Record<string, string> = {
-  filled: '已成交',
-  rejected_risk: '风控拦截',
-  cancelled: '已撤销',
-  pending: '待成交',
-  failed: '失败',
+  filled: 'paper.filled',
+  rejected_risk: 'paper.rejectedByRisk',
+  cancelled: 'paper.cancelled',
+  pending: 'paper.pendingApproval',
+  failed: 'paper.failed',
 };
 const eventLabel: Record<string, string> = {
-  bot_started: '盯盘开启',
-  bot_stopped: '盯盘停止',
-  bot_scan: '例行扫描',
-  order_placed: '下单',
-  order_filled: '成交',
-  order_rejected: '风控拦截',
-  circuit_breaker: '熔断触发',
-  manual_action: '手动操作',
-  account_reset: '账户重置',
+  bot_started: 'ui.paper.watchingOn',
+  bot_stopped: 'ui.paper.watchingOff',
+  bot_scan: 'paper.scanNow',
+  order_placed: 'paper.placeOrder',
+  order_filled: 'paper.filled',
+  order_rejected: 'paper.rejectedByRisk',
+  circuit_breaker: 'ui.paper.dailyLossBreaker',
+  manual_action: 'ui.paper.manualOrder',
+  account_reset: 'ui.paper.confirmResetTitle',
 };
 
 function PaperPage() {
@@ -149,29 +149,29 @@ function PaperPage() {
   const toggleMutation = useMutation({
     mutationFn: (enabled: boolean) => togglePaperBot(enabled),
     onSuccess: (account) => {
-      toast.success(account.botEnabled ? 'AI 盯盘已开启：按你的分析评级自动跑模拟盘' : 'AI 盯盘已停止');
+      toast.success(account.botEnabled ? t('paper.botStarted') : t('paper.botStopped'));
       invalidate();
     },
-    onError: (e: unknown) => toast.error((e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? '操作失败'),
+    onError: (e: unknown) => toast.error((e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? t('ui.paper.orderActionFailed')),
   });
 
   const scanMutation = useMutation({
     mutationFn: runPaperBot,
     onSuccess: (result) => {
       if (result.placed === 0 && result.rejected === 0) {
-        toast.info(`扫描了 ${result.scanned} 个信号源，本次无可执行信号`);
+        toast.info(t('paper.scanNoSignal', { scanned: result.scanned }));
       } else {
-        toast.success(`扫描完成：下单 ${result.placed} 笔，拦截 ${result.rejected} 笔`);
+        toast.success(t('paper.scanComplete', { placed: result.placed, rejected: result.rejected }));
       }
       invalidate();
     },
-    onError: (e: unknown) => toast.error((e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? '扫描失败'),
+    onError: (e: unknown) => toast.error((e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? t('ui.paper.scanningFailed')),
   });
 
   const resetMutation = useMutation({
     mutationFn: (initialCash?: number) => resetPaperAccount(initialCash),
     onSuccess: () => {
-      toast.success('模拟盘已重置');
+      toast.success(t('ui.paper.confirmResetTitle'));
       setResetOpen(false);
       invalidate();
     },
@@ -181,21 +181,21 @@ function PaperPage() {
   const botOn = overview?.account.botEnabled ?? false;
 
   return (
-    <div className="space-y-4">
+    <div className="min-w-0 space-y-4">
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="flex items-center gap-2 font-serif text-2xl font-semibold">
             <FlaskConical size={22} className="text-primary" />
-            AI 模拟盘
+            {t('paper.title')}
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            独立于真实记录的虚拟账户——AI 按你的分析评级全天候盯盘下单，全程受风控守护。
+            {t('paper.subtitle')}
           </p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" onClick={() => setOrderOpen(true)}>
-            手动下单
+            {t('ui.paper.manualOrder')}
           </Button>
           <Button
             variant={botOn ? 'destructive' : 'default'}
@@ -203,40 +203,40 @@ function PaperPage() {
             disabled={toggleMutation.isPending || busy}
           >
             {botOn ? <BotOff size={16} className="mr-1" /> : <Bot size={16} className="mr-1" />}
-            {botOn ? '停止盯盘' : '开启 AI 盯盘'}
+            {botOn ? t('paper.stopBot') : t('paper.startBot')}
           </Button>
         </div>
       </div>
 
       {/* KPI cards */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
-        <Card><CardContent className="p-4">
-          <div className="text-xs text-muted-foreground">模拟盘净值 (USD)</div>
-          <div className="mt-1 font-mono-nums text-xl font-semibold">${usd(overview?.equity)}</div>
+        <Card><CardContent className="min-w-0 p-3 sm:p-4">
+          <div className="text-xs text-muted-foreground">{t('paper.equity')}</div>
+          <div className="mt-1 whitespace-nowrap font-mono-nums text-base font-semibold sm:text-xl">${usd(overview?.equity)}</div>
         </CardContent></Card>
-        <Card><CardContent className="p-4">
-          <div className="flex items-center gap-1 text-xs text-muted-foreground"><Wallet size={12} /> 现金</div>
-          <div className="mt-1 font-mono-nums text-xl font-semibold">${usd(overview?.account.cashBalance)}</div>
+        <Card><CardContent className="min-w-0 p-3 sm:p-4">
+          <div className="flex items-center gap-1 text-xs text-muted-foreground"><Wallet size={12} /> {t('paper.cash')}</div>
+          <div className="mt-1 whitespace-nowrap font-mono-nums text-base font-semibold sm:text-xl">${usd(overview?.account.cashBalance)}</div>
         </CardContent></Card>
-        <Card><CardContent className="p-4">
+        <Card><CardContent className="min-w-0 p-3 sm:p-4">
           <div className="flex items-center gap-1 text-xs text-muted-foreground">
             {Number(overview?.todayPl ?? 0) >= 0 ? <TrendingUp size={12} className="text-success" /> : <TrendingDown size={12} className="text-destructive" />}
-            今日盈亏
+            {t('paper.todayPl')}
           </div>
-          <div className={cn('mt-1 font-mono-nums text-xl font-semibold', Number(overview?.todayPl ?? 0) >= 0 ? 'text-success' : 'text-destructive')}>
+          <div className={cn('mt-1 whitespace-nowrap font-mono-nums text-base font-semibold sm:text-xl', Number(overview?.todayPl ?? 0) >= 0 ? 'text-success' : 'text-destructive')}>
             ${usd(overview?.todayPl)}
           </div>
         </CardContent></Card>
-        <Card><CardContent className="p-4">
-          <div className="text-xs text-muted-foreground">总收益</div>
-          <div className={cn('mt-1 font-mono-nums text-xl font-semibold', Number(overview?.totalPl ?? 0) >= 0 ? 'text-success' : 'text-destructive')}>
-            ${usd(overview?.totalPl)}
-            <span className="ml-1 text-sm">({pct(overview?.totalPlPct)})</span>
+        <Card><CardContent className="min-w-0 p-3 sm:p-4">
+          <div className="text-xs text-muted-foreground">{t('paper.totalPl')}</div>
+          <div className={cn('mt-1 flex min-w-0 flex-col gap-0.5 font-mono-nums font-semibold', Number(overview?.totalPl ?? 0) >= 0 ? 'text-success' : 'text-destructive')}>
+            <span className="whitespace-nowrap text-base sm:text-xl">${usd(overview?.totalPl)}</span>
+            <span className="text-xs leading-4">{pct(overview?.totalPlPct)}</span>
           </div>
         </CardContent></Card>
-        <Card><CardContent className="p-4">
-          <div className="text-xs text-muted-foreground">今日 bot 订单</div>
-          <div className="mt-1 font-mono-nums text-xl font-semibold">{overview?.todayOrderCount ?? 0}</div>
+        <Card><CardContent className="min-w-0 p-3 sm:p-4">
+          <div className="text-xs text-muted-foreground">{t('ui.paper.botOrders')}</div>
+          <div className="mt-1 font-mono-nums text-base font-semibold sm:text-xl">{overview?.todayOrderCount ?? 0}</div>
         </CardContent></Card>
       </div>
 
@@ -253,26 +253,26 @@ function PaperPage() {
             )}
           >
             {botOn ? <Bot size={12} /> : <BotOff size={12} />}
-            {botOn ? 'AI 正在盯盘' : '盯盘未开启'}
+            {botOn ? t('ui.paper.watchingOn') : t('ui.paper.watchingOff')}
           </Badge>
           {overview?.circuitBreakerActive && (
             <Badge variant="outline" className="gap-1.5 border-rose-500/40 bg-rose-500/15 py-1 text-rose-600 dark:text-rose-400">
-              <ShieldAlert size={12} /> 日亏损熔断已触发
+              <ShieldAlert size={12} /> {t('paper.circuitBreaker')}
             </Badge>
           )}
           <span className="text-xs text-muted-foreground">
-            守护：日亏损 {overview?.account.guardrails.dailyLossLimitPct ?? 3}% 熔断 · 单笔 ≤ {overview?.account.guardrails.maxOrderPct ?? 5}% · 日限 {overview?.account.guardrails.maxOrdersPerDay ?? 10} 笔
+            {t('paper.guardrails', { loss: overview?.account.guardrails.dailyLossLimitPct ?? 3, orderPct: overview?.account.guardrails.maxOrderPct ?? 5, daily: overview?.account.guardrails.maxOrdersPerDay ?? 10 })}
           </span>
           <div className="ml-auto flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={() => scanMutation.mutate()} disabled={!botOn || scanMutation.isPending}>
               {scanMutation.isPending ? <Loader2 size={14} className="mr-1 animate-spin" /> : <PlayCircle size={14} className="mr-1" />}
-              立即扫描
+              {t('paper.scanNow')}
             </Button>
             <Button variant="outline" size="sm" onClick={() => setGuardrailsOpen(true)}>
-              <Settings2 size={14} className="mr-1" /> 风控参数
+              <Settings2 size={14} className="mr-1" /> {t('paper.riskParams')}
             </Button>
             <Button variant="outline" size="sm" onClick={() => setResetOpen(true)}>
-              <RotateCcw size={14} className="mr-1" /> 重置
+              <RotateCcw size={14} className="mr-1" /> {t('paper.reset')}
             </Button>
           </div>
         </CardContent>
@@ -280,25 +280,25 @@ function PaperPage() {
 
       {/* Equity curve */}
       <Card>
-        <CardHeader className="pb-2"><CardTitle className="text-sm">净值曲线</CardTitle></CardHeader>
+        <CardHeader className="pb-2"><CardTitle className="text-sm">{t('paper.equityCurve')}</CardTitle></CardHeader>
         <CardContent className="p-2 pt-0">
           <PaperEquityChart data={overview?.curve ?? []} />
         </CardContent>
       </Card>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid min-w-0 grid-cols-1 gap-4 lg:grid-cols-2">
         {/* Positions */}
-        <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-sm">模拟持仓（{overview?.positions.length ?? 0}）</CardTitle></CardHeader>
+        <Card className="min-w-0">
+          <CardHeader className="pb-2"><CardTitle className="text-sm">{t('paper.positions', { count: overview?.positions.length ?? 0 })}</CardTitle></CardHeader>
           <CardContent className="p-0">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b text-left text-xs text-muted-foreground">
-                    <th className="px-4 py-2 font-medium">股票</th>
-                    <th className="px-4 py-2 font-medium">股数</th>
-                    <th className="px-4 py-2 font-medium">成本/现价</th>
-                    <th className="px-4 py-2 text-right font-medium">浮盈亏</th>
+                    <th className="px-4 py-2 font-medium">{t('ui.paper.stock')}</th>
+                    <th className="px-4 py-2 font-medium">{t('ui.paper.shares')}</th>
+                    <th className="px-4 py-2 font-medium">{t('paper.costPrice')}</th>
+                    <th className="px-4 py-2 text-right font-medium">{t('ui.paper.unrealizedPl')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -324,7 +324,7 @@ function PaperPage() {
                   })}
                   {(overview?.positions.length ?? 0) === 0 && (
                     <tr><td colSpan={4} className="px-4 py-8 text-center text-sm text-muted-foreground">
-                      暂无模拟持仓——开启 AI 盯盘或手动下单试试
+                      {t('ui.paper.positionsEmpty')}
                     </td></tr>
                   )}
                 </tbody>
@@ -334,8 +334,8 @@ function PaperPage() {
         </Card>
 
         {/* Events */}
-        <Card>
-          <CardHeader className="pb-2"><CardTitle className="flex items-center gap-1.5 text-sm"><Activity size={14} /> 盯盘动态</CardTitle></CardHeader>
+        <Card className="min-w-0">
+          <CardHeader className="pb-2"><CardTitle className="flex items-center gap-1.5 text-sm"><Activity size={14} /> {t('paper.botActivity')}</CardTitle></CardHeader>
           <CardContent className="max-h-80 space-y-2 overflow-y-auto p-4">
             {(overview?.recentEvents ?? []).map((e) => (
               <div key={e.id} className="flex items-start gap-2 text-sm">
@@ -348,16 +348,16 @@ function PaperPage() {
                     (e.eventType === 'order_rejected') && 'bg-amber-500/15 text-amber-600 dark:text-amber-400',
                   )}
                 >
-                  {eventLabel[e.eventType] ?? e.eventType}
+                  {eventLabel[e.eventType] ? t(eventLabel[e.eventType]) : e.eventType}
                 </Badge>
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-xs text-foreground/90">{summarizeEvent(e.eventType, e.detail)}</div>
-                  <div className="text-[10px] text-muted-foreground">{new Date(e.createdAt).toLocaleString('zh-CN', { hour12: false })}</div>
+                  <div className="truncate text-xs text-foreground/90">{summarizeEvent(e.eventType, e.detail, t)}</div>
+                  <div className="text-[10px] text-muted-foreground">{new Date(e.createdAt).toLocaleString(undefined, { hour12: false })}</div>
                 </div>
               </div>
             ))}
             {(overview?.recentEvents.length ?? 0) === 0 && (
-              <div className="py-8 text-center text-sm text-muted-foreground">暂无动态</div>
+              <div className="py-8 text-center text-sm text-muted-foreground">{t('ui.paper.eventsEmpty')}</div>
             )}
           </CardContent>
         </Card>
@@ -365,27 +365,27 @@ function PaperPage() {
 
       {/* Orders feed */}
       <Card>
-        <CardHeader className="pb-2"><CardTitle className="text-sm">订单流</CardTitle></CardHeader>
+        <CardHeader className="pb-2"><CardTitle className="text-sm">{t('paper.orderFlow')}</CardTitle></CardHeader>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b text-left text-xs text-muted-foreground">
-                  <th className="px-4 py-2 font-medium">时间</th>
-                  <th className="px-4 py-2 font-medium">股票</th>
-                  <th className="px-4 py-2 font-medium">方向</th>
-                  <th className="px-4 py-2 font-medium">数量</th>
-                  <th className="px-4 py-2 font-medium">成交价</th>
-                  <th className="px-4 py-2 font-medium">状态</th>
-                  <th className="px-4 py-2 font-medium">来源</th>
-                  <th className="px-4 py-2 font-medium">理由</th>
+                  <th className="px-4 py-2 font-medium">{t('paper.time')}</th>
+                  <th className="px-4 py-2 font-medium">{t('ui.paper.stock')}</th>
+                  <th className="px-4 py-2 font-medium">{t('paper.direction')}</th>
+                  <th className="px-4 py-2 font-medium">{t('paper.quantity')}</th>
+                  <th className="px-4 py-2 font-medium">{t('paper.filledPrice')}</th>
+                  <th className="px-4 py-2 font-medium">{t('paper.status')}</th>
+                  <th className="px-4 py-2 font-medium">{t('paper.source')}</th>
+                  <th className="px-4 py-2 font-medium">{t('paper.reason')}</th>
                 </tr>
               </thead>
               <tbody>
                 {(overview?.recentOrders ?? []).map((o) => (
                   <tr key={o.id} className="border-b last:border-0">
                     <td className="px-4 py-2.5 whitespace-nowrap text-xs text-muted-foreground">
-                      {new Date(o.createdAt).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })}
+                      {new Date(o.createdAt).toLocaleString(undefined, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })}
                     </td>
                     <td className="px-4 py-2.5 font-medium">{o.ticker}</td>
                     <td className={cn('px-4 py-2.5 font-medium', o.side === 'buy' ? 'text-success' : 'text-destructive')}>
@@ -395,11 +395,11 @@ function PaperPage() {
                     <td className="px-4 py-2.5 font-mono-nums">{o.filledPrice ?? '—'}</td>
                     <td className="px-4 py-2.5">
                       <Badge variant="outline" className={cn('text-[10px]', orderStatusStyles[o.status])}>
-                        {orderStatusLabel[o.status] ?? o.status}
+                        {orderStatusLabel[o.status] ? t(orderStatusLabel[o.status]) : o.status}
                       </Badge>
                     </td>
                     <td className="px-4 py-2.5 text-xs">
-                      {o.source === 'agent' ? '🤖 AI' : '👤 手动'}
+                      {o.source === 'agent' ? t('paper.agentSrc') : t('paper.manualSrc')}
                     </td>
                     <td className="max-w-xs px-4 py-2.5 text-xs text-muted-foreground">
                       <div className="truncate" title={o.reason ?? ''}>{o.reason ?? '—'}</div>
@@ -407,7 +407,7 @@ function PaperPage() {
                   </tr>
                 ))}
                 {(overview?.recentOrders.length ?? 0) === 0 && (
-                  <tr><td colSpan={8} className="px-4 py-8 text-center text-sm text-muted-foreground">暂无订单</td></tr>
+                  <tr><td colSpan={8} className="px-4 py-8 text-center text-sm text-muted-foreground">{t('paper.noOrders')}</td></tr>
                 )}
               </tbody>
             </table>
@@ -426,7 +426,7 @@ function PaperPage() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-1.5 text-sm">
-              <Bot size={14} className="text-amber-500" /> 待审批订单
+              <Bot size={14} className="text-amber-500" /> {t('ui.paper.pendingApprovals')}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 p-4">
@@ -436,8 +436,7 @@ function PaperPage() {
                 <div key={o.id} className="flex items-center gap-3 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2.5 text-sm">
                   <div className="min-w-0 flex-1">
                     <div className="font-medium">
-                      🤖 {o.reason?.includes('AI 代理') ? o.reason.split('AI 代理 ')[1]?.split(' ')[0] : 'AI'}{' '}
-                      请求{o.side === 'buy' ? t('paper.buy') : t('paper.sell')} {o.ticker} × {Number(o.quantity)}
+                      {t('ui.paper.agentRequest', { agent: o.reason?.match(/(?:AI 代理|Agent)\s+([^\s]+)/i)?.[1] ?? 'AI', side: t(o.side === 'buy' ? 'paper.buy' : 'paper.sell'), ticker: `${o.ticker} × ${Number(o.quantity)}` })}
                     </div>
                     <div className="mt-0.5 text-xs text-muted-foreground">{o.reason}</div>
                   </div>
@@ -446,28 +445,28 @@ function PaperPage() {
                     onClick={async () => {
                       try {
                         const result = await approvePaperOrder(o.id);
-                        toast.success(`${o.ticker} 审批通过，成交 @ ${result.filledPrice}`);
+                        toast.success(t('ui.paper.approvalPassed', { ticker: o.ticker, price: result.filledPrice }));
                         invalidate();
                       } catch (error) {
-                        toast.error((error as { response?: { data?: { message?: string } } })?.response?.data?.message ?? '审批失败');
+                        toast.error((error as { response?: { data?: { message?: string } } })?.response?.data?.message ?? t('ui.paper.approvalFailed'));
                       }
                     }}
                   >
-                    <CheckCircle2 size={14} className="mr-1" /> 批准
+                    <CheckCircle2 size={14} className="mr-1" /> {t('ui.paper.approve')}
                   </Button>
                   <Button
                     size="sm" variant="destructive"
                     onClick={async () => {
                       try {
                         await rejectPaperOrder(o.id);
-                        toast.info(`${o.ticker} 订单已拒绝`);
+                        toast.info(t('ui.paper.orderRejected', { ticker: o.ticker }));
                         invalidate();
                       } catch (error) {
-                        toast.error((error as { response?: { data?: { message?: string } } })?.response?.data?.message ?? '操作失败');
+                        toast.error((error as { response?: { data?: { message?: string } } })?.response?.data?.message ?? t('ui.paper.orderActionFailed'));
                       }
                     }}
                   >
-                    <XCircle size={14} className="mr-1" /> 拒绝
+                    <XCircle size={14} className="mr-1" /> {t('ui.paper.reject')}
                   </Button>
                 </div>
               ))}
@@ -481,15 +480,15 @@ function PaperPage() {
       <Dialog open={resetOpen} onOpenChange={setResetOpen}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle>重置模拟盘</DialogTitle>
+            <DialogTitle>{t('ui.paper.confirmResetTitle')}</DialogTitle>
             <DialogDescription>
-              将清空全部模拟持仓、订单与曲线，现金恢复为初始值。此操作不影响你的真实持仓记录。
+              {t('ui.paper.confirmResetDescription')}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setResetOpen(false)}>取消</Button>
+            <Button variant="ghost" onClick={() => setResetOpen(false)}>{t('common.cancel')}</Button>
             <Button variant="destructive" onClick={() => resetMutation.mutate(undefined)} disabled={resetMutation.isPending}>
-              {resetMutation.isPending ? '重置中…' : '确认重置'}
+              {resetMutation.isPending ? t('ui.paper.resetting') : t('ui.paper.confirmReset')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -524,7 +523,7 @@ function PaperEquityChart({ data }: { data: Array<{ date: string; equity: string
       },
       series: [
         {
-          name: '净值',
+          name: t('ui.paper.equitySeries'),
           type: 'line',
           smooth: true,
           symbol: 'circle',
@@ -544,32 +543,32 @@ function PaperEquityChart({ data }: { data: Array<{ date: string; equity: string
         },
       ],
     };
-  }, [data]);
+  }, [data, t]);
   if (data.length === 0) {
-    return <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">开启盯盘后，每日会自动记录净值快照</div>;
+    return <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">{t('ui.paper.chartNoData')}</div>;
   }
   return <ReactECharts option={option} style={{ height: 260 }} notMerge />;
 }
 
 /** One-line Chinese summary for a timeline event. */
-function summarizeEvent(type: string, detail: Record<string, unknown> | null): string {
+function summarizeEvent(type: string, detail: Record<string, unknown> | null, t: (key: string, options?: Record<string, unknown>) => string): string {
   const d = detail ?? {};
   if (type === 'order_filled') {
-    const side = d.side === 'buy' ? '买入' : '卖出';
-    const pl = d.realizedPl != null ? `，已实现 ${Number(d.realizedPl) >= 0 ? '+' : ''}${d.realizedPl}` : '';
-    return `${d.ticker} ${side} ${d.quantity} 股 @ ${d.price}${pl}`;
+    const side = t(d.side === 'buy' ? 'paper.buy' : 'paper.sell');
+    const pl = d.realizedPl != null ? t('ui.paper.realizedPl', { value: `${Number(d.realizedPl) >= 0 ? '+' : ''}${d.realizedPl}` }) : '';
+    return t('ui.paper.filledEvent', { ticker: d.ticker, side, quantity: d.quantity, price: d.price, profit: pl });
   }
   if (type === 'order_rejected') {
-    const side = d.side === 'buy' ? '买入' : '卖出';
-    return `${d.ticker} ${side}被拦截：${d.reason ?? ''}`;
+    const side = t(d.side === 'buy' ? 'paper.buy' : 'paper.sell');
+    return t('ui.paper.rejectedReason', { side, reason: d.reason ?? '' });
   }
-  if (type === 'circuit_breaker') return `熔断：${d.reason ?? '日亏损超限，今日停止交易'}`;
+  if (type === 'circuit_breaker') return t('ui.paper.circuitBreakerEvent', { reason: d.reason ?? t('ui.paper.circuitBreakerDefault') });
   if (type === 'bot_scan') {
-    return `扫描 ${d.scanned} 个信号源，下单 ${d.placed} 笔，拦截 ${d.rejected} 笔`;
+    return t('ui.paper.scanSummary', { scanned: d.scanned, placed: d.placed, rejected: d.rejected });
   }
-  if (type === 'bot_started') return 'AI 盯盘开启，信号源为你的每日分析评级';
-  if (type === 'bot_stopped') return 'AI 盯盘停止';
-  if (type === 'account_reset') return `账户重置，初始资金 ${d.initialCash ?? ''}`;
+  if (type === 'bot_started') return t('ui.paper.botStartedEvent');
+  if (type === 'bot_stopped') return t('ui.paper.botStoppedEvent');
+  if (type === 'account_reset') return t('ui.paper.accountResetEvent', { cash: d.initialCash ?? '' });
   return JSON.stringify(d);
 }
 
@@ -592,15 +591,15 @@ function ManualOrderDialog({ open, onOpenChange, onDone }: { open: boolean; onOp
       setSubmitting(true);
       const order = await placePaperOrder(dto);
       if (order.status === 'filled') {
-        toast.success(`${order.ticker} ${side === 'buy' ? t('paper.buy') : t('paper.sell')}成交 @ ${order.filledPrice}`);
+        toast.success(t('ui.paper.filledToast', { ticker: order.ticker, side: t(side === 'buy' ? 'paper.buy' : 'paper.sell'), price: order.filledPrice }));
       } else {
-        toast.warning(`订单被拦截：${order.reason ?? '风控未通过'}`);
+        toast.warning(t('ui.paper.orderBlocked', { reason: order.reason ?? t('ui.paper.riskGateFailed') }));
       }
       onOpenChange(false);
       setTicker('');
       onDone();
     } catch (error) {
-      toast.error((error as { response?: { data?: { message?: string } } })?.response?.data?.message ?? '下单失败');
+      toast.error((error as { response?: { data?: { message?: string } } })?.response?.data?.message ?? t('ui.paper.placingFailed'));
     } finally {
       setSubmitting(false);
     }
@@ -610,31 +609,31 @@ function ManualOrderDialog({ open, onOpenChange, onDone }: { open: boolean; onOp
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
-          <DialogTitle>模拟盘手动下单</DialogTitle>
-          <DialogDescription>市价单，立即按当前可获取价格成交（仅影响模拟盘）。</DialogDescription>
+          <DialogTitle>{t('ui.paper.marketOrderTitle')}</DialogTitle>
+          <DialogDescription>{t('paper.marketOrderNote')}</DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label>股票代码</Label>
-            <Input placeholder="如 NVDA / 0700 / 600519" value={ticker} onChange={(e) => setTicker(e.target.value)} />
+            <Label>{t('ui.paper.symbol')}</Label>
+            <Input placeholder={t('paper.tickerPlaceholder')} value={ticker} onChange={(e) => setTicker(e.target.value)} />
           </div>
           <div className="space-y-2">
-            <Label>方向</Label>
+            <Label>{t('ui.paper.side')}</Label>
             <Select value={side} onValueChange={(v) => setSide(v as 'buy' | 'sell')}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="buy">买入</SelectItem>
-                <SelectItem value="sell">卖出</SelectItem>
+                <SelectItem value="buy">{t('paper.buy')}</SelectItem>
+                <SelectItem value="sell">{t('paper.sell')}</SelectItem>
               </SelectContent>
             </Select>
           </div>
           <div className="space-y-2">
-            <Label>数量（股）</Label>
+            <Label>{t('ui.paper.shares')}</Label>
             <Input type="number" min={1} value={quantity} onChange={(e) => setQuantity(e.target.value)} />
           </div>
         </div>
         <DialogFooter>
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>取消</Button>
+          <Button variant="ghost" onClick={() => onOpenChange(false)}>{t('common.cancel')}</Button>
           <Button onClick={submit} disabled={submitting || !ticker.trim()}>
             {submitting ? t('paper.placingOrder') : t('paper.placeOrder')}
           </Button>
@@ -661,11 +660,11 @@ function GuardrailsDialog({ open, onOpenChange, overview, onDone }: { open: bool
         maxOrderPct: Number(orderPct),
         maxOrdersPerDay: Number(daily),
       });
-      toast.success('风控参数已更新');
+      toast.success(t('paper.paramsUpdated'));
       onOpenChange(false);
       onDone();
     } catch {
-      toast.error('保存失败');
+      toast.error(t('ui.paper.saveFailed'));
     } finally {
       setSubmitting(false);
     }
@@ -675,27 +674,27 @@ function GuardrailsDialog({ open, onOpenChange, overview, onDone }: { open: bool
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
-          <DialogTitle>风控守护参数</DialogTitle>
-          <DialogDescription>约束 AI 盯盘代理的下单行为；手动下单不受频次与金额上限限制。</DialogDescription>
+          <DialogTitle>{t('ui.paper.guardrailSettings')}</DialogTitle>
+          <DialogDescription>{t('ui.paper.guardrailDescription')}</DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label>日亏损熔断线（%）</Label>
+            <Label>{t('ui.paper.dailyLossBreakerLine')}</Label>
             <Input type="number" min={0.5} step={0.5} value={loss} onChange={(e) => setLoss(e.target.value)} />
-            <p className="text-xs text-muted-foreground">当日权益回撤达到该比例后，今日停止 bot 交易</p>
+            <p className="text-xs text-muted-foreground">{t('ui.paper.dailyLossBreakerHint')}</p>
           </div>
           <div className="space-y-2">
-            <Label>单笔金额上限（占净值 %）</Label>
+            <Label>{t('ui.paper.singleOrderLimit')}</Label>
             <Input type="number" min={0.5} step={0.5} value={orderPct} onChange={(e) => setOrderPct(e.target.value)} />
           </div>
           <div className="space-y-2">
-            <Label>每日订单上限（笔）</Label>
+            <Label>{t('ui.paper.dailyOrderLimit')}</Label>
             <Input type="number" min={1} value={daily} onChange={(e) => setDaily(e.target.value)} />
           </div>
         </div>
         <DialogFooter>
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>取消</Button>
-          <Button onClick={submit} disabled={submitting}>{submitting ? '保存中…' : t('common.save')}</Button>
+          <Button variant="ghost" onClick={() => onOpenChange(false)}>{t('common.cancel')}</Button>
+          <Button onClick={submit} disabled={submitting}>{submitting ? t('ui.paper.savePending') : t('common.save')}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -706,39 +705,39 @@ function GuardrailsDialog({ open, onOpenChange, overview, onDone }: { open: bool
 const CHANNEL_META: Record<NotificationChannelType, { name: string; hint: string; fields: Array<{ key: string; label: string; placeholder: string }> }> = {
   webhook: {
     name: 'Webhook',
-    hint: '通用 JSON POST，可接 Twilio 短信网关等任意服务',
+    hint: 'ui.paper.channelHints.webhook',
     fields: [{ key: 'url', label: 'Webhook URL', placeholder: 'https://example.com/hook' }],
   },
   bark: {
     name: 'Bark (iOS)',
-    hint: '手机安装 Bark App 后复制推送 Key',
+    hint: 'ui.paper.channelHints.bark',
     fields: [
-      { key: 'key', label: 'Bark Key', placeholder: '你的设备 Key' },
-      { key: 'server', label: '自建服务器（可选）', placeholder: 'https://api.day.app' },
+      { key: 'key', label: 'Bark Key', placeholder: 'ui.paper.fieldPlaceholders.deviceKey' },
+      { key: 'server', label: 'ui.paper.fieldLabels.customServer', placeholder: 'https://api.day.app' },
     ],
   },
   serverchan: {
-    name: 'Server酱（微信）',
-    hint: 'sct.ftqq.com 获取 SendKey，消息送达微信服务号',
+    name: 'ServerChan (WeChat)',
+    hint: 'ui.paper.channelHints.serverchan',
     fields: [{ key: 'key', label: 'SendKey', placeholder: 'SCT...' }],
   },
   smtp: {
-    name: '邮件 (SMTP)',
-    hint: '任意邮箱的 SMTP 发信配置',
+    name: 'Email (SMTP)',
+    hint: 'ui.paper.channelHints.smtp',
     fields: [
-      { key: 'host', label: 'SMTP 服务器', placeholder: 'smtp.example.com' },
-      { key: 'port', label: '端口', placeholder: '465' },
-      { key: 'user', label: '用户名', placeholder: 'you@example.com' },
-      { key: 'pass', label: '密码/授权码', placeholder: '••••••' },
-      { key: 'to', label: '收件邮箱', placeholder: 'you@example.com' },
+      { key: 'host', label: 'ui.paper.fieldLabels.smtpServer', placeholder: 'smtp.example.com' },
+      { key: 'port', label: 'ui.paper.fieldLabels.port', placeholder: '465' },
+      { key: 'user', label: 'ui.paper.fieldLabels.username', placeholder: 'you@example.com' },
+      { key: 'pass', label: 'ui.paper.fieldLabels.password', placeholder: '••••••' },
+      { key: 'to', label: 'ui.paper.fieldLabels.recipientEmail', placeholder: 'you@example.com' },
     ],
   },
   telegram: {
     name: 'Telegram',
-    hint: '与 @BotFather 创建的机器人对话后获取',
+    hint: 'ui.paper.channelHints.telegram',
     fields: [
       { key: 'token', label: 'Bot Token', placeholder: '123456:ABC-...' },
-      { key: 'chatId', label: 'Chat ID', placeholder: '你的 chat id' },
+      { key: 'chatId', label: 'ui.paper.fieldLabels.chatId', placeholder: 'ui.paper.fieldPlaceholders.chatId' },
     ],
   },
 };
@@ -766,19 +765,19 @@ function NotificationChannelsCard() {
       if (v) config[f.key] = v;
     }
     if (Object.keys(config).length === 0) {
-      toast.warning('请至少填写一个配置项');
+      toast.warning(t('ui.paper.channelFieldRequired'));
       return;
     }
     try {
       setSubmitting(true);
       await createNotificationChannel({ channelType, label: label.trim() || undefined, config });
-      toast.success('渠道已添加，建议发送一条测试消息验证');
+      toast.success(t('ui.paper.channelAdded'));
       setAddOpen(false);
       setFieldValues({});
       setLabel('');
       invalidate();
     } catch {
-      toast.error('添加失败');
+      toast.error(t('ui.paper.channelAddFailed'));
     } finally {
       setSubmitting(false);
     }
@@ -788,15 +787,15 @@ function NotificationChannelsCard() {
     <Card>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
         <CardTitle className="flex items-center gap-1.5 text-sm">
-          <BellRing size={14} /> 成交通知
+          <BellRing size={14} /> {t('ui.paper.notificationChannels')}
         </CardTitle>
         <Button variant="outline" size="sm" onClick={() => setAddOpen(true)}>
-          <Plus size={14} className="mr-1" /> 添加渠道
+          <Plus size={14} className="mr-1" /> {t('ui.paper.addChannel')}
         </Button>
       </CardHeader>
       <CardContent className="space-y-2 p-4">
         <p className="text-xs text-muted-foreground">
-          AI 成交、风控拦截与熔断会推送到你配置的渠道。配置只存在你自己的数据库里。
+          {t('ui.paper.channelsIntro')}
         </p>
         {(channelsQuery.data ?? []).map((ch) => (
           <div key={ch.id} className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm">
@@ -808,11 +807,11 @@ function NotificationChannelsCard() {
                 variant="ghost" size="sm"
                 onClick={async () => {
                   const r = await testNotificationChannel(ch.id);
-                  if (r.ok) toast.success('测试消息已发送');
-                  else toast.error(`发送失败：${r.error ?? '未知错误'}`);
+                  if (r.ok) toast.success(t('ui.paper.testSent'));
+                  else toast.error(t('ui.paper.testFailed', { reason: r.error ?? t('ui.paper.unknownError') }));
                 }}
               >
-                测试
+                {t('ui.paper.testMessage')}
               </Button>
               <Button
                 variant="ghost" size="sm"
@@ -825,7 +824,7 @@ function NotificationChannelsCard() {
         ))}
         {(channelsQuery.data ?? []).length === 0 && (
           <div className="rounded-md border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-            还没有通知渠道——支持 Webhook / Bark / Server酱 / 邮件 / Telegram
+            {t('ui.paper.notificationsEmpty')}
           </div>
         )}
       </CardContent>
@@ -833,12 +832,12 @@ function NotificationChannelsCard() {
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>添加通知渠道</DialogTitle>
-            <DialogDescription>{CHANNEL_META[channelType].hint}</DialogDescription>
+            <DialogTitle>{t('ui.paper.addNotificationChannel')}</DialogTitle>
+            <DialogDescription>{t(CHANNEL_META[channelType].hint)}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>渠道类型</Label>
+              <Label>{t('ui.paper.channelType')}</Label>
               <Select value={channelType} onValueChange={(v) => { setChannelType(v as NotificationChannelType); setFieldValues({}); }}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -849,14 +848,14 @@ function NotificationChannelsCard() {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>备注名（可选）</Label>
-              <Input placeholder="如 我的 iPhone" value={label} onChange={(e) => setLabel(e.target.value)} />
+              <Label>{t('ui.paper.labelOptional')}</Label>
+              <Input placeholder={t('ui.paper.labelPlaceholder')} value={label} onChange={(e) => setLabel(e.target.value)} />
             </div>
             {CHANNEL_META[channelType].fields.map((f) => (
               <div key={f.key} className="space-y-2">
-                <Label>{f.label}</Label>
+                <Label>{f.label.startsWith('ui.') ? t(f.label) : f.label}</Label>
                 <Input
-                  placeholder={f.placeholder}
+                  placeholder={f.placeholder.startsWith('ui.') ? t(f.placeholder) : f.placeholder}
                   value={fieldValues[f.key] ?? ''}
                   onChange={(e) => setFieldValues((prev) => ({ ...prev, [f.key]: e.target.value }))}
                 />
@@ -864,8 +863,8 @@ function NotificationChannelsCard() {
             ))}
           </div>
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setAddOpen(false)}>取消</Button>
-            <Button onClick={addChannel} disabled={submitting}>{submitting ? '添加中…' : '添加'}</Button>
+            <Button variant="ghost" onClick={() => setAddOpen(false)}>{t('common.cancel')}</Button>
+            <Button onClick={addChannel} disabled={submitting}>{submitting ? t('ui.paper.creating') : t('ui.paper.addChannel')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -893,7 +892,7 @@ function AgentSessionsCard() {
 
   const add = async () => {
     if (!name.trim()) {
-      toast.warning('请填写代理名称');
+      toast.warning(t('ui.paper.agentNameRequired'));
       return;
     }
     try {
@@ -909,7 +908,7 @@ function AgentSessionsCard() {
       setName('');
       invalidate();
     } catch {
-      toast.error('创建失败');
+      toast.error(t('ui.paper.agentCreateFailed'));
     } finally {
       setSubmitting(false);
     }
@@ -922,39 +921,39 @@ function AgentSessionsCard() {
     <Card>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
         <CardTitle className="flex items-center gap-1.5 text-sm">
-          <Bot size={14} /> AI 代理（MCP 连接）
+          <Bot size={14} /> {t('ui.paper.agentSessions')}
         </CardTitle>
         <Button variant="outline" size="sm" onClick={() => setAddOpen(true)}>
-          <Plus size={14} className="mr-1" /> 连接新代理
+          <Plus size={14} className="mr-1" /> {t('ui.paper.connectAgent')}
         </Button>
       </CardHeader>
       <CardContent className="space-y-2 p-4">
         <p className="text-xs text-muted-foreground">
-          让你的 AI 助手（Claude / ChatGPT / 任意 MCP 客户端）连接到这个模拟盘。每个代理有独立的日限额和审批模式。
+          {t('ui.paper.agentIntro')}
         </p>
         {newToken && (
           <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm">
-            <div className="font-medium text-emerald-600 dark:text-emerald-400">✓ 代理已创建</div>
+            <div className="font-medium text-emerald-600 dark:text-emerald-400">✓ {t('ui.paper.agentCreated')}</div>
             <div className="mt-2 space-y-1 text-xs">
-              <div><span className="text-muted-foreground">MCP 地址：</span><code className="break-all">{baseUrl}/mcp</code></div>
-              <div><span className="text-muted-foreground">Token：</span><code className="break-all">{newToken}</code></div>
+              <div><span className="text-muted-foreground">{t('ui.paper.mcpAddress')}</span><code className="break-all">{baseUrl}/mcp</code></div>
+              <div><span className="text-muted-foreground">{t('ui.paper.token')}</span><code className="break-all">{newToken}</code></div>
             </div>
             <div className="mt-2 text-xs text-muted-foreground">
-              在 AI 助手的 MCP 设置中添加这个地址和 Token。Token 只显示这一次，请保存。
+              {t('ui.paper.tokenOneTime')}
             </div>
-            <Button variant="ghost" size="sm" className="mt-2" onClick={() => setNewToken(null)}>关闭</Button>
+            <Button variant="ghost" size="sm" className="mt-2" onClick={() => setNewToken(null)}>{t('ui.paper.agentTokenClose')}</Button>
           </div>
         )}
         {sessions.map((s) => (
           <div key={s.id} className={`flex items-center gap-3 rounded-md border px-3 py-2 text-sm ${s.status === 'revoked' ? 'border-border opacity-50' : 'border-border'}`}>
             <Badge variant="outline" className={`shrink-0 text-[10px] ${s.permission === 'trade' ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400' : 'bg-slate-500/15 text-muted-foreground'}`}>
-              {s.permission === 'trade' ? '交易' : '只读'}
+              {s.permission === 'trade' ? t('ui.paper.tradePermission') : t('ui.paper.readOnlyPermission')}
             </Badge>
             <div className="min-w-0 flex-1">
               <div className="font-medium">{s.name}</div>
               <div className="text-xs text-muted-foreground">
-                日限 ${Number(s.dailyLimitUsd).toLocaleString()} · {s.approvalMode === 'require_approval' ? '需审批' : '自动'}
-                {s.lastUsedAt && ` · 上次使用 ${new Date(s.lastUsedAt).toLocaleString('zh-CN', { hour12: false })}`}
+                {t('ui.paper.dailyLimit', { amount: Number(s.dailyLimitUsd).toLocaleString() })} · {s.approvalMode === 'require_approval' ? t('ui.paper.requiresApproval') : t('ui.paper.automatic')}
+                {s.lastUsedAt && ` · ${t('ui.paper.lastUsed', { time: new Date(s.lastUsedAt).toLocaleString(undefined, { hour12: false }) })}`}
               </div>
             </div>
             {s.status === 'active' ? (
@@ -967,21 +966,21 @@ function AgentSessionsCard() {
                     invalidate();
                   }}
                 >
-                  <option value="require_approval">需审批</option>
-                  <option value="auto">自动成交</option>
+                  <option value="require_approval">{t('ui.paper.requiresApproval')}</option>
+                  <option value="auto">{t('ui.paper.automaticFill')}</option>
                 </select>
                 <Button variant="ghost" size="sm" onClick={async () => { await revokeAgentSession(s.id); invalidate(); }}>
                   <Trash2 size={14} className="text-destructive" />
                 </Button>
               </div>
             ) : (
-              <Badge variant="outline" className="text-[10px] text-muted-foreground">已吊销</Badge>
+              <Badge variant="outline" className="text-[10px] text-muted-foreground">{t('ui.paper.revoked')}</Badge>
             )}
           </div>
         ))}
         {sessions.length === 0 && !newToken && (
           <div className="rounded-md border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-            还没有连接任何 AI 代理——创建一个，然后把 MCP 地址和 Token 填入你的 AI 助手
+            {t('ui.paper.agentsEmpty')}
           </div>
         )}
       </CardContent>
@@ -989,45 +988,45 @@ function AgentSessionsCard() {
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>连接 AI 代理</DialogTitle>
+            <DialogTitle>{t('ui.paper.agentConnectTitle')}</DialogTitle>
             <DialogDescription>
-              创建一个 MCP 会话，让你的 AI 助手（Claude / ChatGPT 等）能查询持仓、阅读研报并在模拟盘下单。
+              {t('ui.paper.agentConnectDescription')}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>代理名称</Label>
-              <Input placeholder="如 我的 Claude" value={name} onChange={(e) => setName(e.target.value)} />
+              <Label>{t('ui.paper.agentName')}</Label>
+              <Input placeholder={t('ui.paper.agentNamePlaceholder')} value={name} onChange={(e) => setName(e.target.value)} />
             </div>
             <div className="space-y-2">
-              <Label>日花费限额（USD）</Label>
+              <Label>{t('ui.paper.dailySpendLimit')}</Label>
               <Input type="number" min={1} value={dailyLimit} onChange={(e) => setDailyLimit(e.target.value)} />
-              <p className="text-xs text-muted-foreground">该代理每天累计买入金额的上限</p>
+              <p className="text-xs text-muted-foreground">{t('ui.paper.dailySpendLimitHint')}</p>
             </div>
             <div className="space-y-2">
-              <Label>权限</Label>
+              <Label>{t('ui.paper.permission')}</Label>
               <Select value={permission} onValueChange={(v) => setPermission(v as 'read' | 'trade')}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="trade">交易（可下单）</SelectItem>
-                  <SelectItem value="read">只读（仅查询）</SelectItem>
+                  <SelectItem value="trade">{t('ui.paper.canTrade')}</SelectItem>
+                  <SelectItem value="read">{t('ui.paper.canRead')}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>审批模式</Label>
+              <Label>{t('ui.paper.approvalMode')}</Label>
               <Select value={approvalMode} onValueChange={(v) => setApprovalMode(v as 'auto' | 'require_approval')}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="require_approval">需人工审批（推荐）</SelectItem>
-                  <SelectItem value="auto">自动成交（仅受风控门约束）</SelectItem>
+                  <SelectItem value="require_approval">{t('ui.paper.manualApproval')}</SelectItem>
+                  <SelectItem value="auto">{t('ui.paper.autoFillGuarded')}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setAddOpen(false)}>取消</Button>
-            <Button onClick={add} disabled={submitting}>{submitting ? '创建中…' : '创建'}</Button>
+            <Button variant="ghost" onClick={() => setAddOpen(false)}>{t('common.cancel')}</Button>
+            <Button onClick={add} disabled={submitting}>{submitting ? t('ui.paper.creating') : t('ui.paper.connectAgent')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

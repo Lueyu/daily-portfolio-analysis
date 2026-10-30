@@ -7,6 +7,7 @@
  * shows the derived P/L and return while the user types.
  */
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { createClosed } from '@/api';
 import {
@@ -43,6 +44,7 @@ export default function AddClosedDialog({
   onOpenChange,
   onCreated,
 }: AddClosedDialogProps) {
+  const { t } = useTranslation();
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
     ticker: '',
@@ -86,7 +88,7 @@ export default function AddClosedDialog({
    */
   const handleSubmit = async () => {
     if (!form.ticker.trim()) {
-      toast.error('请输入代码');
+      toast.error(t('ui.tx.enterCode'));
       return;
     }
     setSaving(true);
@@ -111,12 +113,12 @@ export default function AddClosedDialog({
       if (form.notes) payload.notes = form.notes;
 
       await createClosed(payload);
-      toast.success('已平仓记录已添加');
+      toast.success(t('tx.closedNote'));
       reset();
       onOpenChange(false);
       onCreated();
     } catch (err) {
-      toast.error('添加失败');
+      toast.error(t('ui.tx.failed'));
     } finally {
       setSaving(false);
     }
@@ -127,20 +129,20 @@ export default function AddClosedDialog({
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="font-serif text-xl">
-            添加已平仓记录
+            {t('ui.tx.addClosedTitle')}
           </DialogTitle>
           <DialogDescription>
-            记录一笔已完成的平仓交易
+            {t('ui.tx.addClosedDesc')}
           </DialogDescription>
         </DialogHeader>
 
         <div className="grid grid-cols-2 gap-4 py-2">
           <div className="space-y-1.5">
             <Label>
-              代码 <span className="text-destructive">*</span>
+              {t('holdings.ticker')} <span className="text-destructive">*</span>
             </Label>
             <Input
-              placeholder="如 AAPL"
+              placeholder={t('ui.holdings.tickerExample')}
               value={form.ticker}
               onChange={(e) =>
                 setForm({
@@ -151,7 +153,7 @@ export default function AddClosedDialog({
             />
           </div>
           <div className="space-y-1.5">
-            <Label>公司名称</Label>
+            <Label>{t('ui.tx.companyName')}</Label>
             <Input
               value={form.company}
               onChange={(e) =>
@@ -160,7 +162,7 @@ export default function AddClosedDialog({
             />
           </div>
           <div className="space-y-1.5">
-            <Label>开仓日期</Label>
+            <Label>{t('tx.openDate')}</Label>
             <Input
               type="date"
               value={form.openDate}
@@ -170,7 +172,7 @@ export default function AddClosedDialog({
             />
           </div>
           <div className="space-y-1.5">
-            <Label>平仓日期</Label>
+            <Label>{t('tx.closeDate')}</Label>
             <Input
               type="date"
               value={form.closeDate}
@@ -180,7 +182,7 @@ export default function AddClosedDialog({
             />
           </div>
           <div className="space-y-1.5">
-            <Label>买入价</Label>
+            <Label>{t('tx.buyPrice')}</Label>
             <Input
               type="number"
               step="0.01"
@@ -191,7 +193,7 @@ export default function AddClosedDialog({
             />
           </div>
           <div className="space-y-1.5">
-            <Label>卖出价</Label>
+            <Label>{t('tx.sellPrice')}</Label>
             <Input
               type="number"
               step="0.01"
@@ -202,7 +204,7 @@ export default function AddClosedDialog({
             />
           </div>
           <div className="space-y-1.5">
-            <Label>股数</Label>
+            <Label>{t('tx.shares')}</Label>
             <Input
               type="number"
               step="0.0001"
@@ -213,7 +215,7 @@ export default function AddClosedDialog({
             />
           </div>
           <div className="space-y-1.5">
-            <Label>实现盈亏</Label>
+            <Label>{t('ui.tx.realizedPl')}</Label>
             <Input
               type="number"
               step="0.01"
@@ -221,11 +223,11 @@ export default function AddClosedDialog({
               onChange={(e) =>
                 setForm({ ...form, realizedPl: e.target.value })
               }
-              placeholder={shares && buyPrice && sellPrice ? '自动计算' : ''}
+              placeholder={shares && buyPrice && sellPrice ? t('ui.tx.autoCalculate') : ''}
             />
           </div>
           <div className="space-y-1.5 col-span-2">
-            <Label>收益率 (%)</Label>
+            <Label>{t('ui.tx.returnPct')} (%)</Label>
             <Input
               type="number"
               step="0.01"
@@ -233,13 +235,13 @@ export default function AddClosedDialog({
               onChange={(e) =>
                 setForm({ ...form, returnPct: e.target.value })
               }
-              placeholder={shares && buyPrice && sellPrice ? '自动计算' : ''}
+              placeholder={shares && buyPrice && sellPrice ? t('ui.tx.autoCalculate') : ''}
             />
           </div>
 
           {shares > 0 && buyPrice > 0 && sellPrice > 0 && (
             <div className="col-span-2 p-3 bg-muted/50 rounded-md text-sm flex items-center justify-between">
-              <span className="text-muted-foreground">预估盈亏</span>
+              <span className="text-muted-foreground">{t('ui.tx.estimatedPl')}</span>
               <div className="text-right">
                 <div
                   className={cn(
@@ -262,7 +264,7 @@ export default function AddClosedDialog({
           )}
 
           <div className="space-y-1.5 col-span-2">
-            <Label>备注</Label>
+            <Label>{t('tx.notes')}</Label>
             <Textarea
               rows={3}
               value={form.notes}
@@ -277,10 +279,10 @@ export default function AddClosedDialog({
             size="sm"
             onClick={() => onOpenChange(false)}
           >
-            取消
+            {t('common.cancel')}
           </Button>
           <Button size="sm" onClick={handleSubmit} disabled={saving}>
-            {saving ? '保存中...' : '保存'}
+            {saving ? t('ui.tx.saving') : t('ui.tx.save')}
           </Button>
         </DialogFooter>
       </DialogContent>

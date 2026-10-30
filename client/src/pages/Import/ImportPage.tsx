@@ -172,19 +172,19 @@ function ImportPage() {
       <div>
         <h1 className="flex items-center gap-2 font-serif text-2xl font-semibold">
           <Upload size={22} className="text-primary" />
-          持仓导入
+          {t('import.title')}
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          从 CSV 文件或券商 App 截图把现有持仓搬进吵股——全程预览确认，导入前不会写入任何数据。
+          {t('import.subtitle')}
         </p>
       </div>
 
       <div className="flex gap-2">
         <Button variant={mode === 'csv' ? 'default' : 'outline'} size="sm" onClick={() => setMode('csv')}>
-          <FileSpreadsheet size={14} className="mr-1" /> CSV 文件
+          <FileSpreadsheet size={14} className="mr-1" /> {t('import.csvFile')}
         </Button>
         <Button variant={mode === 'ocr' ? 'default' : 'outline'} size="sm" onClick={() => setMode('ocr')}>
-          <Camera size={14} className="mr-1" /> 截图识别
+          <Camera size={14} className="mr-1" /> {t('import.screenshot')}
         </Button>
       </div>
 
@@ -221,16 +221,16 @@ function CsvImport() {
       const parsed = Papa.parse<string[]>(text, { header: false, skipEmptyLines: true });
       const data = (parsed.data as string[][]).filter((r) => r.some((c) => String(c).trim() !== ''));
       if (data.length === 0) {
-        toast.warning('文件里没有数据行');
+        toast.warning(t('ui.import.noDataRows'));
         return;
       }
-      const hdrs = (data[0] ?? []).map((h, i) => String(h).trim() || `第${i + 1}列`);
+      const hdrs = (data[0] ?? []).map((h, i) => String(h).trim() || t('ui.import.columnNumber', { number: i + 1 }));
       const body = data.slice(1);
       setHeaders(hdrs);
       setMatrix(body);
       setMapping(suggestForPreset(hdrs, source));
       if (String(text).includes('\uFFFD')) {
-        toast.info('检测到乱码——若中文显示异常，请把编码切换为 GBK 后重新选择文件');
+        toast.info(t('import.detectedGibberish'));
       }
     };
     reader.readAsText(file, encoding);
@@ -240,7 +240,7 @@ function CsvImport() {
 
   const commit = async () => {
     if (previewRows.length === 0) {
-      toast.warning('没有可导入的行，请先完成列映射');
+      toast.warning(t('import.noRows'));
       return;
     }
     try {
@@ -252,7 +252,7 @@ function CsvImport() {
         buyDate: buyDate || undefined,
       });
       setResult(r);
-      toast.success(`导入完成：新建 ${r.created} 只，跳过 ${r.skipped} 只`);
+      toast.success(t('import.importComplete', { created: r.created, skipped: r.skipped }));
       queryClient.invalidateQueries({ queryKey: ['import'] });
       queryClient.invalidateQueries({ queryKey: ['holdings'] });
     } catch (error) {
@@ -264,11 +264,11 @@ function CsvImport() {
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <CardTitle className="text-sm">CSV 文件导入</CardTitle>
-        <div className="flex items-center gap-2">
+      <CardHeader className="flex flex-col items-stretch gap-3 pb-2 sm:flex-row sm:items-center sm:justify-between">
+        <CardTitle className="shrink-0 text-sm">{t('import.csvImport')}</CardTitle>
+        <div className="grid w-full grid-cols-2 gap-2 sm:w-auto sm:flex sm:items-center">
           <select
-            className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+            className="h-9 min-w-0 rounded-md border border-input bg-background px-2 text-xs sm:w-36"
             value={source}
             onChange={(e) => {
               const v = e.target.value;
@@ -277,19 +277,19 @@ function CsvImport() {
             }}
           >
             {Object.entries(BROKER_PRESETS).map(([k, v]) => (
-              <option key={k} value={k}>{v.labelKey}</option>
+              <option key={k} value={k}>{t(v.labelKey)}</option>
             ))}
           </select>
           <select
-            className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+            className="h-9 min-w-0 rounded-md border border-input bg-background px-2 text-xs sm:w-28"
             value={encoding}
             onChange={(e) => setEncoding(e.target.value as 'utf-8' | 'gbk')}
           >
             <option value="utf-8">UTF-8</option>
-            <option value="gbk">GBK（国内软件导出）</option>
+            <option value="gbk">{t('import.gbkNote')}</option>
           </select>
-          <Button size="sm" variant="outline" onClick={() => fileRef.current?.click()}>
-            <Upload size={14} className="mr-1" /> 选择文件
+          <Button className="col-span-2 w-full sm:w-auto" size="sm" variant="outline" onClick={() => fileRef.current?.click()}>
+            <Upload size={14} className="mr-1" /> {t('import.selectFile')}
           </Button>
           <input
             ref={fileRef}
@@ -303,13 +303,13 @@ function CsvImport() {
       <CardContent className="space-y-4 p-4">
         {matrix.length === 0 ? (
           <div className="rounded-md border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
-            选择一个 CSV 文件开始——支持任意券商/App 导出的表格，上传后自动猜测列含义，可手动调整。
+            {t('import.uploadHint')}
           </div>
         ) : (
           <>
             <div className="text-xs text-muted-foreground">
-              {filename} · {matrix.length} 行数据（识别到 {headers.length} 列）
-              {source === 'robinhood' && ' · Robinhood 预设已自动套用'}
+              {filename} · {matrix.length} {t('import.rowsData')} ({t('import.columns')}: {headers.length})
+              {source === 'robinhood' && ` · ${t('import.robinhoodApplied')}`}
             </div>
 
             <div className="grid gap-3 md:grid-cols-4">
@@ -323,7 +323,7 @@ function CsvImport() {
                     value={mapping[field] ?? ''}
                     onChange={(e) => setMapping((prev) => ({ ...prev, [field]: e.target.value === '' ? undefined : Number(e.target.value) }))}
                   >
-                    <option value="">（不映射）</option>
+                    <option value="">{t('import.noMapping')}</option>
                     {headers.map((h, i) => (
                       <option key={i} value={i}>{h}</option>
                     ))}
@@ -336,10 +336,10 @@ function CsvImport() {
               <table className="w-full text-sm">
                 <thead className="sticky top-0 bg-muted/50">
                   <tr className="text-left text-xs text-muted-foreground">
-                    <th className="px-3 py-2 font-medium">代码</th>
-                    <th className="px-3 py-2 font-medium">名称</th>
-                    <th className="px-3 py-2 font-medium">股数</th>
-                    <th className="px-3 py-2 font-medium">成本</th>
+                    <th className="px-3 py-2 font-medium">{t('ui.import.tickerColumn')}</th>
+                    <th className="px-3 py-2 font-medium">{t('ui.import.nameColumn')}</th>
+                    <th className="px-3 py-2 font-medium">{t('ui.import.sharesColumn')}</th>
+                    <th className="px-3 py-2 font-medium">{t('ui.import.costColumn')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -355,17 +355,17 @@ function CsvImport() {
               </table>
             </div>
             {previewRows.length > 20 && (
-              <div className="text-xs text-muted-foreground">仅预览前 20 行，提交时会导入全部 {previewRows.length} 行。</div>
+              <div className="text-xs text-muted-foreground">{t('import.preview20', { count: previewRows.length })}</div>
             )}
 
             <div className="flex flex-wrap items-center gap-3">
               <div className="space-y-1">
-                <Label className="text-xs">买入日期（可选，应用到全部）</Label>
+                <Label className="text-xs">{t('import.buyDate')}</Label>
                 <Input type="date" className="h-9 w-40" value={buyDate} onChange={(e) => setBuyDate(e.target.value)} />
               </div>
               <Button className="mt-4" onClick={commit} disabled={committing || mapping.ticker == null || mapping.shares == null}>
                 {committing ? <Loader2 size={14} className="mr-1 animate-spin" /> : <CheckCircle2 size={14} className="mr-1" />}
-                确认导入 {previewRows.length} 行
+                {t('import.confirmImport', { count: previewRows.length })}
               </Button>
             </div>
           </>
@@ -375,10 +375,10 @@ function CsvImport() {
           <div className="rounded-md border border-border p-3 text-sm">
             <div className="flex items-center gap-2">
               <Badge variant="outline" className="bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30">
-                新建 {result.created}
+                {t('import.created')} {result.created}
               </Badge>
               <Badge variant="outline" className="bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30">
-                跳过 {result.skipped}
+                {t('import.skipped')} {result.skipped}
               </Badge>
             </div>
             {result.failed.length > 0 && (
@@ -389,7 +389,7 @@ function CsvImport() {
                     <span>{f.ticker}：{f.reason}</span>
                   </div>
                 ))}
-                {result.failed.length > 10 && <div>…以及另外 {result.failed.length - 10} 条</div>}
+                {result.failed.length > 10 && <div>{t('ui.import.moreFailed', { count: result.failed.length - 10 })}</div>}
               </div>
             )}
           </div>
@@ -427,11 +427,11 @@ function OcrImport() {
 
   const extract = async () => {
     if (!imageBase64) {
-      toast.warning('请先选择截图');
+      toast.warning(t('import.selectScreenshotFirst'));
       return;
     }
     if (!provider.apiKey.trim() || !provider.model.trim()) {
-      toast.warning('需要填写你自己的多模态模型 Key 和模型名称（只存在本浏览器，不会入库）');
+      toast.warning(t('import.needKey'));
       return;
     }
     try {
@@ -445,7 +445,7 @@ function OcrImport() {
       });
       setOcrResult(r);
       setRows(r.rows);
-      toast.success(`识别到 ${r.rows.length} 行持仓${r.broker ? `（来自 ${r.broker}）` : ''}，请核对后提交`);
+      toast.success(t('import.extractSuccess', { count: r.rows.length, broker: r.broker ? ` (${r.broker})` : '' }));
     } catch (error) {
       toast.error((error as { response?: { data?: { message?: string } } })?.response?.data?.message ?? t('import.extractFailed'));
     } finally {
@@ -457,7 +457,7 @@ function OcrImport() {
     try {
       setCommitting(true);
       const r = await commitImport({ source: 'ocr', rows });
-      toast.success(`导入完成：新建 ${r.created} 只，跳过 ${r.skipped} 只`);
+      toast.success(t('import.importComplete', { created: r.created, skipped: r.skipped }));
       setRows([]);
       setOcrResult(null);
       setImageBase64('');
@@ -477,17 +477,16 @@ function OcrImport() {
   return (
     <Card>
       <CardHeader className="pb-2">
-        <CardTitle className="text-sm">截图识别导入</CardTitle>
+        <CardTitle className="text-sm">{t('import.screenshotImport')}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4 p-4">
         <p className="text-xs text-muted-foreground">
-          上传券商 App 的持仓页截图（同花顺 / 东方财富 / 雪球 / 富途 / 老虎 / Robinhood 等），用你自己的多模态大模型识别。
-          Key 只保存在本浏览器（与行情 Token 同一隐私模式），服务端不留存。
+          {t('import.ocrHint')}
         </p>
 
         <div className="grid gap-3 md:grid-cols-3">
           <div className="space-y-1.5">
-            <Label className="text-xs">接口地址（OpenAI 兼容）</Label>
+            <Label className="text-xs">{t('import.apiEndpoint')}</Label>
             <Input
               className="h-9"
               placeholder="https://ark.cn-beijing.volces.com/api/v3"
@@ -496,20 +495,20 @@ function OcrImport() {
             />
           </div>
           <div className="space-y-1.5">
-            <Label className="text-xs">视觉模型名称</Label>
+            <Label className="text-xs">{t('import.visionModel')}</Label>
             <Input
               className="h-9"
-              placeholder="如 doubao-1.5-vision-pro / gpt-4o-mini"
+              placeholder="e.g. doubao-1.5-vision-pro / gpt-4o-mini"
               value={provider.model}
               onChange={(e) => setProvider((p) => ({ ...p, model: e.target.value }))}
             />
           </div>
           <div className="space-y-1.5">
-            <Label className="text-xs">你的 API Key</Label>
+            <Label className="text-xs">{t('import.apiKey')}</Label>
             <Input
               className="h-9"
               type="password"
-              placeholder="只存本浏览器，不入库"
+              placeholder={t('import.apiKeyNote')}
               value={provider.apiKey}
               onChange={(e) => setProvider((p) => ({ ...p, apiKey: e.target.value }))}
             />
@@ -518,7 +517,7 @@ function OcrImport() {
 
         <div className="flex flex-wrap items-center gap-3">
           <Button variant="outline" size="sm" onClick={() => fileRef.current?.click()}>
-            <Camera size={14} className="mr-1" /> 选择截图
+            <Camera size={14} className="mr-1" /> {t('import.selectScreenshot')}
           </Button>
           <input
             ref={fileRef}
@@ -534,7 +533,7 @@ function OcrImport() {
           {imageBase64 && (
             <img
               src={`data:image/jpeg;base64,${imageBase64}`}
-              alt="截图预览"
+              alt={t('ui.import.screenshotPreview')}
               className="h-16 rounded-md border border-border object-cover"
             />
           )}
@@ -546,10 +545,10 @@ function OcrImport() {
               <table className="w-full text-sm">
                 <thead className="sticky top-0 bg-muted/50">
                   <tr className="text-left text-xs text-muted-foreground">
-                    <th className="px-3 py-2 font-medium">代码（可改）</th>
-                    <th className="px-3 py-2 font-medium">名称</th>
-                    <th className="px-3 py-2 font-medium">股数（可改）</th>
-                    <th className="px-3 py-2 font-medium">成本（可改）</th>
+                    <th className="px-3 py-2 font-medium">{t('ui.import.editableTicker')}</th>
+                    <th className="px-3 py-2 font-medium">{t('ui.import.nameColumn')}</th>
+                    <th className="px-3 py-2 font-medium">{t('ui.import.editableShares')}</th>
+                    <th className="px-3 py-2 font-medium">{t('ui.import.editableCost')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -566,7 +565,7 @@ function OcrImport() {
             </div>
             <Button onClick={commit} disabled={committing}>
               {committing ? <Loader2 size={14} className="mr-1 animate-spin" /> : <CheckCircle2 size={14} className="mr-1" />}
-              确认导入 {rows.length} 行
+              {t('import.confirmImport', { count: rows.length })}
             </Button>
           </>
         )}
@@ -591,12 +590,12 @@ function ImportHistoryCard() {
   return (
     <Card>
       <CardHeader className="pb-2">
-        <CardTitle className="flex items-center gap-1.5 text-sm"><History size={14} /> 导入历史</CardTitle>
+        <CardTitle className="flex items-center gap-1.5 text-sm"><History size={14} /> {t('import.history')}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-2 p-4">
         {items.length === 0 && (
           <div className="rounded-md border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-            还没有导入记录
+            {t('import.noHistory')}
           </div>
         )}
         {items.map((h) => (
@@ -604,7 +603,7 @@ function ImportHistoryCard() {
             <Badge variant="outline" className="shrink-0 text-[10px]">{sourceLabel[h.source] ?? h.source}</Badge>
             <span className="truncate text-foreground/90">{h.filename ?? t('import.noFilename')}</span>
             <span className="ml-auto shrink-0 text-xs text-muted-foreground">
-              新建 {h.rowsImported}/{h.rowsTotal} · {new Date(h.createdAt).toLocaleString('zh-CN', { hour12: false })}
+              {t('import.created')} {h.rowsImported}/{h.rowsTotal} · {new Date(h.createdAt).toLocaleString(undefined, { hour12: false })}
             </span>
           </div>
         ))}

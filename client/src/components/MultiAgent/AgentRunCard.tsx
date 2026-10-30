@@ -66,17 +66,16 @@ const statusStyles: Record<AgentRunStatus, string> = {
   cancelled: 'bg-slate-500/15 text-slate-600 dark:text-slate-400 border-slate-500/30',
 };
 
-/** Chinese display labels for each pipeline status (shown verbatim in the badge) */
-const statusLabels: Record<AgentRunStatus, string> = {
-  pending: '等待中',
-  fetching: '取数中',
-  debating: '辩论中',
-  critiquing: 'Critic 审核中',
-  risk_check: '风控检查中',
-  awaiting_human: '待决策',
-  completed: '已完成',
-  failed: '失败',
-  cancelled: '已取消',
+const statusLabelKeys: Record<AgentRunStatus, string> = {
+  pending: 'agent.pending',
+  fetching: 'agent.fetching',
+  debating: 'agent.debating',
+  critiquing: 'agent.critiquing',
+  risk_check: 'agent.riskCheck',
+  awaiting_human: 'agent.awaitingHuman',
+  completed: 'agent.completed',
+  failed: 'agent.failed',
+  cancelled: 'agent.cancelled',
 };
 
 /**
@@ -94,6 +93,7 @@ function AgentRunCard({
   targetBase,
   targetBull,
 }: AgentRunCardProps) {
+  const { t, i18n } = useTranslation();
   const isAwaiting = run.status === 'awaiting_human';
   const isCompleted = run.status === 'completed';
   // Stages that still have a live (polling) progress bar shown on the card
@@ -133,7 +133,7 @@ function AgentRunCard({
                 className="mt-1.5 gap-1 border-amber-500/50 bg-amber-500/10 text-amber-700 dark:text-amber-400 font-medium"
               >
                 <Sparkles size={12} />
-                深度报告
+                {t('report.deepReport')}
               </Badge>
             )}
           </div>
@@ -141,7 +141,7 @@ function AgentRunCard({
             variant="outline"
             className={`${statusStyles[run.status]} shrink-0 font-medium`}
           >
-            {statusLabels[run.status]}
+            {t(statusLabelKeys[run.status])}
           </Badge>
         </div>
 
@@ -163,7 +163,7 @@ function AgentRunCard({
               </Badge>
               {!isDeep && run.rating.targetPrice && (
                 <Badge variant="outline" className="text-muted-foreground">
-                  目标价 ${run.rating.targetPrice}
+                  {t('report.targetPrice')} ${run.rating.targetPrice}
                 </Badge>
               )}
             </div>
@@ -171,11 +171,11 @@ function AgentRunCard({
             {/* Deep analysis: three-scenario target prices */}
             {isDeep && hasTargets && (
               <div className="text-xs text-muted-foreground">
-                悲观 <span className="font-mono-nums text-rose-500">${targetBear ?? '—'}</span>
+                {t('ui.agent.scenarioBear')} <span className="font-mono-nums text-rose-500">${targetBear ?? '—'}</span>
                 {' / '}
-                基准 <span className="font-mono-nums text-foreground">${targetBase ?? '—'}</span>
+                {t('ui.agent.scenarioBase')} <span className="font-mono-nums text-foreground">${targetBase ?? '—'}</span>
                 {' / '}
-                乐观 <span className="font-mono-nums text-emerald-500">${targetBull ?? '—'}</span>
+                {t('ui.agent.scenarioBull')} <span className="font-mono-nums text-emerald-500">${targetBull ?? '—'}</span>
               </div>
             )}
 
@@ -212,7 +212,7 @@ function AgentRunCard({
           <div className="rounded-md bg-amber-500/10 border border-amber-500/30 px-3 py-2">
             <div className="flex items-center gap-2 text-sm font-medium text-amber-700 dark:text-amber-400">
               <AlertCircle size={14} />
-              待人工决策
+              {t('ui.agent.awaitingDecision')}
             </div>
             {run.rating && (
               <div className="mt-2 flex items-center gap-2 flex-wrap">
@@ -228,12 +228,12 @@ function AgentRunCard({
           {evidenceCount !== undefined && (
             <div className="flex items-center gap-1">
               <FileText size={12} />
-              <span>{evidenceCount} 条证据</span>
+              <span>{t('ui.agent.evidenceCount', { count: evidenceCount })}</span>
             </div>
           )}
           <div className="flex items-center gap-1">
             <Clock size={12} />
-            <span>{formatDate(run.createdAt)}</span>
+            <span>{formatDate(run.createdAt, i18n.language)}</span>
           </div>
           {riskGate && riskGate.length > 0 && (
             <RiskAlertBadge results={riskGate} />
@@ -243,7 +243,7 @@ function AgentRunCard({
         {/* Deep analysis CTA */}
         {isDeep && isCompleted && (
           <div className="flex items-center justify-end gap-0.5 pt-1 text-xs font-medium text-amber-600 dark:text-amber-400">
-            查看完整深度报告
+            {t('ui.agent.fullReport')}
             <ChevronRight size={12} />
           </div>
         )}
@@ -256,7 +256,7 @@ function AgentRunCard({
  * Formats an ISO date string as a relative time ("just now", "5 min ago",
  * "3 days ago") and falls back to a short absolute date older than 7 days.
  */
-function formatDate(dateStr: string): string {
+function formatDate(dateStr: string, locale: string): string {
   const date = new Date(dateStr);
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
@@ -264,11 +264,12 @@ function formatDate(dateStr: string): string {
   const diffHours = Math.floor(diffMs / 3600000);
   const diffDays = Math.floor(diffMs / 86400000);
 
-  if (diffMins < 1) return '刚刚';
-  if (diffMins < 60) return `${diffMins} 分钟前`;
-  if (diffHours < 24) return `${diffHours} 小时前`;
-  if (diffDays < 7) return `${diffDays} 天前`;
-  return date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
+  const relativeTime = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' });
+  if (diffMins < 1) return relativeTime.format(0, 'minute');
+  if (diffMins < 60) return relativeTime.format(-diffMins, 'minute');
+  if (diffHours < 24) return relativeTime.format(-diffHours, 'hour');
+  if (diffDays < 7) return relativeTime.format(-diffDays, 'day');
+  return date.toLocaleDateString(locale, { month: 'short', day: 'numeric' });
 }
 
 /** Loading placeholder that mirrors AgentRunCard's layout while runs are being fetched */

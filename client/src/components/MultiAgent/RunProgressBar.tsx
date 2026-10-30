@@ -25,18 +25,18 @@ interface StepDef {
   /** Unique step key */
   key: string;
   /** Short label rendered under the circle */
-  label: string;
+  labelKey: string;
   /** AgentRunStatus value that means "this step is the active one" */
   statusKey: AgentRunStatus;
 }
 
 /** Ordered pipeline stages (left to right) rendered as stepper circles */
 const steps: StepDef[] = [
-  { key: 'fetching', label: '取证', statusKey: 'fetching' },
-  { key: 'debating', label: '辩论', statusKey: 'debating' },
-  { key: 'critiquing', label: 'Critic', statusKey: 'critiquing' },
-  { key: 'risk_check', label: '风控', statusKey: 'risk_check' },
-  { key: 'completed', label: '评级', statusKey: 'completed' },
+  { key: 'fetching', labelKey: 'ui.agent.stepEvidence', statusKey: 'fetching' },
+  { key: 'debating', labelKey: 'ui.agent.stepDebate', statusKey: 'debating' },
+  { key: 'critiquing', labelKey: 'ui.agent.stepCritic', statusKey: 'critiquing' },
+  { key: 'risk_check', labelKey: 'ui.agent.stepRisk', statusKey: 'risk_check' },
+  { key: 'completed', labelKey: 'ui.agent.stepRating', statusKey: 'completed' },
 ];
 
 /**
@@ -90,6 +90,7 @@ function getStepState(
 
 /** Renders the 5-step stepper circles plus the connector lines between them. */
 function RunProgressBar({ status }: RunProgressBarProps) {
+  const { t } = useTranslation();
   return (
     <div className="w-full">
       <div className="flex items-center justify-between">
@@ -116,7 +117,7 @@ function RunProgressBar({ status }: RunProgressBarProps) {
                 ) : state === 'failed' ? (
                   <X size={12} strokeWidth={3} />
                 ) : state === 'awaiting' ? (
-                  <span className="text-[9px]">待</span>
+                  <span className="text-[9px]">{t('ui.agent.stepAwaiting')}</span>
                 ) : (
                   <span>{idx + 1}</span>
                 )}
@@ -135,7 +136,7 @@ function RunProgressBar({ status }: RunProgressBarProps) {
                           : 'text-slate-400',
                 ].join(' ')}
               >
-                {step.label}
+                {t(step.labelKey)}
               </span>
               {idx < steps.length - 1 && (
                 <div className="absolute top-3 left-full h-0.5 w-full -translate-y-1/2">

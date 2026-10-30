@@ -7,6 +7,7 @@
  * account value, cash). P/L values are colored by sign via `plClass`.
  */
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ChevronLeft, ChevronRight, Calendar, TrendingUp, TrendingDown, Wallet, DollarSign } from 'lucide-react';
 import type { Snapshot } from '@shared/api.interface';
 import { formatCurrency, formatPercent, formatDate, plClass, cn } from '@/utils/format';
@@ -45,6 +46,7 @@ export function DateNavigator({
   onNext,
   onDateChange,
 }: DateNavigatorProps) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState(formatDateInput(currentDate));
 
@@ -83,7 +85,7 @@ export function DateNavigator({
                     onChange={(e) => setInput(e.target.value)}
                     className="w-auto"
                   />
-                  <Button size="sm" onClick={handleSubmit}>确定</Button>
+                  <Button size="sm" onClick={handleSubmit}>{t('ui.journal.confirmDate')}</Button>
                 </div>
               )}
             </div>
@@ -102,7 +104,7 @@ export function DateNavigator({
                 <div>
                   <div className="flex items-center gap-1 text-xs text-muted-foreground">
                     <TrendingUp size={12} className={plClass(snapshot.dailyPl)} />
-                    当日盈亏
+                    {t('journal.dailyPl')}
                   </div>
                   <div
                     className={cn(
@@ -116,7 +118,7 @@ export function DateNavigator({
                 <div>
                   <div className="flex items-center gap-1 text-xs text-muted-foreground">
                     <TrendingDown size={12} className={plClass(snapshot.dailyPct)} />
-                    盈亏比例
+                    {t('ui.journal.dailyReturn')}
                   </div>
                   <div
                     className={cn(
@@ -130,7 +132,7 @@ export function DateNavigator({
                 <div>
                   <div className="flex items-center gap-1 text-xs text-muted-foreground">
                     <Wallet size={12} className="text-primary" />
-                    账户净值
+                    {t('ui.journal.accountValue')}
                   </div>
                   <div className="font-mono text-lg font-semibold tabular-nums text-foreground">
                     {formatCurrency(snapshot.accountValue)}
@@ -139,7 +141,7 @@ export function DateNavigator({
                 <div>
                   <div className="flex items-center gap-1 text-xs text-muted-foreground">
                     <DollarSign size={12} className="text-primary" />
-                    现金
+                    {t('ui.journal.cash')}
                   </div>
                   <div className="font-mono text-lg font-semibold tabular-nums text-foreground">
                     {formatCurrency(snapshot.cash)}
@@ -148,7 +150,7 @@ export function DateNavigator({
               </>
             ) : (
               <div className="col-span-4 py-2 text-center text-sm text-muted-foreground">
-                该日期暂无快照数据
+                {t('ui.journal.noSnapshotForDate')}
               </div>
             )}
           </div>

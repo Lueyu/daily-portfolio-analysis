@@ -76,18 +76,29 @@ const ratingColor = (rating: AgentRating | null | undefined): string => {
     case 'Strong Buy':
       return 'bg-emerald-600 text-white border-emerald-500';
     case 'Buy':
-      return 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50';
+      return 'bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 border-emerald-500/50';
     case 'Hold':
-      return 'bg-amber-500/20 text-amber-300 border-amber-500/50';
+      return 'bg-amber-500/20 text-amber-800 dark:text-amber-300 border-amber-500/50';
     case 'Sell':
-      return 'bg-rose-500/20 text-rose-300 border-rose-500/50';
+      return 'bg-rose-500/20 text-rose-800 dark:text-rose-300 border-rose-500/50';
     case 'Strong Sell':
       return 'bg-rose-600 text-white border-rose-500';
     case 'Watch':
-      return 'bg-slate-500/20 text-slate-300 border-slate-500/50';
+      return 'bg-slate-500/20 text-foreground/85 border-slate-500/50';
     default:
-      return 'bg-slate-500/20 text-slate-300 border-slate-500/50';
+      return 'bg-slate-500/20 text-foreground/85 border-slate-500/50';
   }
+};
+
+const localizedRating = (
+  rating: AgentRating | string | null | undefined,
+  t: (key: string) => string,
+): string => {
+  const keys: Record<string, string> = {
+    'Strong Buy': 'analysis.strongBuy', Buy: 'analysis.buy', Hold: 'analysis.hold',
+    Sell: 'analysis.sell', 'Strong Sell': 'analysis.strongSell', Watch: 'analysis.watch',
+  };
+  return rating && keys[rating] ? t(keys[rating]) : rating ?? '';
 };
 
 /** Badge color classes for confidence level: high=emerald, medium=amber, low=rose */
@@ -96,29 +107,29 @@ const confidenceColor = (
 ): string => {
   switch (confidence) {
     case 'high':
-      return 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40';
+      return 'bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 border-emerald-500/40';
     case 'medium':
-      return 'bg-amber-500/20 text-amber-300 border-amber-500/40';
+      return 'bg-amber-500/20 text-amber-800 dark:text-amber-300 border-amber-500/40';
     case 'low':
-      return 'bg-rose-500/20 text-rose-300 border-rose-500/40';
+      return 'bg-rose-500/20 text-rose-800 dark:text-rose-300 border-rose-500/40';
     default:
-      return 'bg-slate-500/20 text-slate-300 border-slate-500/40';
+      return 'bg-slate-500/20 text-foreground/85 border-slate-500/40';
   }
 };
 
-/** Chinese display label for confidence level; em-dash when absent */
-const confidenceLabel = (
+/** Translation key for confidence level; em-dash when absent */
+const confidenceLabelKey = (
   confidence: AgentConfidence | null | undefined,
-): string => {
+): string | null => {
   switch (confidence) {
     case 'high':
-      return '高置信度';
+      return 'report.highConfidence';
     case 'medium':
-      return '中置信度';
+      return 'report.mediumConfidence';
     case 'low':
-      return '低置信度';
+      return 'report.lowConfidence';
     default:
-      return '—';
+      return null;
   }
 };
 
@@ -130,7 +141,7 @@ const SectionTitle: React.FC<{ children: React.ReactNode; id: string }> = ({
 }) => (
   <h2
     id={id}
-    className="scroll-mt-6 font-serif text-2xl md:text-3xl font-bold text-slate-100 pl-4 border-l-4 border-amber-500 mb-6"
+    className="scroll-mt-6 font-serif text-2xl md:text-3xl font-bold text-foreground pl-4 border-l-4 border-amber-500 mb-6"
   >
     {children}
   </h2>
@@ -138,7 +149,7 @@ const SectionTitle: React.FC<{ children: React.ReactNode; id: string }> = ({
 
 /** Amber sub-heading used inside a section for sub-topics */
 const SubHeading: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <h3 className="font-serif text-lg font-semibold text-amber-400 mb-3 mt-6 first:mt-0">
+  <h3 className="font-serif text-lg font-semibold text-amber-700 dark:text-amber-400 mb-3 mt-6 first:mt-0">
     {children}
   </h3>
 );
@@ -151,7 +162,7 @@ const ParagraphBlock: React.FC<{ content: string | null | undefined }> = ({
   if (!content) return null;
   const paragraphs = content.split('\n').filter((p: string) => p.trim());
   return (
-    <div className="space-y-3 text-slate-300 leading-relaxed break-words">
+    <div className="space-y-3 text-foreground/85 leading-relaxed break-words">
       {paragraphs.map((p: string, i: number) => (
         <p key={i}>{p}</p>
       ))}
@@ -162,7 +173,7 @@ const ParagraphBlock: React.FC<{ content: string | null | undefined }> = ({
 // ─── Data table wrapper (dark style) ──────────────────────────────
 /** Dark-bordered, horizontally-scrollable table shell used by every data table */
 const DarkTable: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <div className="border border-slate-700/60 rounded-lg overflow-x-auto bg-slate-900/40">
+  <div className="border border-border rounded-lg overflow-x-auto bg-card/80">
     <Table className="min-w-full">{children}</Table>
   </div>
 );
@@ -187,24 +198,24 @@ const ExecutiveSummarySection: React.FC<{ report: DeepReport }> = ({
     <section className="mb-16">
       <SectionTitle id="executive-summary">{t('report.coreThesis')}</SectionTitle>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        <Card className="bg-slate-900/60 border-slate-700/60">
+        <Card className="bg-card border-border">
           <CardHeader className="pb-2">
-            <p className="text-xs text-slate-400 uppercase tracking-wider">
-              评级
+            <p className="text-xs text-muted-foreground uppercase tracking-wider">
+              {t('report.rating')}
             </p>
           </CardHeader>
           <CardContent>
             <Badge
               className={cn('text-base px-4 py-1.5', ratingColor(report.rating))}
             >
-              {report.rating ?? '—'}
+              {localizedRating(report.rating, t) || '—'}
             </Badge>
           </CardContent>
         </Card>
-        <Card className="bg-slate-900/60 border-slate-700/60">
+        <Card className="bg-card border-border">
           <CardHeader className="pb-2">
-            <p className="text-xs text-slate-400 uppercase tracking-wider">
-              置信度
+            <p className="text-xs text-muted-foreground uppercase tracking-wider">
+              {t('report.confidence')}
             </p>
           </CardHeader>
           <CardContent>
@@ -214,19 +225,21 @@ const ExecutiveSummarySection: React.FC<{ report: DeepReport }> = ({
                 confidenceColor(report.confidence),
               )}
             >
-              {confidenceLabel(report.confidence)}
+              {confidenceLabelKey(report.confidence)
+                ? t(confidenceLabelKey(report.confidence)!)
+                : '—'}
             </Badge>
           </CardContent>
         </Card>
-        <Card className="bg-slate-900/60 border-slate-700/60">
+        <Card className="bg-card border-border">
           <CardHeader className="pb-2">
-            <p className="text-xs text-slate-400 uppercase tracking-wider">
-              上一期评级
+            <p className="text-xs text-muted-foreground uppercase tracking-wider">
+              {t('ui.report.previousRating')}
             </p>
           </CardHeader>
           <CardContent>
-            <span className="text-slate-200 text-lg font-medium">
-              {report.prevRating ?? '—'}
+            <span className="text-foreground text-lg font-medium">
+              {localizedRating(report.prevRating, t) || '—'}
             </span>
           </CardContent>
         </Card>
@@ -288,11 +301,11 @@ const CompanyBusinessSection: React.FC<{ report: DeepReport }> = ({
           <SubHeading>{t('report.revenueStructure')}</SubHeading>
           <DarkTable>
             <TableHeader>
-              <TableRow className="border-slate-700/60 hover:bg-transparent">
-                <TableHead className="text-slate-400">业务分部</TableHead>
-                <TableHead className="text-slate-400 text-right">营收</TableHead>
-                <TableHead className="text-slate-400 text-right">占比</TableHead>
-                <TableHead className="text-slate-400 text-right">同比</TableHead>
+              <TableRow className="border-border hover:bg-transparent">
+                <TableHead className="text-muted-foreground">{t('ui.report.businessSegment')}</TableHead>
+                <TableHead className="text-muted-foreground text-right">{t('ui.report.revenue')}</TableHead>
+                <TableHead className="text-muted-foreground text-right">{t('ui.report.share')}</TableHead>
+                <TableHead className="text-muted-foreground text-right">{t('ui.report.yoy')}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -300,15 +313,15 @@ const CompanyBusinessSection: React.FC<{ report: DeepReport }> = ({
                 (item: RevenueItem, idx: number) => (
                   <TableRow
                     key={idx}
-                    className="border-slate-800/60 hover:bg-slate-800/40"
+                    className="border-border hover:bg-muted"
                   >
-                    <TableCell className="text-slate-200 font-medium">
+                    <TableCell className="text-foreground font-medium">
                       {item.segment}
                     </TableCell>
-                    <TableCell className="text-slate-300 text-right">
+                    <TableCell className="text-foreground/85 text-right">
                       {String(item.revenue)}
                     </TableCell>
-                    <TableCell className="text-amber-400 text-right font-medium">
+                    <TableCell className="text-amber-700 dark:text-amber-400 text-right font-medium">
                       {String(item.sharePct)}
                       {typeof item.sharePct === 'number' ? '%' : ''}
                     </TableCell>
@@ -316,10 +329,10 @@ const CompanyBusinessSection: React.FC<{ report: DeepReport }> = ({
                       className={cn(
                         'text-right',
                         Number(item.yoyPct) > 0
-                          ? 'text-emerald-400'
+                          ? 'text-emerald-700 dark:text-emerald-400'
                           : Number(item.yoyPct) < 0
-                            ? 'text-rose-400'
-                            : 'text-slate-400',
+                            ? 'text-rose-700 dark:text-rose-400'
+                            : 'text-muted-foreground',
                       )}
                     >
                       {item.yoyPct != null ? String(item.yoyPct) : '—'}
@@ -360,15 +373,15 @@ const FinancialSection: React.FC<{ report: DeepReport }> = ({ report }) => {
         <SubHeading>{label}</SubHeading>
         <DarkTable>
           <TableHeader>
-            <TableRow className="border-slate-700/60 hover:bg-transparent">
-              <TableHead className="text-slate-400">期间</TableHead>
-              <TableHead className="text-slate-400 text-right">营收</TableHead>
-              <TableHead className="text-slate-400 text-right">净利润</TableHead>
-              <TableHead className="text-slate-400 text-right">
-                营收同比
+            <TableRow className="border-border hover:bg-transparent">
+              <TableHead className="text-muted-foreground">{t('ui.report.period')}</TableHead>
+              <TableHead className="text-muted-foreground text-right">{t('ui.report.revenue')}</TableHead>
+              <TableHead className="text-muted-foreground text-right">{t('ui.report.netIncome')}</TableHead>
+              <TableHead className="text-muted-foreground text-right">
+                {t('ui.report.revenueYoy')}
               </TableHead>
-              <TableHead className="text-slate-400 text-right">
-                利润同比
+              <TableHead className="text-muted-foreground text-right">
+                {t('ui.report.profitYoy')}
               </TableHead>
             </TableRow>
           </TableHeader>
@@ -376,25 +389,25 @@ const FinancialSection: React.FC<{ report: DeepReport }> = ({ report }) => {
             {data.map((p: FinancialPeriod, idx: number) => (
               <TableRow
                 key={idx}
-                className="border-slate-800/60 hover:bg-slate-800/40"
+                className="border-border hover:bg-muted"
               >
-                <TableCell className="text-slate-200 font-medium">
+                <TableCell className="text-foreground font-medium">
                   {p.period}
                 </TableCell>
-                <TableCell className="text-slate-300 text-right">
+                <TableCell className="text-foreground/85 text-right">
                   {p.revenue != null ? String(p.revenue) : '—'}
                 </TableCell>
-                <TableCell className="text-slate-300 text-right">
+                <TableCell className="text-foreground/85 text-right">
                   {p.netProfit != null ? String(p.netProfit) : '—'}
                 </TableCell>
                 <TableCell
                   className={cn(
                     'text-right',
                     Number(p.revenueYoy) > 0
-                      ? 'text-emerald-400'
+                      ? 'text-emerald-700 dark:text-emerald-400'
                       : Number(p.revenueYoy) < 0
-                        ? 'text-rose-400'
-                        : 'text-slate-400',
+                        ? 'text-rose-700 dark:text-rose-400'
+                        : 'text-muted-foreground',
                   )}
                 >
                   {p.revenueYoy != null ? String(p.revenueYoy) : '—'}
@@ -403,10 +416,10 @@ const FinancialSection: React.FC<{ report: DeepReport }> = ({ report }) => {
                   className={cn(
                     'text-right',
                     Number(p.profitYoy) > 0
-                      ? 'text-emerald-400'
+                      ? 'text-emerald-700 dark:text-emerald-400'
                       : Number(p.profitYoy) < 0
-                        ? 'text-rose-400'
-                        : 'text-slate-400',
+                        ? 'text-rose-700 dark:text-rose-400'
+                        : 'text-muted-foreground',
                   )}
                 >
                   {p.profitYoy != null ? String(p.profitYoy) : '—'}
@@ -423,22 +436,22 @@ const FinancialSection: React.FC<{ report: DeepReport }> = ({ report }) => {
     <section className="mb-16">
       <SectionTitle id="financial">{t('report.financials')}</SectionTitle>
 
-      {renderPeriodTable(report.financialAnnual, '年度财务')}
-      {renderPeriodTable(report.financialQuarterly, '季度财务')}
+      {renderPeriodTable(report.financialAnnual, t('report.financialAnnual'))}
+      {renderPeriodTable(report.financialQuarterly, t('report.financialQuarterly'))}
 
       {report.profitability && report.profitability.length > 0 && (
         <div className="mb-6">
           <SubHeading>{t('report.profitability')}</SubHeading>
           <DarkTable>
             <TableHeader>
-              <TableRow className="border-slate-700/60 hover:bg-transparent">
-                <TableHead className="text-slate-400">指标</TableHead>
-                <TableHead className="text-slate-400 text-right">当前值</TableHead>
-                <TableHead className="text-slate-400 text-right">
+              <TableRow className="border-border hover:bg-transparent">
+                <TableHead className="text-muted-foreground">{t('ui.report.metric')}</TableHead>
+                <TableHead className="text-muted-foreground text-right">{t('ui.report.currentValue')}</TableHead>
+                <TableHead className="text-muted-foreground text-right">
                   TTM
                 </TableHead>
-                <TableHead className="text-slate-400 text-right">
-                  行业均值
+                <TableHead className="text-muted-foreground text-right">
+                  {t('ui.report.industryAverage')}
                 </TableHead>
               </TableRow>
             </TableHeader>
@@ -447,18 +460,18 @@ const FinancialSection: React.FC<{ report: DeepReport }> = ({ report }) => {
                 (item: ProfitabilityMetric, idx: number) => (
                   <TableRow
                     key={idx}
-                    className="border-slate-800/60 hover:bg-slate-800/40"
+                    className="border-border hover:bg-muted"
                   >
-                    <TableCell className="text-slate-200 font-medium">
+                    <TableCell className="text-foreground font-medium">
                       {item.metric}
                     </TableCell>
-                    <TableCell className="text-amber-400 text-right font-medium">
+                    <TableCell className="text-amber-700 dark:text-amber-400 text-right font-medium">
                       {String(item.value)}
                     </TableCell>
-                    <TableCell className="text-slate-300 text-right">
+                    <TableCell className="text-foreground/85 text-right">
                       {item.ttm != null ? String(item.ttm) : '—'}
                     </TableCell>
-                    <TableCell className="text-slate-400 text-right">
+                    <TableCell className="text-muted-foreground text-right">
                       {item.industry != null ? String(item.industry) : '—'}
                     </TableCell>
                   </TableRow>
@@ -474,25 +487,25 @@ const FinancialSection: React.FC<{ report: DeepReport }> = ({ report }) => {
           <SubHeading>{t('report.cashFlow')}</SubHeading>
           <DarkTable>
             <TableHeader>
-              <TableRow className="border-slate-700/60 hover:bg-transparent">
-                <TableHead className="text-slate-400">项目</TableHead>
-                <TableHead className="text-slate-400 text-right">数值</TableHead>
-                <TableHead className="text-slate-400">备注</TableHead>
+              <TableRow className="border-border hover:bg-transparent">
+                <TableHead className="text-muted-foreground">{t('ui.report.item')}</TableHead>
+                <TableHead className="text-muted-foreground text-right">{t('ui.report.value')}</TableHead>
+                <TableHead className="text-muted-foreground">{t('ui.report.note')}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {report.cashFlow.map((item: CashFlowItem, idx: number) => (
                 <TableRow
                   key={idx}
-                  className="border-slate-800/60 hover:bg-slate-800/40"
+                  className="border-border hover:bg-muted"
                 >
-                  <TableCell className="text-slate-200 font-medium">
+                  <TableCell className="text-foreground font-medium">
                     {item.item}
                   </TableCell>
-                  <TableCell className="text-amber-400 text-right font-medium">
+                  <TableCell className="text-amber-700 dark:text-amber-400 text-right font-medium">
                     {String(item.value)}
                   </TableCell>
-                  <TableCell className="text-slate-400">
+                  <TableCell className="text-muted-foreground">
                     {item.note ?? '—'}
                   </TableCell>
                 </TableRow>
@@ -515,50 +528,51 @@ const FinancialSection: React.FC<{ report: DeepReport }> = ({ report }) => {
 // ④ Segments
 /** Per-business-segment table: revenue, gross margin, growth, outlook */
 const SegmentsSection: React.FC<{ report: DeepReport }> = ({ report }) => {
+  const { t } = useTranslation();
   if (!report.segmentAnalysis || report.segmentAnalysis.length === 0)
     return null;
 
   return (
     <section className="mb-16">
-      <SectionTitle id="segments">④ 分业务/分部分析</SectionTitle>
+      <SectionTitle id="segments">{t('ui.report.segmentsSection')}</SectionTitle>
       <DarkTable>
         <TableHeader>
-          <TableRow className="border-slate-700/60 hover:bg-transparent">
-            <TableHead className="text-slate-400">分部</TableHead>
-            <TableHead className="text-slate-400 text-right">营收</TableHead>
-            <TableHead className="text-slate-400 text-right">毛利率</TableHead>
-            <TableHead className="text-slate-400 text-right">增速</TableHead>
-            <TableHead className="text-slate-400">展望</TableHead>
+          <TableRow className="border-border hover:bg-transparent">
+            <TableHead className="text-muted-foreground">{t('ui.report.segment')}</TableHead>
+            <TableHead className="text-muted-foreground text-right">{t('ui.report.revenue')}</TableHead>
+            <TableHead className="text-muted-foreground text-right">{t('ui.report.grossMargin')}</TableHead>
+            <TableHead className="text-muted-foreground text-right">{t('ui.report.growth')}</TableHead>
+            <TableHead className="text-muted-foreground">{t('ui.report.outlook')}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {report.segmentAnalysis.map((item: SegmentItem, idx: number) => (
             <TableRow
               key={idx}
-              className="border-slate-800/60 hover:bg-slate-800/40"
+              className="border-border hover:bg-muted"
             >
-              <TableCell className="text-slate-200 font-medium">
+              <TableCell className="text-foreground font-medium">
                 {item.name}
               </TableCell>
-              <TableCell className="text-slate-300 text-right">
+              <TableCell className="text-foreground/85 text-right">
                 {item.revenue != null ? String(item.revenue) : '—'}
               </TableCell>
-              <TableCell className="text-amber-400 text-right">
+              <TableCell className="text-amber-700 dark:text-amber-400 text-right">
                 {item.grossMargin != null ? String(item.grossMargin) : '—'}
               </TableCell>
               <TableCell
                 className={cn(
                   'text-right',
                   Number(item.growthPct) > 0
-                    ? 'text-emerald-400'
+                    ? 'text-emerald-700 dark:text-emerald-400'
                     : Number(item.growthPct) < 0
-                      ? 'text-rose-400'
-                      : 'text-slate-400',
+                      ? 'text-rose-700 dark:text-rose-400'
+                      : 'text-muted-foreground',
                 )}
               >
                 {item.growthPct != null ? String(item.growthPct) : '—'}
               </TableCell>
-              <TableCell className="text-slate-400 max-w-[200px] truncate">
+              <TableCell className="text-muted-foreground max-w-[200px] truncate">
                 {item.outlook ?? '—'}
               </TableCell>
             </TableRow>
@@ -588,16 +602,16 @@ const ValuationSection: React.FC<{ report: DeepReport }> = ({ report }) => {
           <SubHeading>{t('report.valuationRelative')}</SubHeading>
           <DarkTable>
             <TableHeader>
-              <TableRow className="border-slate-700/60 hover:bg-transparent">
-                <TableHead className="text-slate-400">指标</TableHead>
-                <TableHead className="text-slate-400 text-right">当前</TableHead>
-                <TableHead className="text-slate-400 text-right">
-                  5年分位
+              <TableRow className="border-border hover:bg-transparent">
+                <TableHead className="text-muted-foreground">{t('ui.report.metric')}</TableHead>
+                <TableHead className="text-muted-foreground text-right">{t('ui.report.current')}</TableHead>
+                <TableHead className="text-muted-foreground text-right">
+                  {t('ui.report.fiveYearPercentile')}
                 </TableHead>
-                <TableHead className="text-slate-400 text-right">
-                  行业均值
+                <TableHead className="text-muted-foreground text-right">
+                  {t('ui.report.industryAverage')}
                 </TableHead>
-                <TableHead className="text-slate-400">备注</TableHead>
+                <TableHead className="text-muted-foreground">{t('ui.report.note')}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -605,25 +619,25 @@ const ValuationSection: React.FC<{ report: DeepReport }> = ({ report }) => {
                 (item: ValuationRelativeItem, idx: number) => (
                   <TableRow
                     key={idx}
-                    className="border-slate-800/60 hover:bg-slate-800/40"
+                    className="border-border hover:bg-muted"
                   >
-                    <TableCell className="text-slate-200 font-medium">
+                    <TableCell className="text-foreground font-medium">
                       {item.metric}
                     </TableCell>
-                    <TableCell className="text-amber-400 text-right font-medium">
+                    <TableCell className="text-amber-700 dark:text-amber-400 text-right font-medium">
                       {String(item.current)}
                     </TableCell>
-                    <TableCell className="text-slate-300 text-right">
+                    <TableCell className="text-foreground/85 text-right">
                       {item.percentile5y != null
                         ? String(item.percentile5y)
                         : '—'}
                     </TableCell>
-                    <TableCell className="text-slate-300 text-right">
+                    <TableCell className="text-foreground/85 text-right">
                       {item.industryAvg != null
                         ? String(item.industryAvg)
                         : '—'}
                     </TableCell>
-                    <TableCell className="text-slate-400 max-w-[200px] truncate">
+                    <TableCell className="text-muted-foreground max-w-[200px] truncate">
                       {item.note ?? '—'}
                     </TableCell>
                   </TableRow>
@@ -639,27 +653,27 @@ const ValuationSection: React.FC<{ report: DeepReport }> = ({ report }) => {
           <SubHeading>{t('report.valuationSotp')}</SubHeading>
           <DarkTable>
             <TableHeader>
-              <TableRow className="border-slate-700/60 hover:bg-transparent">
-                <TableHead className="text-slate-400">分部</TableHead>
-                <TableHead className="text-slate-400 text-right">估值</TableHead>
-                <TableHead className="text-slate-400">方法</TableHead>
-                <TableHead className="text-slate-400 text-right">倍数</TableHead>
+              <TableRow className="border-border hover:bg-transparent">
+                <TableHead className="text-muted-foreground">{t('ui.report.segment')}</TableHead>
+                <TableHead className="text-muted-foreground text-right">{t('ui.report.valuation')}</TableHead>
+                <TableHead className="text-muted-foreground">{t('ui.report.method')}</TableHead>
+                <TableHead className="text-muted-foreground text-right">{t('ui.report.multiple')}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {report.valuationSotp.map((item: SotpItem, idx: number) => (
                 <TableRow
                   key={idx}
-                  className="border-slate-800/60 hover:bg-slate-800/40"
+                  className="border-border hover:bg-muted"
                 >
-                  <TableCell className="text-slate-200 font-medium">
+                  <TableCell className="text-foreground font-medium">
                     {item.segment}
                   </TableCell>
-                  <TableCell className="text-amber-400 text-right font-medium">
+                  <TableCell className="text-amber-700 dark:text-amber-400 text-right font-medium">
                     {String(item.valuation)}
                   </TableCell>
-                  <TableCell className="text-slate-300">{item.method}</TableCell>
-                  <TableCell className="text-slate-400 text-right">
+                  <TableCell className="text-foreground/85">{item.method}</TableCell>
+                  <TableCell className="text-muted-foreground text-right">
                     {item.multiple != null ? String(item.multiple) : '—'}
                   </TableCell>
                 </TableRow>
@@ -671,7 +685,7 @@ const ValuationSection: React.FC<{ report: DeepReport }> = ({ report }) => {
 
       {report.valuationMethodology && (
         <div>
-          <SubHeading>估值方法</SubHeading>
+          <SubHeading>{t('ui.report.valuationMethod')}</SubHeading>
           <ParagraphBlock content={report.valuationMethodology} />
         </div>
       )}
@@ -725,13 +739,14 @@ const IndustrySection: React.FC<{ report: DeepReport }> = ({ report }) => {
 // ⑦ Bull + ⑧ Bear
 /** Side-by-side bull (emerald) and bear (rose) argument columns; each side self-hides if empty */
 const BullBearSection: React.FC<{ report: DeepReport }> = ({ report }) => {
+  const { t } = useTranslation();
   const hasBull = report.bullPoints && report.bullPoints.length > 0;
   const hasBear = report.bearPoints && report.bearPoints.length > 0;
   if (!hasBull && !hasBear) return null;
 
   return (
     <section className="mb-16">
-      <SectionTitle id="bull-bear">⑦ / ⑧ 多空论点</SectionTitle>
+      <SectionTitle id="bull-bear">{t('ui.report.bullBearSection')}</SectionTitle>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Bull */}
         <div
@@ -739,12 +754,12 @@ const BullBearSection: React.FC<{ report: DeepReport }> = ({ report }) => {
             'rounded-lg border p-5',
             hasBull
               ? 'bg-emerald-900/10 border-emerald-700/40'
-              : 'bg-slate-900/40 border-slate-800/60',
+              : 'bg-card/80 border-border',
           )}
         >
-          <h3 className="font-serif text-xl font-bold text-emerald-400 mb-4 flex items-center gap-2">
+          <h3 className="font-serif text-xl font-bold text-emerald-700 dark:text-emerald-400 mb-4 flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-emerald-400" />
-            Bull 多头论点
+            {t('ui.report.bullArgument')}
           </h3>
           {hasBull ? (
             <div className="space-y-4">
@@ -754,7 +769,7 @@ const BullBearSection: React.FC<{ report: DeepReport }> = ({ report }) => {
                     key={point.id ?? idx}
                     className="border-l-2 border-emerald-500/60 pl-4"
                   >
-                    <h4 className="text-emerald-300 font-semibold mb-1">
+                    <h4 className="text-emerald-800 dark:text-emerald-300 font-semibold mb-1">
                       {idx + 1}. {point.title}
                     </h4>
                     <ParagraphBlock content={point.detail} />
@@ -763,7 +778,7 @@ const BullBearSection: React.FC<{ report: DeepReport }> = ({ report }) => {
               )}
             </div>
           ) : (
-            <p className="text-slate-500 text-sm">暂无数据</p>
+            <p className="text-muted-foreground text-sm">{t('ui.report.noData')}</p>
           )}
         </div>
 
@@ -773,12 +788,12 @@ const BullBearSection: React.FC<{ report: DeepReport }> = ({ report }) => {
             'rounded-lg border p-5',
             hasBear
               ? 'bg-rose-900/10 border-rose-700/40'
-              : 'bg-slate-900/40 border-slate-800/60',
+              : 'bg-card/80 border-border',
           )}
         >
-          <h3 className="font-serif text-xl font-bold text-rose-400 mb-4 flex items-center gap-2">
+          <h3 className="font-serif text-xl font-bold text-rose-700 dark:text-rose-400 mb-4 flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-rose-400" />
-            Bear 空头论点
+            {t('ui.report.bearArgument')}
           </h3>
           {hasBear ? (
             <div className="space-y-4">
@@ -788,7 +803,7 @@ const BullBearSection: React.FC<{ report: DeepReport }> = ({ report }) => {
                     key={point.id ?? idx}
                     className="border-l-2 border-rose-500/60 pl-4"
                   >
-                    <h4 className="text-rose-300 font-semibold mb-1">
+                    <h4 className="text-rose-800 dark:text-rose-300 font-semibold mb-1">
                       {idx + 1}. {point.title}
                     </h4>
                     <ParagraphBlock content={point.detail} />
@@ -797,7 +812,7 @@ const BullBearSection: React.FC<{ report: DeepReport }> = ({ report }) => {
               )}
             </div>
           ) : (
-            <p className="text-slate-500 text-sm">暂无数据</p>
+            <p className="text-muted-foreground text-sm">{t('ui.report.noData')}</p>
           )}
         </div>
       </div>
@@ -808,11 +823,12 @@ const BullBearSection: React.FC<{ report: DeepReport }> = ({ report }) => {
 // ⑨ Critic
 /** Critic challenges: original claim, the critique, and the revised conclusion; badge shows resolved vs open */
 const CriticSection: React.FC<{ report: DeepReport }> = ({ report }) => {
+  const { t } = useTranslation();
   if (!report.criticPoints || report.criticPoints.length === 0) return null;
 
   return (
     <section className="mb-16">
-      <SectionTitle id="critic">⑨ 反方质询</SectionTitle>
+      <SectionTitle id="critic">{t('ui.report.criticSection')}</SectionTitle>
       <div className="space-y-4">
         {report.criticPoints.map((point: CriticPoint, idx: number) => (
           <div
@@ -820,38 +836,38 @@ const CriticSection: React.FC<{ report: DeepReport }> = ({ report }) => {
             className="bg-amber-900/10 border border-amber-700/40 rounded-lg p-5"
           >
             <div className="flex items-start justify-between mb-3">
-              <h4 className="text-amber-300 font-semibold">
-                质询 #{idx + 1}
+              <h4 className="text-amber-800 dark:text-amber-300 font-semibold">
+                {t('ui.report.challenge', { index: idx + 1 })}
               </h4>
               <Badge
                 className={cn(
                   point.resolved
-                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                    : 'bg-rose-500/20 text-rose-300 border-rose-500/40',
+                    ? 'bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 border-emerald-500/40'
+                    : 'bg-rose-500/20 text-rose-800 dark:text-rose-300 border-rose-500/40',
                 )}
               >
-                {point.resolved ? '已解决' : '未解决'}
+                {point.resolved ? t('ui.report.resolved') : t('ui.report.unresolved')}
               </Badge>
             </div>
             <div className="space-y-3 text-sm">
               <div>
-                <p className="text-slate-400 text-xs uppercase tracking-wider mb-1">
-                  原始主张
+                <p className="text-muted-foreground text-xs uppercase tracking-wider mb-1">
+                  {t('ui.report.originalClaim')}
                 </p>
-                <p className="text-slate-200">{point.originalClaim}</p>
+                <p className="text-foreground">{point.originalClaim}</p>
               </div>
               <div>
-                <p className="text-slate-400 text-xs uppercase tracking-wider mb-1">
-                  质询内容
+                <p className="text-muted-foreground text-xs uppercase tracking-wider mb-1">
+                  {t('ui.report.challengeContent')}
                 </p>
-                <p className="text-amber-200">{point.critique}</p>
+                <p className="text-amber-900 dark:text-amber-200">{point.critique}</p>
               </div>
               {point.revision && (
                 <div>
-                  <p className="text-slate-400 text-xs uppercase tracking-wider mb-1">
-                    修正结论
+                  <p className="text-muted-foreground text-xs uppercase tracking-wider mb-1">
+                    {t('ui.report.revisedConclusion')}
                   </p>
-                  <p className="text-slate-300">{point.revision}</p>
+                  <p className="text-foreground/85">{point.revision}</p>
                 </div>
               )}
             </div>
@@ -865,6 +881,7 @@ const CriticSection: React.FC<{ report: DeepReport }> = ({ report }) => {
 // ⑩ Catalysts
 /** Chronological catalyst timeline; items are sorted by date and colored by type/impact */
 const CatalystsSection: React.FC<{ report: DeepReport }> = ({ report }) => {
+  const { t } = useTranslation();
   if (!report.catalystsTimeline || report.catalystsTimeline.length === 0)
     return null;
 
@@ -875,32 +892,32 @@ const CatalystsSection: React.FC<{ report: DeepReport }> = ({ report }) => {
   );
 
   const catalystTypeLabel: Record<CatalystItem['type'], string> = {
-    earnings: '财报',
-    product: '产品',
-    policy: '政策',
-    industry: '行业',
-    other: '其他',
+    earnings: t('ui.report.earnings'),
+    product: t('ui.report.product'),
+    policy: t('ui.report.policy'),
+    industry: t('ui.report.industry'),
+    other: t('ui.rules.other'),
   };
 
   const catalystTypeColor: Record<CatalystItem['type'], string> = {
     earnings: 'bg-blue-500/20 text-blue-300 border-blue-500/40',
     product: 'bg-violet-500/20 text-violet-300 border-violet-500/40',
-    policy: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
+    policy: 'bg-amber-500/20 text-amber-800 dark:text-amber-300 border-amber-500/40',
     industry: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40',
-    other: 'bg-slate-500/20 text-slate-300 border-slate-500/40',
+    other: 'bg-slate-500/20 text-foreground/85 border-slate-500/40',
   };
 
   const impactColor: Record<CatalystItem['impact'], string> = {
-    positive: 'text-emerald-400',
-    negative: 'text-rose-400',
-    neutral: 'text-slate-400',
+    positive: 'text-emerald-700 dark:text-emerald-400',
+    negative: 'text-rose-700 dark:text-rose-400',
+    neutral: 'text-muted-foreground',
   };
 
   return (
     <section className="mb-16">
-      <SectionTitle id="catalysts">⑩ 催化剂时间线</SectionTitle>
+      <SectionTitle id="catalysts">{t('ui.report.catalystsSection')}</SectionTitle>
       <div className="relative">
-        <div className="absolute left-24 top-0 bottom-0 w-px bg-slate-700/60" />
+        <div className="absolute left-24 top-0 bottom-0 w-px bg-border" />
         <div className="space-y-5">
           {sorted.map((item: CatalystItem, idx: number) => (
             <div
@@ -908,14 +925,14 @@ const CatalystsSection: React.FC<{ report: DeepReport }> = ({ report }) => {
               className="relative flex gap-6 items-start"
             >
               <div className="w-24 shrink-0 text-right pt-0.5">
-                <span className="text-amber-400 font-mono text-sm font-medium">
+                <span className="text-amber-700 dark:text-amber-400 font-mono text-sm font-medium">
                   {item.date}
                 </span>
               </div>
-              <div className="absolute left-24 top-1.5 -translate-x-1/2 w-3 h-3 rounded-full bg-amber-500 border-2 border-slate-900 z-10" />
+              <div className="absolute left-24 top-1.5 -translate-x-1/2 w-3 h-3 rounded-full bg-amber-500 border-2 border-background z-10" />
               <div className="flex-1 pl-4">
                 <div className="flex items-center gap-2 mb-1 flex-wrap">
-                  <h4 className="text-slate-100 font-semibold">
+                  <h4 className="text-foreground font-semibold">
                     {item.title}
                   </h4>
                   <Badge
@@ -933,14 +950,14 @@ const CatalystsSection: React.FC<{ report: DeepReport }> = ({ report }) => {
                     )}
                   >
                     {item.impact === 'positive'
-                      ? '利好'
+                      ? t('ui.report.positive')
                       : item.impact === 'negative'
-                        ? '利空'
-                        : '中性'}
+                        ? t('ui.report.negative')
+                        : t('ui.report.neutral')}
                   </span>
                 </div>
                 {item.detail && (
-                  <p className="text-slate-400 text-sm leading-relaxed">
+                  <p className="text-muted-foreground text-sm leading-relaxed">
                     {item.detail}
                   </p>
                 )}
@@ -961,12 +978,12 @@ const RisksSection: React.FC<{ report: DeepReport }> = ({ report }) => {
 
   const levelBadge = (level: 'high' | 'medium' | 'low') => {
     const map = {
-      high: { label: '高', cls: 'bg-rose-500/20 text-rose-300 border-rose-500/40' },
+      high: { label: t('ui.report.high'), cls: 'bg-rose-500/20 text-rose-800 dark:text-rose-300 border-rose-500/40' },
       medium: {
-        label: '中',
-        cls: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
+        label: t('ui.report.medium'),
+        cls: 'bg-amber-500/20 text-amber-800 dark:text-amber-300 border-amber-500/40',
       },
-      low: { label: '低', cls: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' },
+      low: { label: t('ui.report.low'), cls: 'bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 border-emerald-500/40' },
     };
     const m = map[level];
     return <Badge className={m.cls}>{m.label}</Badge>;
@@ -974,28 +991,28 @@ const RisksSection: React.FC<{ report: DeepReport }> = ({ report }) => {
 
   return (
     <section className="mb-16">
-      <SectionTitle id="risks">⑪ 风险量化</SectionTitle>
+      <SectionTitle id="risks">{t('ui.report.riskQuantificationSection')}</SectionTitle>
       <DarkTable>
         <TableHeader>
-          <TableRow className="border-slate-700/60 hover:bg-transparent">
-            <TableHead className="text-slate-400 w-[30%]">风险项</TableHead>
-            <TableHead className="text-slate-400 text-center">{t('report.probability')}</TableHead>
-            <TableHead className="text-slate-400 text-center">影响</TableHead>
-            <TableHead className="text-slate-400">缓释措施</TableHead>
+          <TableRow className="border-border hover:bg-transparent">
+            <TableHead className="text-muted-foreground w-[30%]">{t('ui.report.riskItem')}</TableHead>
+            <TableHead className="text-muted-foreground text-center">{t('report.probability')}</TableHead>
+            <TableHead className="text-muted-foreground text-center">{t('ui.report.impact')}</TableHead>
+            <TableHead className="text-muted-foreground">{t('ui.report.mitigation')}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {report.riskItems.map((item: RiskItem, idx: number) => (
             <TableRow
               key={item.id ?? idx}
-              className="border-slate-800/60 hover:bg-slate-800/40"
+              className="border-border hover:bg-muted"
             >
-              <TableCell className="text-slate-200 font-medium">
+              <TableCell className="text-foreground font-medium">
                 {item.risk}
               </TableCell>
               <TableCell className="text-center">{levelBadge(item.probability)}</TableCell>
               <TableCell className="text-center">{levelBadge(item.impact)}</TableCell>
-              <TableCell className="text-slate-400">
+              <TableCell className="text-muted-foreground">
                 {item.mitigation}
               </TableCell>
             </TableRow>
@@ -1009,6 +1026,7 @@ const RisksSection: React.FC<{ report: DeepReport }> = ({ report }) => {
 // ⑫ Risk Gate
 /** Snapshot of risk-gate rule results captured at report generation; emerald row = passed, rose = failed */
 const RiskGateSection: React.FC<{ report: DeepReport }> = ({ report }) => {
+  const { t } = useTranslation();
   if (
     !report.riskGateSnapshot ||
     report.riskGateSnapshot.length === 0
@@ -1017,7 +1035,7 @@ const RiskGateSection: React.FC<{ report: DeepReport }> = ({ report }) => {
 
   return (
     <section className="mb-16">
-      <SectionTitle id="risk-gate">⑫ 风控闸门检查</SectionTitle>
+      <SectionTitle id="risk-gate">{t('ui.report.riskGateSection')}</SectionTitle>
       <div className="space-y-2">
         {report.riskGateSnapshot.map(
           (result: RiskGateResult, idx: number) => (
@@ -1035,30 +1053,30 @@ const RiskGateSection: React.FC<{ report: DeepReport }> = ({ report }) => {
                   className={cn(
                     'w-16 justify-center',
                     result.passed
-                      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                      : 'bg-rose-500/20 text-rose-300 border-rose-500/40',
+                      ? 'bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 border-emerald-500/40'
+                      : 'bg-rose-500/20 text-rose-800 dark:text-rose-300 border-rose-500/40',
                   )}
                 >
-                  {result.passed ? '通过' : '未通过'}
+                  {result.passed ? t('ui.agent.passed') : t('ui.agent.failedStatus')}
                 </Badge>
                 <div>
-                  <p className="text-slate-200 font-medium">
+                  <p className="text-foreground font-medium">
                     {result.ruleName}
                   </p>
                   {result.detail && (
-                    <p className="text-slate-400 text-sm">{result.detail}</p>
+                    <p className="text-muted-foreground text-sm">{result.detail}</p>
                   )}
                 </div>
               </div>
               <div className="text-right text-sm">
                 {result.currentValue != null && (
-                  <p className="text-amber-400">
-                    当前：{result.currentValue}
+                  <p className="text-amber-700 dark:text-amber-400">
+                    {t('ui.report.current')}：{result.currentValue}
                   </p>
                 )}
                 {result.thresholdValue != null && (
-                  <p className="text-slate-500">
-                    阈值：{result.thresholdValue}
+                  <p className="text-muted-foreground">
+                    {t('ui.agent.threshold')}：{result.thresholdValue}
                   </p>
                 )}
               </div>
@@ -1073,6 +1091,7 @@ const RiskGateSection: React.FC<{ report: DeepReport }> = ({ report }) => {
 // ⑬ PM Action
 /** Portfolio-manager action recommendation: action badge, price range, position size, stop loss, execution plan */
 const PmActionSection: React.FC<{ report: DeepReport }> = ({ report }) => {
+  const { t } = useTranslation();
   const hasContent =
     report.pmAction ||
     report.pmPriceRange ||
@@ -1083,27 +1102,30 @@ const PmActionSection: React.FC<{ report: DeepReport }> = ({ report }) => {
 
   // Picks a badge color by keyword matching against the (Chinese or English) action string
   const actionColor = (action: string | null): string => {
-    if (!action) return 'bg-slate-500/20 text-slate-300 border-slate-500/50';
+    if (!action) return 'bg-slate-500/20 text-foreground/85 border-slate-500/50';
     const a = action.toLowerCase();
     if (a.includes('买') || a.includes('buy'))
       return 'bg-emerald-600 text-white border-emerald-500';
     if (a.includes('卖') || a.includes('sell'))
       return 'bg-rose-600 text-white border-rose-500';
     if (a.includes('持') || a.includes('hold'))
-      return 'bg-amber-500/20 text-amber-300 border-amber-500/50';
-    return 'bg-slate-500/20 text-slate-300 border-slate-500/50';
+      return 'bg-amber-500/20 text-amber-800 dark:text-amber-300 border-amber-500/50';
+    return 'bg-slate-500/20 text-foreground/85 border-slate-500/50';
   };
 
   return (
     <section className="mb-16">
-      <SectionTitle id="pm-action">⑬ PM 操作建议</SectionTitle>
-      <Card className="bg-slate-900/60 border-slate-700/60">
+      <SectionTitle id="pm-action">{t('ui.report.pmActionSection')}</SectionTitle>
+      <Card className="min-w-0 bg-card border-border">
         <CardHeader>
-          <div className="flex items-center justify-between flex-wrap gap-3">
-            <CardTitle className="text-slate-100">操作建议</CardTitle>
+          <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
+            <CardTitle className="min-w-0 text-foreground">{t('ui.report.actionAdvice')}</CardTitle>
             {report.pmAction && (
               <Badge
-                className={cn('text-lg px-6 py-2', actionColor(report.pmAction))}
+                className={cn(
+                  'max-w-full whitespace-normal break-words px-3 py-2 text-sm sm:px-6 sm:text-lg',
+                  actionColor(report.pmAction),
+                )}
               >
                 {report.pmAction}
               </Badge>
@@ -1113,31 +1135,31 @@ const PmActionSection: React.FC<{ report: DeepReport }> = ({ report }) => {
         <CardContent>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mb-6">
             {report.pmPriceRange && (
-              <div className="bg-slate-800/40 rounded-lg p-3">
-                <p className="text-xs text-slate-400 uppercase tracking-wider mb-1">
-                  价位区间
+              <div className="bg-muted rounded-lg p-3">
+                <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">
+                  {t('ui.report.priceRange')}
                 </p>
-                <p className="text-amber-400 font-semibold text-lg">
+                <p className="text-amber-700 dark:text-amber-400 font-semibold text-lg">
                   {report.pmPriceRange}
                 </p>
               </div>
             )}
             {report.pmPositionSize && (
-              <div className="bg-slate-800/40 rounded-lg p-3">
-                <p className="text-xs text-slate-400 uppercase tracking-wider mb-1">
-                  建议仓位
+              <div className="bg-muted rounded-lg p-3">
+                <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">
+                  {t('ui.report.suggestedPosition')}
                 </p>
-                <p className="text-emerald-400 font-semibold text-lg">
+                <p className="text-emerald-700 dark:text-emerald-400 font-semibold text-lg">
                   {report.pmPositionSize}
                 </p>
               </div>
             )}
             {report.pmStopLoss && (
-              <div className="bg-slate-800/40 rounded-lg p-3">
-                <p className="text-xs text-slate-400 uppercase tracking-wider mb-1">
-                  止损
+              <div className="bg-muted rounded-lg p-3">
+                <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">
+                  {t('ui.report.stopLoss')}
                 </p>
-                <p className="text-rose-400 font-semibold text-lg">
+                <p className="text-rose-700 dark:text-rose-400 font-semibold text-lg">
                   {report.pmStopLoss}
                 </p>
               </div>
@@ -1145,8 +1167,8 @@ const PmActionSection: React.FC<{ report: DeepReport }> = ({ report }) => {
           </div>
           {report.pmExecutionPlan && (
             <div>
-              <p className="text-xs text-slate-400 uppercase tracking-wider mb-2">
-                执行计划
+              <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">
+                {t('ui.report.executionPlan')}
               </p>
               <ParagraphBlock content={report.pmExecutionPlan} />
             </div>
@@ -1169,11 +1191,11 @@ const TrackingSection: React.FC<{ report: DeepReport }> = ({ report }) => {
   const directionLabel = (d: TrackingMetric['direction']): string => {
     switch (d) {
       case 'above':
-        return '向上突破';
+        return t('ui.report.breakoutUp');
       case 'below':
-        return '向下突破';
+        return t('ui.report.breakoutDown');
       case 'cross':
-        return '穿越';
+        return t('ui.report.crossThrough');
       default:
         return d;
     }
@@ -1181,18 +1203,18 @@ const TrackingSection: React.FC<{ report: DeepReport }> = ({ report }) => {
 
   return (
     <section className="mb-16">
-      <SectionTitle id="tracking">⑭ 跟踪指标与观点改变条件</SectionTitle>
+      <SectionTitle id="tracking">{t('ui.report.trackingSection')}</SectionTitle>
 
       {report.trackingMetrics && report.trackingMetrics.length > 0 && (
         <div className="mb-6">
           <SubHeading>{t('report.trackingMetrics')}</SubHeading>
           <DarkTable>
             <TableHeader>
-              <TableRow className="border-slate-700/60 hover:bg-transparent">
-                <TableHead className="text-slate-400">指标</TableHead>
-                <TableHead className="text-slate-400">阈值</TableHead>
-                <TableHead className="text-slate-400">方向</TableHead>
-                <TableHead className="text-slate-400">频率</TableHead>
+              <TableRow className="border-border hover:bg-transparent">
+                <TableHead className="text-muted-foreground">{t('ui.report.metric')}</TableHead>
+                <TableHead className="text-muted-foreground">{t('ui.agent.threshold')}</TableHead>
+                <TableHead className="text-muted-foreground">{t('ui.report.direction')}</TableHead>
+                <TableHead className="text-muted-foreground">{t('ui.report.frequency')}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -1200,18 +1222,18 @@ const TrackingSection: React.FC<{ report: DeepReport }> = ({ report }) => {
                 (item: TrackingMetric, idx: number) => (
                   <TableRow
                     key={idx}
-                    className="border-slate-800/60 hover:bg-slate-800/40"
+                    className="border-border hover:bg-muted"
                   >
-                    <TableCell className="text-slate-200 font-medium">
+                    <TableCell className="text-foreground font-medium">
                       {item.metric}
                     </TableCell>
-                    <TableCell className="text-amber-400 font-medium">
+                    <TableCell className="text-amber-700 dark:text-amber-400 font-medium">
                       {item.threshold}
                     </TableCell>
-                    <TableCell className="text-slate-300">
+                    <TableCell className="text-foreground/85">
                       {directionLabel(item.direction)}
                     </TableCell>
-                    <TableCell className="text-slate-400">
+                    <TableCell className="text-muted-foreground">
                       {item.frequency}
                     </TableCell>
                   </TableRow>
@@ -1224,7 +1246,7 @@ const TrackingSection: React.FC<{ report: DeepReport }> = ({ report }) => {
 
       {report.viewChangeTriggers && (
         <div>
-          <SubHeading>观点改变条件</SubHeading>
+          <SubHeading>{t('ui.report.viewChangeConditions')}</SubHeading>
           <ParagraphBlock content={report.viewChangeTriggers} />
         </div>
       )}
@@ -1251,7 +1273,7 @@ const DeepReportView: React.FC<DeepReportViewProps> = ({
   const sections: SectionDef[] = [
     {
       id: 'executive-summary',
-      label: '结论摘要',
+      label: t('ui.report.conclusionSummary'),
       visible:
         !!report.rating ||
         !!report.confidence ||
@@ -1261,7 +1283,7 @@ const DeepReportView: React.FC<DeepReportViewProps> = ({
     },
     {
       id: 'company-business',
-      label: '公司与商业模式',
+      label: t('ui.report.companyBusiness'),
       visible:
         !!report.companyOverview ||
         !!report.businessModel ||
@@ -1270,7 +1292,7 @@ const DeepReportView: React.FC<DeepReportViewProps> = ({
     },
     {
       id: 'financial',
-      label: '财务深度分析',
+      label: t('ui.report.financialDeepDive'),
       visible:
         (!!report.financialAnnual && report.financialAnnual.length > 0) ||
         (!!report.financialQuarterly &&
@@ -1281,13 +1303,13 @@ const DeepReportView: React.FC<DeepReportViewProps> = ({
     },
     {
       id: 'segments',
-      label: '分业务/分部分析',
+      label: t('ui.report.businessSegments'),
       visible:
         !!report.segmentAnalysis && report.segmentAnalysis.length > 0,
     },
     {
       id: 'valuation',
-      label: '估值分析',
+      label: t('ui.report.valuation'),
       visible:
         (!!report.valuationRelative &&
           report.valuationRelative.length > 0) ||
@@ -1296,7 +1318,7 @@ const DeepReportView: React.FC<DeepReportViewProps> = ({
     },
     {
       id: 'industry',
-      label: '行业与竞争',
+      label: t('ui.report.industryCompetition'),
       visible:
         !!report.industryOverview ||
         !!report.marketSize ||
@@ -1312,7 +1334,7 @@ const DeepReportView: React.FC<DeepReportViewProps> = ({
     },
     {
       id: 'critic',
-      label: '反方质询',
+      label: t('ui.report.criticReview'),
       visible:
         !!report.criticPoints && report.criticPoints.length > 0,
     },
@@ -1325,19 +1347,19 @@ const DeepReportView: React.FC<DeepReportViewProps> = ({
     },
     {
       id: 'risks',
-      label: '风险量化',
+      label: t('ui.report.riskQuantification'),
       visible: !!report.riskItems && report.riskItems.length > 0,
     },
     {
       id: 'risk-gate',
-      label: '风控闸门检查',
+      label: t('ui.report.riskGate'),
       visible:
         !!report.riskGateSnapshot &&
         report.riskGateSnapshot.length > 0,
     },
     {
       id: 'pm-action',
-      label: 'PM 操作建议',
+      label: t('ui.report.pmAction'),
       visible:
         !!report.pmAction ||
         !!report.pmPriceRange ||
@@ -1395,9 +1417,9 @@ const DeepReportView: React.FC<DeepReportViewProps> = ({
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100">
+    <div className="min-h-screen bg-background text-foreground">
       {/* Header */}
-      <header className="backdrop-blur-md bg-slate-950/80 border-b border-slate-800/80">
+      <header className="backdrop-blur-md bg-background/90 border-b border-border">
         <div className="max-w-7xl mx-auto px-4 md:px-6 py-4">
           <div className="flex items-center justify-between flex-wrap gap-3">
             <div className="flex items-center gap-3">
@@ -1406,14 +1428,14 @@ const DeepReportView: React.FC<DeepReportViewProps> = ({
                   variant="ghost"
                   size="icon"
                   onClick={onBack}
-                  className="text-slate-400 hover:text-slate-100 hover:bg-slate-800/60"
+                  className="text-muted-foreground hover:text-foreground hover:bg-accent"
                 >
                   <ArrowLeft className="size-5" />
                 </Button>
               )}
               <div>
                 <div className="flex items-center gap-3">
-                  <h1 className="font-serif text-2xl md:text-3xl font-bold text-slate-100 tracking-tight">
+                  <h1 className="font-serif text-2xl md:text-3xl font-bold text-foreground tracking-tight">
                     {report.ticker}
                   </h1>
                   {report.rating && (
@@ -1423,7 +1445,7 @@ const DeepReportView: React.FC<DeepReportViewProps> = ({
                         ratingColor(report.rating),
                       )}
                     >
-                      {report.rating}
+                      {localizedRating(report.rating, t)}
                     </Badge>
                   )}
                   {report.confidence && (
@@ -1433,12 +1455,14 @@ const DeepReportView: React.FC<DeepReportViewProps> = ({
                         confidenceColor(report.confidence),
                       )}
                     >
-                      {confidenceLabel(report.confidence)}
+                      {confidenceLabelKey(report.confidence)
+                        ? t(confidenceLabelKey(report.confidence)!)
+                        : '—'}
                     </Badge>
                   )}
                 </div>
                 {runId && (
-                  <p className="text-xs text-slate-500 mt-0.5 font-mono">
+                  <p className="text-xs text-muted-foreground mt-0.5 font-mono">
                     Run ID: {runId}
                   </p>
                 )}
@@ -1453,45 +1477,45 @@ const DeepReportView: React.FC<DeepReportViewProps> = ({
             <div className="grid grid-cols-3 gap-3 mt-4 w-full">
               <Card className="bg-rose-900/10 border-rose-700/30">
                 <CardContent className="p-3 md:p-4">
-                  <p className="text-xs text-rose-400/80 uppercase tracking-wider mb-1">
-                    悲观情景
+                  <p className="text-xs text-rose-700/80 dark:text-rose-400/80 uppercase tracking-wider mb-1">
+                    {t('ui.report.bearScenario')}
                   </p>
-                  <p className="font-serif text-xl md:text-2xl font-bold text-rose-300">
+                  <p className="font-serif text-xl md:text-2xl font-bold text-rose-800 dark:text-rose-300">
                     {report.targetBear ?? '—'}
                   </p>
                   {report.probBear != null && (
-                    <p className="text-xs text-rose-400/70 mt-0.5">
-                      概率 {report.probBear}
+                    <p className="text-xs text-rose-700/70 dark:text-rose-400/70 mt-0.5">
+                      {t('ui.report.probabilityValue', { value: report.probBear })}
                     </p>
                   )}
                 </CardContent>
               </Card>
               <Card className="bg-amber-900/10 border-amber-700/30">
                 <CardContent className="p-3 md:p-4">
-                  <p className="text-xs text-amber-400/80 uppercase tracking-wider mb-1">
-                    基准情景
+                  <p className="text-xs text-amber-700/80 dark:text-amber-400/80 uppercase tracking-wider mb-1">
+                    {t('ui.report.baseScenario')}
                   </p>
-                  <p className="font-serif text-xl md:text-2xl font-bold text-amber-300">
+                  <p className="font-serif text-xl md:text-2xl font-bold text-amber-800 dark:text-amber-300">
                     {report.targetBase ?? '—'}
                   </p>
                   {report.probBase != null && (
-                    <p className="text-xs text-amber-400/70 mt-0.5">
-                      概率 {report.probBase}
+                    <p className="text-xs text-amber-700/70 dark:text-amber-400/70 mt-0.5">
+                      {t('ui.report.probabilityValue', { value: report.probBase })}
                     </p>
                   )}
                 </CardContent>
               </Card>
               <Card className="bg-emerald-900/10 border-emerald-700/30">
                 <CardContent className="p-3 md:p-4">
-                  <p className="text-xs text-emerald-400/80 uppercase tracking-wider mb-1">
-                    乐观情景
+                  <p className="text-xs text-emerald-700/80 dark:text-emerald-400/80 uppercase tracking-wider mb-1">
+                    {t('ui.report.bullScenario')}
                   </p>
-                  <p className="font-serif text-xl md:text-2xl font-bold text-emerald-300">
+                  <p className="font-serif text-xl md:text-2xl font-bold text-emerald-800 dark:text-emerald-300">
                     {report.targetBull ?? '—'}
                   </p>
                   {report.probBull != null && (
-                    <p className="text-xs text-emerald-400/70 mt-0.5">
-                      概率 {report.probBull}
+                    <p className="text-xs text-emerald-700/70 dark:text-emerald-400/70 mt-0.5">
+                      {t('ui.report.probabilityValue', { value: report.probBull })}
                     </p>
                   )}
                 </CardContent>
@@ -1507,8 +1531,8 @@ const DeepReportView: React.FC<DeepReportViewProps> = ({
           {/* Desktop: sticky left nav */}
           <aside className="hidden md:block w-56 md:shrink-0">
              <nav className="sticky top-4">
-              <p className="text-xs text-slate-500 uppercase tracking-widest mb-3 pl-3">
-                目录
+              <p className="text-xs text-muted-foreground uppercase tracking-widest mb-3 pl-3">
+                {t('ui.report.contents')}
               </p>
               <ul className="space-y-1">
                 {visibleSections.map((s: SectionDef, idx: number) => (
@@ -1518,11 +1542,11 @@ const DeepReportView: React.FC<DeepReportViewProps> = ({
                       className={cn(
                         'w-full text-left px-3 py-1.5 rounded-md text-sm transition-colors border-l-2',
                         activeSection === s.id
-                          ? 'border-amber-500 text-amber-400 bg-amber-500/5 font-medium'
-                          : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/40',
+                          ? 'border-amber-500 text-amber-700 dark:text-amber-400 bg-amber-500/5 font-medium'
+                          : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-muted',
                       )}
                     >
-                      <span className="text-xs text-slate-600 mr-2 font-mono">
+                      <span className="text-xs text-muted-foreground mr-2 font-mono">
                         {String(idx + 1).padStart(2, '0')}
                       </span>
                       {s.label}
@@ -1543,11 +1567,11 @@ const DeepReportView: React.FC<DeepReportViewProps> = ({
                   className={cn(
                     'shrink-0 px-3 py-1.5 rounded-md text-xs whitespace-nowrap transition-colors border',
                     activeSection === s.id
-                      ? 'bg-amber-500/10 border-amber-500/40 text-amber-400 font-medium'
-                      : 'bg-slate-900/60 border-slate-700/60 text-slate-400',
+                      ? 'bg-amber-500/10 border-amber-500/40 text-amber-700 dark:text-amber-400 font-medium'
+                      : 'bg-card border-border text-muted-foreground',
                   )}
                 >
-                  <span className="text-slate-500 mr-1 font-mono">
+                  <span className="text-muted-foreground mr-1 font-mono">
                     {String(idx + 1).padStart(2, '0')}
                   </span>
                   {s.label}

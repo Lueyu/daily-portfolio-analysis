@@ -124,7 +124,7 @@ export default function DailyPnLBreakdown({
   if (loading || !hasQuotes) {
     return (
       <div className="py-8 text-center text-xs text-muted-foreground">
-        {holdings.length > 0 ? '行情加载中…' : t('dash.noHoldings')}
+        {holdings.length > 0 ? t('ui.dashboard.loadingQuotes') : t('dash.noHoldings')}
       </div>
     );
   }
@@ -133,8 +133,8 @@ export default function DailyPnLBreakdown({
     return (
       <Empty className="py-8">
         <EmptyHeader>
-          <EmptyTitle>暂无持仓</EmptyTitle>
-          <EmptyDescription>添加持仓后这里将显示逐股盈亏明细</EmptyDescription>
+          <EmptyTitle>{t('ui.dashboard.noPositions')}</EmptyTitle>
+          <EmptyDescription>{t('dash.noHoldingsHint')}</EmptyDescription>
         </EmptyHeader>
       </Empty>
     );
@@ -148,12 +148,12 @@ export default function DailyPnLBreakdown({
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>股票</TableHead>
-            <TableHead className="text-right">股数</TableHead>
-            <TableHead className="text-right">当日涨跌</TableHead>
-            <TableHead className="text-right">涨跌幅</TableHead>
-            <TableHead className="text-right">当日盈亏</TableHead>
-            <TableHead className="text-right">贡献占比</TableHead>
+            <TableHead>{t('dash.stock')}</TableHead>
+            <TableHead className="text-right">{t('dash.shares')}</TableHead>
+            <TableHead className="text-right">{t('dash.dailyChange')}</TableHead>
+            <TableHead className="text-right">{t('dash.changePct')}</TableHead>
+            <TableHead className="text-right">{t('dash.dailyPlCol')}</TableHead>
+            <TableHead className="text-right">{t('dash.contribution')}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -219,7 +219,7 @@ export default function DailyPnLBreakdown({
             onClick={() => setShowAll((v) => !v)}
             className="text-xs text-muted-foreground"
           >
-            {showAll ? '收起' : `查看更多 (${rows.length - 10})`}
+            {showAll ? t('ui.dashboard.collapse') : t('ui.dashboard.showMore', { count: rows.length - 10 })}
             <ChevronDown
               size={14}
               className={cn('transition-transform', showAll && 'rotate-180')}

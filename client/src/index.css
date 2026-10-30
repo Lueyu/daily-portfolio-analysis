@@ -1,8 +1,9 @@
 /**
  * @file client/src/index.css
- * @description Root stylesheet: Tailwind animation utilities plus the
+ * @description Root stylesheet: Tailwind utilities and animations plus the
  * project's theme (design tokens) and typography layers.
  */
+@import url("tailwindcss");
 @import url("tw-animate-css");
 @import url("./tailwind-theme.css");
 @import url("./typography.css");

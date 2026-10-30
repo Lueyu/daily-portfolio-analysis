@@ -141,7 +141,18 @@ export default function HoldingsTable({
   };
 
   const groupName = (id: string | null) =>
-    groups.find((g) => g.id === id)?.name ?? '未分组';
+    groups.find((g) => g.id === id)?.name ?? t('holdings.noGroup');
+  const actionLabel = (value: string) => {
+    const keys: Record<string, string> = {
+      '加仓': 'analysis.add', Add: 'analysis.add',
+      '买入': 'analysis.buy', Buy: 'analysis.buy',
+      '持有': 'analysis.hold', Hold: 'analysis.hold',
+      '减仓': 'analysis.reduce', Reduce: 'analysis.reduce',
+      '卖出': 'analysis.sell', Sell: 'analysis.sell',
+      '观望': 'analysis.watch', Watch: 'analysis.watch',
+    };
+    return keys[value] ? t(keys[value]) : value;
+  };
 
   const mvByCurrency = holdings.reduce<Record<string, number>>((acc, h) => {
     acc[h.currency] = (acc[h.currency] ?? 0) + h.marketValue;
@@ -186,15 +197,15 @@ export default function HoldingsTable({
                 <Briefcase />
               </EmptyMedia>
               <EmptyHeader>
-                <EmptyTitle>暂无持仓</EmptyTitle>
+                <EmptyTitle>{t('holdings.noHoldings')}</EmptyTitle>
                 <EmptyDescription>
-                  点击右上角「添加持仓」开始记录你的投资组合
+                  {t('ui.holdings.emptyHint')}
                 </EmptyDescription>
               </EmptyHeader>
               <EmptyContent>
                 <Button size="sm" onClick={onAdd}>
                   <Plus className="size-4" />
-                  添加持仓
+                  {t('holdings.addHolding')}
                 </Button>
               </EmptyContent>
             </Empty>
@@ -209,7 +220,7 @@ export default function HoldingsTable({
                     onClick={() => onSort('ticker')}
                   >
                     <span className="flex items-center gap-1">
-                      代码
+                      {t('holdings.ticker')}
                       <SortIcon column="ticker" />
                     </span>
                   </TableHead>
@@ -218,7 +229,7 @@ export default function HoldingsTable({
                     onClick={() => onSort('company')}
                   >
                     <span className="flex items-center gap-1">
-                      公司
+                      {t('holdings.company')}
                       <SortIcon column="company" />
                     </span>
                   </TableHead>
@@ -227,7 +238,7 @@ export default function HoldingsTable({
                     onClick={() => onSort('buyPrice')}
                   >
                     <span className="flex items-center gap-1 justify-end">
-                      买入价
+                      {t('holdings.buyPrice')}
                       <SortIcon column="buyPrice" />
                     </span>
                   </TableHead>
@@ -236,7 +247,7 @@ export default function HoldingsTable({
                     onClick={() => onSort('currentPrice')}
                   >
                     <span className="flex items-center gap-1 justify-end">
-                      现价
+                      {t('ui.holdings.currentPrice')}
                       <SortIcon column="currentPrice" />
                     </span>
                   </TableHead>
@@ -245,7 +256,7 @@ export default function HoldingsTable({
                     onClick={() => onSort('shares')}
                   >
                     <span className="flex items-center gap-1 justify-end">
-                      股数
+                      {t('holdings.shares')}
                       <SortIcon column="shares" />
                     </span>
                   </TableHead>
@@ -254,7 +265,7 @@ export default function HoldingsTable({
                     onClick={() => onSort('marketValue')}
                   >
                     <span className="flex items-center gap-1 justify-end">
-                      市值
+                      {t('ui.holdings.marketValue')}
                       <SortIcon column="marketValue" />
                     </span>
                   </TableHead>
@@ -263,7 +274,7 @@ export default function HoldingsTable({
                     onClick={() => onSort('cost')}
                   >
                     <span className="flex items-center gap-1 justify-end">
-                      成本
+                      {t('ui.holdings.cost')}
                       <SortIcon column="cost" />
                     </span>
                   </TableHead>
@@ -272,7 +283,7 @@ export default function HoldingsTable({
                     onClick={() => onSort('pl')}
                   >
                     <span className="flex items-center gap-1 justify-end">
-                      浮盈亏
+                      {t('ui.holdings.pl')}
                       <SortIcon column="pl" />
                     </span>
                   </TableHead>
@@ -281,14 +292,14 @@ export default function HoldingsTable({
                     onClick={() => onSort('returnPct')}
                   >
                     <span className="flex items-center gap-1 justify-end">
-                      收益率
+                      {t('ui.holdings.returnPct')}
                       <SortIcon column="returnPct" />
                     </span>
                   </TableHead>
-                  <TableHead>评级</TableHead>
-                  {hasAnyAiRating && <TableHead>AI 评级</TableHead>}
-                  <TableHead>操作</TableHead>
-                  <TableHead>分组</TableHead>
+                  <TableHead>{t('ui.holdings.rating')}</TableHead>
+                  {hasAnyAiRating && <TableHead>{t('ui.holdings.aiRating')}</TableHead>}
+                  <TableHead>{t('ui.holdings.actions')}</TableHead>
+                  <TableHead>{t('ui.holdings.group')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -311,7 +322,10 @@ export default function HoldingsTable({
                         </Badge>
                       </div>
                     </TableCell>
-                    <TableCell className="max-w-[180px] truncate">
+                    <TableCell
+                      className="max-w-[180px] whitespace-normal break-words text-sm leading-snug"
+                      title={h.company ?? undefined}
+                    >
                       {h.company ?? '—'}
                     </TableCell>
                     <TableCell className="text-right font-mono-nums">
@@ -382,7 +396,7 @@ export default function HoldingsTable({
                             </Button>
                           </div>
                         ) : (
-                          <span className="text-xs text-muted-foreground/70">暂无评级</span>
+                          <span className="text-xs text-muted-foreground/70">{t('ui.holdings.notRated')}</span>
                         )}
                       </TableCell>
                     )}
@@ -392,7 +406,7 @@ export default function HoldingsTable({
                           className={cn(actionColor(h.action))}
                           variant="outline"
                         >
-                          {h.action}
+                          {actionLabel(h.action)}
                         </Badge>
                       ) : (
                         '—'
@@ -409,7 +423,7 @@ export default function HoldingsTable({
               <div className="px-4 py-3 border-t text-xs text-muted-foreground flex flex-wrap gap-x-4 gap-y-1">
                 {sortedCurrencies.length > 0 && (
                   <span className="flex items-center gap-1.5">
-                    <span className="font-medium">市值小计</span>
+                    <span className="font-medium">{t('ui.holdings.subtotal')}</span>
                     {sortedCurrencies.map((cur, i) => (
                       <span key={cur} className="font-mono-nums">
                         {i > 0 && <span className="mx-1">·</span>}
@@ -421,7 +435,7 @@ export default function HoldingsTable({
                 )}
                 {hasCash && (
                   <span className="flex items-center gap-1.5">
-                    <span className="font-medium">现金</span>
+                    <span className="font-medium">{t('ui.holdings.cash')}</span>
                     {Object.keys(cashByCurrency)
                       .sort()
                       .map((cur, i) => (

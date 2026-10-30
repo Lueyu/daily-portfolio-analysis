@@ -46,44 +46,42 @@ export function JournalChart({ snapshots, loading }: JournalChartProps) {
     const accountValues = sorted.map((s) => Number(s.accountValue) || 0);
 
     return {
-      grid: { top: 40, right: 60, bottom: 40, left: 60 },
+      grid: { top: 42, right: 54, bottom: 40, left: 54 },
       tooltip: {
         trigger: 'axis',
         axisPointer: { type: 'cross' },
       },
       legend: {
         data: [t('journal.dailyPl'), t('journal.accountNav')],
-        top: 0,
-        right: 0,
-        textStyle: { fontSize: 12, color: '#64748b' },
+        top: 4,
+        left: 'center',
+        orient: 'horizontal',
+        itemGap: 16,
+        textStyle: { fontSize: 12, color: '#78828c' },
       },
       xAxis: {
         type: 'category',
         data: dates,
-        axisLabel: { fontSize: 10, color: '#64748b', interval: 'auto' },
-        axisLine: { lineStyle: { color: '#e2e8f0' } },
+        axisLabel: { fontSize: 10, color: '#78828c', interval: 'auto' },
+        axisLine: { lineStyle: { color: 'rgba(120,130,140,0.38)' } },
         axisTick: { show: false },
       },
       yAxis: [
         {
           type: 'value',
-          name: t('journal.plLabel'),
-          nameTextStyle: { fontSize: 10, color: '#64748b' },
           axisLabel: {
             fontSize: 10,
-            color: '#64748b',
+            color: '#78828c',
             formatter: (v: number) =>
               Math.abs(v) >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v),
           },
-          splitLine: { lineStyle: { color: '#f1f5f9', type: 'dashed' } },
+          splitLine: { lineStyle: { color: 'rgba(120,130,140,0.24)', type: 'dashed' } },
         },
         {
           type: 'value',
-          name: t('journal.nav'),
-          nameTextStyle: { fontSize: 10, color: '#64748b' },
           axisLabel: {
             fontSize: 10,
-            color: '#64748b',
+            color: '#78828c',
             formatter: (v: number) =>
               Math.abs(v) >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v),
           },
@@ -127,13 +125,13 @@ export function JournalChart({ snapshots, loading }: JournalChartProps) {
         },
       ],
     };
-  }, [snapshots]);
+  }, [snapshots, t]);
 
   return (
     <Card>
       <CardHeader className="flex-row items-center justify-between pb-3">
-        <CardTitle className="font-serif text-lg">盈亏与净值走势</CardTitle>
-        <span className="text-xs text-muted-foreground">最近 30 天</span>
+        <CardTitle className="font-serif text-lg">{t('ui.journal.chartTitle')}</CardTitle>
+        <span className="text-xs text-muted-foreground">{t('ui.journal.last30Days')}</span>
       </CardHeader>
       <CardContent>
         {loading ? (
@@ -141,8 +139,8 @@ export function JournalChart({ snapshots, loading }: JournalChartProps) {
         ) : snapshots.length === 0 ? (
           <Empty className="py-16">
             <EmptyContent>
-              <EmptyTitle>暂无快照数据</EmptyTitle>
-              <EmptyDescription>生成快照后这里将显示走势图表</EmptyDescription>
+              <EmptyTitle>{t('ui.journal.noSnapshots')}</EmptyTitle>
+              <EmptyDescription>{t('ui.journal.chartEmptyHint')}</EmptyDescription>
             </EmptyContent>
           </Empty>
         ) : (

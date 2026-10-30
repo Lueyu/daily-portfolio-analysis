@@ -15,6 +15,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { useTranslation } from 'react-i18next';
 
 /** Controlled form model for a watch item. */
 export interface WatchFormData {
@@ -49,6 +50,14 @@ interface WatchFormProps {
  * Render the watch-item form grid.
  */
 function WatchForm({ data, onChange, includeTicker }: WatchFormProps) {
+  const { t } = useTranslation();
+  const localizedSignal = (signal: string) => {
+    const keys: Record<string, string> = {
+      '强烈买入': 'analysis.strongBuy', '买入': 'analysis.buy',
+      '观望': 'analysis.watch', '回避': 'analysis.avoid',
+    };
+    return keys[signal] ? t(keys[signal]) : signal;
+  };
   /** Merge a single field update into the controlled form state. */
   const update = (k: keyof WatchFormData, v: string) =>
     onChange({ ...data, [k]: v });
@@ -58,41 +67,41 @@ function WatchForm({ data, onChange, includeTicker }: WatchFormProps) {
       {includeTicker && (
         <div className="space-y-1.5 sm:col-span-1">
           <label className="text-xs font-medium text-muted-foreground">
-            Ticker <span className="text-destructive">*</span>
+            {t('watchlist.ticker')} <span className="text-destructive">*</span>
           </label>
           <Input
             value={data.ticker}
             onChange={(e) =>
               update('ticker', e.target.value.toUpperCase())
             }
-            placeholder="如 AAPL"
+            placeholder={t('ui.holdings.tickerExample')}
             className="font-mono-nums"
           />
         </div>
       )}
       <div className="space-y-1.5">
         <label className="text-xs font-medium text-muted-foreground">
-          公司名称
+          {t('watchlist.company')}
         </label>
         <Input
           value={data.company}
           onChange={(e) => update('company', e.target.value)}
-          placeholder="公司名称"
+          placeholder={t('watchlist.company')}
         />
       </div>
       <div className="space-y-1.5">
         <label className="text-xs font-medium text-muted-foreground">
-          行业
+          {t('ui.holdings.sector')}
         </label>
         <Input
           value={data.sector}
           onChange={(e) => update('sector', e.target.value)}
-          placeholder="行业"
+          placeholder={t('ui.holdings.sector')}
         />
       </div>
       <div className="space-y-1.5">
         <label className="text-xs font-medium text-muted-foreground">
-          加入日期
+          {t('ui.watchlist.joinedDate')}
         </label>
         <Input
           type="date"
@@ -102,7 +111,7 @@ function WatchForm({ data, onChange, includeTicker }: WatchFormProps) {
       </div>
       <div className="space-y-1.5">
         <label className="text-xs font-medium text-muted-foreground">
-          买入价
+          {t('ui.watchlist.entryPrice')}
         </label>
         <Input
           type="number"
@@ -115,7 +124,7 @@ function WatchForm({ data, onChange, includeTicker }: WatchFormProps) {
       </div>
       <div className="space-y-1.5">
         <label className="text-xs font-medium text-muted-foreground">
-          现价
+          {t('watchlist.currentPrice')}
         </label>
         <Input
           type="number"
@@ -128,7 +137,7 @@ function WatchForm({ data, onChange, includeTicker }: WatchFormProps) {
       </div>
       <div className="space-y-1.5">
         <label className="text-xs font-medium text-muted-foreground">
-          目标买入价
+          {t('watchlist.targetBuyPrice')}
         </label>
         <Input
           type="number"
@@ -141,14 +150,14 @@ function WatchForm({ data, onChange, includeTicker }: WatchFormProps) {
       </div>
       <div className="space-y-1.5">
         <label className="text-xs font-medium text-muted-foreground">
-          评级
+          {t('watchlist.rating')}
         </label>
         <Select
           value={data.rating}
           onValueChange={(v) => update('rating', v)}
         >
           <SelectTrigger className="w-full">
-            <SelectValue placeholder="选择评级" />
+            <SelectValue placeholder={t('ui.holdings.chooseRating')} />
           </SelectTrigger>
           <SelectContent>
             {RATING_OPTIONS.map((r) => (
@@ -161,19 +170,19 @@ function WatchForm({ data, onChange, includeTicker }: WatchFormProps) {
       </div>
       <div className="space-y-1.5">
         <label className="text-xs font-medium text-muted-foreground">
-          信号
+          {t('watchlist.signal')}
         </label>
         <Select
           value={data.signal}
           onValueChange={(v) => update('signal', v)}
         >
           <SelectTrigger className="w-full">
-            <SelectValue placeholder="选择信号" />
+            <SelectValue placeholder={t('ui.watchlist.signalFilter')} />
           </SelectTrigger>
           <SelectContent>
             {SIGNAL_OPTIONS.map((s) => (
               <SelectItem key={s} value={s}>
-                {s}
+                {localizedSignal(s)}
               </SelectItem>
             ))}
           </SelectContent>
@@ -181,12 +190,12 @@ function WatchForm({ data, onChange, includeTicker }: WatchFormProps) {
       </div>
       <div className="space-y-1.5 sm:col-span-2">
         <label className="text-xs font-medium text-muted-foreground">
-          分析
+          {t('ui.holdings.analysis')}
         </label>
         <Textarea
           value={data.analysis}
           onChange={(e) => update('analysis', e.target.value)}
-          placeholder="分析内容…"
+          placeholder={t('ui.holdings.analysis')}
           rows={4}
           className="resize-y"
         />

@@ -12,6 +12,7 @@ import { searchStocks } from '@/api';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { useTranslation } from 'react-i18next';
 
 interface TickerSearchProps {
   value: string;
@@ -30,11 +31,13 @@ export default function TickerSearch({
   value,
   onChange,
   onSelect,
-  placeholder = '输入代码或公司名',
+  placeholder,
   className,
   disabled,
   invalid,
 }: TickerSearchProps) {
+  const { t } = useTranslation();
+  const inputPlaceholder = placeholder ?? t('ui.tickerSearch.placeholder');
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState(value);
   const [results, setResults] = useState<StockSearchResult[]>([]);
@@ -142,11 +145,11 @@ export default function TickerSearch({
   const marketLabel = (market: string): string => {
     switch (market) {
       case 'US':
-        return '美股 USD';
+        return t('ui.tickerSearch.marketUS');
       case 'HK':
-        return '港股 HKD';
+        return t('ui.tickerSearch.marketHK');
       case 'CN':
-        return 'A股 CNY';
+        return t('ui.tickerSearch.marketCN');
       default:
         return market;
     }
@@ -155,9 +158,9 @@ export default function TickerSearch({
   const sourceLabel = (source: string): string => {
     switch (source) {
       case 'holding':
-        return '持仓';
+        return t('ui.tickerSearch.holding');
       case 'watchlist':
-        return '关注';
+        return t('ui.tickerSearch.watchlist');
       default:
         return '';
     }
@@ -176,7 +179,7 @@ export default function TickerSearch({
           onChange={(e) => handleInputChange(e.target.value)}
           onKeyDown={handleKeyDown}
           onFocus={() => query && query.trim() && setOpen(true)}
-          placeholder={placeholder}
+          placeholder={inputPlaceholder}
           disabled={disabled}
           autoComplete="off"
           className={cn(
@@ -191,17 +194,17 @@ export default function TickerSearch({
           <div className="py-1">
             {loading && (
               <div className="px-3 py-2 text-sm text-muted-foreground">
-                搜索中...
+                {t('ui.tickerSearch.searching')}
               </div>
             )}
             {!loading && results.length === 0 && query.trim() && (
               <div className="px-3 py-4 text-center text-sm text-muted-foreground">
-                未找到匹配的股票
+                {t('ui.tickerSearch.noResults')}
               </div>
             )}
             {!loading && results.length === 0 && !query.trim() && (
               <div className="px-3 py-4 text-center text-sm text-muted-foreground">
-                输入代码或公司名开始搜索
+                {t('ui.tickerSearch.startSearch')}
               </div>
             )}
             {!loading &&
@@ -252,7 +255,7 @@ export default function TickerSearch({
               ))}
             {!loading && results.length > 0 && (
               <div className="border-t px-3 py-1.5 text-[11px] text-muted-foreground">
-                ↑↓ 选择 · Enter 确认 · Esc 关闭
+                {t('ui.tickerSearch.keyboardHelp')}
               </div>
             )}
           </div>

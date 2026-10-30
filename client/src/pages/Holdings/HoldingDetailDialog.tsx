@@ -10,6 +10,7 @@
  * Also hosts a delete confirmation and a quick group-move selector.
  */
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { Pencil, Trash2, FolderOpen, X, Check, Sparkles, TrendingUp, TrendingDown, ShieldAlert, ExternalLink } from 'lucide-react';
 import type { Holding, Group, AgentRating, AgentConfidence } from '@shared/api.interface';
@@ -113,6 +114,7 @@ export default function HoldingDetailDialog({
   aiRating,
   onViewFullAnalysis,
 }: HoldingDetailDialogProps) {
+  const { t } = useTranslation();
   const [editing, setEditing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -176,11 +178,11 @@ export default function HoldingDetailDialog({
         payload.groupId = form.groupId || undefined;
 
       await updateHolding(holding.id, payload);
-      toast.success('已保存');
+      toast.success(t('holdings.editSaved'));
       setEditing(false);
       onUpdated();
     } catch (err) {
-      toast.error('保存失败');
+      toast.error(t('rules.saveFailed'));
     } finally {
       setSaving(false);
     }
@@ -192,12 +194,12 @@ export default function HoldingDetailDialog({
     setSaving(true);
     try {
       await deleteHolding(holding.id);
-      toast.success('已删除');
+      toast.success(t('holdings.deleted'));
       setConfirmDelete(false);
       onOpenChange(false);
       onDeleted();
     } catch (err) {
-      toast.error('删除失败');
+      toast.error(t('holdings.deleteFailed'));
     } finally {
       setSaving(false);
     }
@@ -208,10 +210,10 @@ export default function HoldingDetailDialog({
     if (!holding) return;
     try {
       await updateHolding(holding.id, { groupId: value || undefined });
-      toast.success('分组已更新');
+      toast.success(t('holdings.editSaved'));
       onUpdated();
     } catch (err) {
-      toast.error('更新分组失败');
+      toast.error(t('ui.holdings.updateGroupFailed'));
     }
   };
 
@@ -219,7 +221,18 @@ export default function HoldingDetailDialog({
 
   const { marketValue, cost, pl, returnPct } = computeDerived(holding);
   const groupName =
-    groups.find((g: Group) => g.id === holding.groupId)?.name ?? '未分组';
+    groups.find((g: Group) => g.id === holding.groupId)?.name ?? t('holdings.noGroup');
+  const actionLabel = (value: string) => {
+    const keys: Record<string, string> = {
+      '加仓': 'analysis.add', Add: 'analysis.add',
+      '买入': 'analysis.buy', Buy: 'analysis.buy',
+      '持有': 'analysis.hold', Hold: 'analysis.hold',
+      '减仓': 'analysis.reduce', Reduce: 'analysis.reduce',
+      '卖出': 'analysis.sell', Sell: 'analysis.sell',
+      '观望': 'analysis.watch', Watch: 'analysis.watch',
+    };
+    return keys[value] ? t(keys[value]) : value;
+  };
 
   return (
     <>
@@ -247,7 +260,7 @@ export default function HoldingDetailDialog({
           {editing ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-2">
               <div className="space-y-1.5">
-                <Label>公司名称</Label>
+                <Label>{t('holdings.company')}</Label>
                 <Input
                   value={form.company}
                   onChange={(e) =>
@@ -256,7 +269,7 @@ export default function HoldingDetailDialog({
                 />
               </div>
               <div className="space-y-1.5">
-                <Label>行业</Label>
+                <Label>{t('ui.holdings.sector')}</Label>
                 <Input
                   value={form.sector}
                   onChange={(e) =>
@@ -265,7 +278,7 @@ export default function HoldingDetailDialog({
                 />
               </div>
               <div className="space-y-1.5">
-                <Label>买入日期</Label>
+                <Label>{t('holdings.buyDate')}</Label>
                 <Input
                   type="date"
                   value={form.buyDate}
@@ -275,7 +288,7 @@ export default function HoldingDetailDialog({
                 />
               </div>
               <div className="space-y-1.5">
-                <Label>买入价</Label>
+                <Label>{t('holdings.buyPrice')}</Label>
                 <Input
                   type="number"
                   step="0.01"
@@ -286,7 +299,7 @@ export default function HoldingDetailDialog({
                 />
               </div>
               <div className="space-y-1.5">
-                <Label>股数</Label>
+                <Label>{t('holdings.shares')}</Label>
                 <Input
                   type="number"
                   step="0.0001"
@@ -297,7 +310,7 @@ export default function HoldingDetailDialog({
                 />
               </div>
               <div className="space-y-1.5">
-                <Label>现价</Label>
+                <Label>{t('ui.holdings.currentPrice')}</Label>
                 <Input
                   type="number"
                   step="0.01"
@@ -308,7 +321,7 @@ export default function HoldingDetailDialog({
                 />
               </div>
               <div className="space-y-1.5">
-                <Label>评级</Label>
+                <Label>{t('ui.holdings.rating')}</Label>
                 <Select
                   value={form.rating}
                   onValueChange={(v) =>
@@ -316,7 +329,7 @@ export default function HoldingDetailDialog({
                   }
                 >
                   <SelectTrigger className="w-full">
-                    <SelectValue placeholder="选择评级" />
+                    <SelectValue placeholder={t('ui.holdings.chooseRating')} />
                   </SelectTrigger>
                   <SelectContent>
                     {[
@@ -334,7 +347,7 @@ export default function HoldingDetailDialog({
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label>操作建议</Label>
+                <Label>{t('ui.holdings.actions')}</Label>
                 <Select
                   value={form.action}
                   onValueChange={(v) =>
@@ -342,21 +355,26 @@ export default function HoldingDetailDialog({
                   }
                 >
                   <SelectTrigger className="w-full">
-                    <SelectValue placeholder="选择操作" />
+                    <SelectValue placeholder={t('ui.holdings.chooseAction')} />
                   </SelectTrigger>
                   <SelectContent>
-                    {['加仓', '买入', '持有', '减仓', '卖出', '观望'].map(
-                      (a) => (
-                        <SelectItem key={a} value={a}>
-                          {a}
+                    {[
+                      ['加仓', 'analysis.add'],
+                      ['买入', 'analysis.buy'],
+                      ['持有', 'analysis.hold'],
+                      ['减仓', 'analysis.reduce'],
+                      ['卖出', 'analysis.sell'],
+                      ['观望', 'analysis.watch'],
+                    ].map(([value, label]) => (
+                        <SelectItem key={value} value={value}>
+                          {t(label)}
                         </SelectItem>
-                      )
-                    )}
+                      ))}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label>目标价</Label>
+                <Label>{t('ui.holdings.targetPrice')}</Label>
                 <Input
                   type="number"
                   step="0.01"
@@ -367,7 +385,7 @@ export default function HoldingDetailDialog({
                 />
               </div>
               <div className="space-y-1.5">
-                <Label>所属分组</Label>
+                <Label>{t('ui.holdings.groupName')}</Label>
                 <Select
                   value={form.groupId}
                   onValueChange={(v) =>
@@ -375,7 +393,7 @@ export default function HoldingDetailDialog({
                   }
                 >
                   <SelectTrigger className="w-full">
-                    <SelectValue placeholder="未分组" />
+                    <SelectValue placeholder={t('holdings.noGroup')} />
                   </SelectTrigger>
                   <SelectContent>
                     {groups.map((g: Group) => (
@@ -387,7 +405,7 @@ export default function HoldingDetailDialog({
                 </Select>
               </div>
               <div className="space-y-1.5 md:col-span-2">
-                <Label>分析</Label>
+                <Label>{t('ui.holdings.analysis')}</Label>
                 <Textarea
                   rows={4}
                   value={form.analysis}
@@ -400,17 +418,17 @@ export default function HoldingDetailDialog({
            ) : (
              <Tabs defaultValue="detail" className="w-full">
                <TabsList className="w-full">
-                 <TabsTrigger value="detail" className="flex-1">详情</TabsTrigger>
+                 <TabsTrigger value="detail" className="flex-1">{t('holdings.detail')}</TabsTrigger>
                  <TabsTrigger value="ai" className="flex-1">
                    <Sparkles className="size-3.5" />
-                   AI 推理
+                   {t('ui.holdings.aiReasoning')}
                  </TabsTrigger>
                </TabsList>
                <TabsContent value="detail" className="pt-3 space-y-5">
                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div>
                   <div className="text-xs text-muted-foreground mb-1">
-                    现价
+                    {t('ui.holdings.currentPrice')}
                   </div>
                   <div className="font-mono-nums text-lg font-semibold">
                     {formatPrice(holding.currentPrice)}
@@ -418,7 +436,7 @@ export default function HoldingDetailDialog({
                 </div>
                 <div>
                   <div className="text-xs text-muted-foreground mb-1">
-                    收益率
+                    {t('ui.holdings.returnPct')}
                   </div>
                   <div
                     className={cn(
@@ -431,7 +449,7 @@ export default function HoldingDetailDialog({
                 </div>
                 <div>
                   <div className="text-xs text-muted-foreground mb-1">
-                    浮盈亏
+                    {t('ui.holdings.pl')}
                   </div>
                   <div
                     className={cn(
@@ -444,7 +462,7 @@ export default function HoldingDetailDialog({
                 </div>
                 <div>
                   <div className="text-xs text-muted-foreground mb-1">
-                    操作建议
+                    {t('ui.holdings.actions')}
                   </div>
                   <div>
                     {holding.action ? (
@@ -452,7 +470,7 @@ export default function HoldingDetailDialog({
                         className={cn(actionColor(holding.action))}
                         variant="outline"
                       >
-                        {holding.action}
+                        {actionLabel(holding.action)}
                       </Badge>
                     ) : (
                       '—'
@@ -465,47 +483,47 @@ export default function HoldingDetailDialog({
 
               <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-3 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">行业</span>
+                  <span className="text-muted-foreground">{t('ui.holdings.sector')}</span>
                   <span>{holding.sector ?? '—'}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">买入日期</span>
+                  <span className="text-muted-foreground">{t('holdings.buyDate')}</span>
                   <span className="font-mono-nums">
                     {formatDate(holding.buyDate)}
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">买入价</span>
+                  <span className="text-muted-foreground">{t('holdings.buyPrice')}</span>
                   <span className="font-mono-nums">
                     {formatPrice(holding.buyPrice)}
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">股数</span>
+                  <span className="text-muted-foreground">{t('holdings.shares')}</span>
                   <span className="font-mono-nums">
                     {formatShares(holding.shares)}
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">市值</span>
+                  <span className="text-muted-foreground">{t('ui.holdings.marketValue')}</span>
                   <span className="font-mono-nums">
                     {formatCurrency(marketValue)}
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">成本</span>
+                  <span className="text-muted-foreground">{t('ui.holdings.cost')}</span>
                   <span className="font-mono-nums">
                     {formatCurrency(cost)}
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">目标价</span>
+                  <span className="text-muted-foreground">{t('ui.holdings.targetPrice')}</span>
                   <span className="font-mono-nums">
                     {formatPrice(holding.targetPrice)}
                   </span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-muted-foreground">所属分组</span>
+                  <span className="text-muted-foreground">{t('ui.holdings.groupName')}</span>
                   <span className="flex items-center gap-1.5">
                     <FolderOpen className="size-3.5 text-primary" />
                     {groupName}
@@ -517,10 +535,10 @@ export default function HoldingDetailDialog({
 
               <div>
                 <div className="text-xs text-muted-foreground mb-1.5">
-                  分析
+                  {t('ui.holdings.analysis')}
                 </div>
                 <div className="text-sm whitespace-pre-wrap leading-relaxed text-foreground/90">
-                  {holding.analysis ?? '暂无分析记录'}
+                  {holding.analysis ?? t('ui.holdings.noAnalysis')}
                 </div>
               </div>
 
@@ -529,14 +547,14 @@ export default function HoldingDetailDialog({
                  <div className="flex items-center justify-between">
                    <div className="flex items-center gap-2">
                      <Label className="text-xs text-muted-foreground">
-                       移动分组
+                       {t('ui.holdings.moveGroup')}
                      </Label>
                      <Select
                        value={holding.groupId ?? ''}
                        onValueChange={handleGroupChange}
                      >
                        <SelectTrigger className="w-40 h-8 text-xs" size="sm">
-                         <SelectValue placeholder="未分组" />
+                         <SelectValue placeholder={t('holdings.noGroup')} />
                        </SelectTrigger>
                        <SelectContent>
                          {groups.map((g: Group) => (
@@ -557,7 +575,7 @@ export default function HoldingDetailDialog({
                        <ConfidenceBadge confidence={aiRating.confidence} size="md" />
                        {aiRating.targetPrice && (
                          <div className="flex items-center gap-1.5 text-sm">
-                           <span className="text-muted-foreground">目标价</span>
+                           <span className="text-muted-foreground">{t('ui.holdings.targetPrice')}</span>
                            <span className="font-mono-nums font-semibold">
                              {formatPrice(aiRating.targetPrice)}
                            </span>
@@ -573,10 +591,10 @@ export default function HoldingDetailDialog({
                          <CardContent className="p-4">
                            <div className="flex items-center gap-2 text-emerald-600 mb-2">
                              <TrendingUp className="size-4" />
-                             <span className="font-medium text-sm">多头观点</span>
+                             <span className="font-medium text-sm">{t('ui.holdings.bullView')}</span>
                            </div>
                            <div className="text-sm text-foreground/80 leading-relaxed whitespace-pre-wrap">
-                             {aiRating.bullSummary ?? '暂无多头摘要'}
+                             {aiRating.bullSummary ?? t('holdings.noBullSummary')}
                            </div>
                          </CardContent>
                        </Card>
@@ -584,10 +602,10 @@ export default function HoldingDetailDialog({
                          <CardContent className="p-4">
                            <div className="flex items-center gap-2 text-rose-600 mb-2">
                              <TrendingDown className="size-4" />
-                             <span className="font-medium text-sm">空头观点</span>
+                             <span className="font-medium text-sm">{t('ui.holdings.bearView')}</span>
                            </div>
                            <div className="text-sm text-foreground/80 leading-relaxed whitespace-pre-wrap">
-                             {aiRating.bearSummary ?? '暂无空头摘要'}
+                             {aiRating.bearSummary ?? t('holdings.bearSummary')}
                            </div>
                          </CardContent>
                        </Card>
@@ -596,7 +614,7 @@ export default function HoldingDetailDialog({
                      <div className="flex items-center gap-2 pt-2 border-t">
                        <ShieldAlert className="size-4 text-muted-foreground" />
                        <span className="text-sm text-muted-foreground flex-1">
-                         风控结果已通过 Multi-Agent 风险门控检查
+                         {t('ui.holdings.riskPassed')}
                        </span>
                      </div>
 
@@ -607,7 +625,7 @@ export default function HoldingDetailDialog({
                        onClick={() => onViewFullAnalysis?.(aiRating.runId)}
                      >
                        <ExternalLink className="size-4" />
-                       查看完整推理过程
+                       {t('ui.holdings.viewReasoning')}
                      </Button>
                    </>
                  ) : (
@@ -616,10 +634,10 @@ export default function HoldingDetailDialog({
                        <Sparkles className="size-10 text-muted-foreground/40" />
                      </div>
                      <div className="text-sm font-medium text-foreground">
-                       暂无 AI 分析记录
+                       {t('ui.holdings.noAiAnalysis')}
                      </div>
                      <div className="text-xs text-muted-foreground">
-                       前往每日分析页运行 Multi-Agent 深度分析
+                       {t('ui.holdings.runDeepAnalysis')}
                      </div>
                    </div>
                  )}
@@ -635,23 +653,23 @@ export default function HoldingDetailDialog({
               onClick={() => setConfirmDelete(true)}
             >
               <Trash2 className="size-4" />
-              删除
+              {t('common.delete')}
             </Button>
             {editing ? (
               <>
                 <Button variant="outline" size="sm" onClick={closeEdit}>
                   <X className="size-4" />
-                  取消
+                  {t('common.cancel')}
                 </Button>
                 <Button size="sm" onClick={handleSave} disabled={saving}>
                   <Check className="size-4" />
-                  保存
+                  {t('common.save')}
                 </Button>
               </>
             ) : (
               <Button size="sm" onClick={startEdit}>
                 <Pencil className="size-4" />
-                编辑
+                {t('common.edit')}
               </Button>
             )}
           </DialogFooter>
@@ -661,18 +679,18 @@ export default function HoldingDetailDialog({
       <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>确认删除持仓</AlertDialogTitle>
+            <AlertDialogTitle>{t('ui.holdings.deleteHoldingTitle')}</AlertDialogTitle>
             <AlertDialogDescription>
-              确定要删除 {holding.ticker} 的持仓记录吗？此操作无法撤销。
+              {t('ui.holdings.deleteHoldingDesc', { ticker: holding.ticker })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {saving ? '删除中...' : '确认删除'}
+              {saving ? t('holdings.deleting') : t('common.confirm')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

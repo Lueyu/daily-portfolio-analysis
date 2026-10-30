@@ -13,6 +13,7 @@
  * rating back to holdings and the analysis log (submitHumanDecision).
  */
 import { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import {
   Dialog,
@@ -97,25 +98,23 @@ interface AgentRunDetailModalProps {
   runId: string | null;
 }
 
-/** Chinese display labels for each pipeline status */
-const statusLabels: Record<AgentRunStatus, string> = {
-  pending: '等待中',
-  fetching: '取证中',
-  debating: '辩论中',
-  critiquing: 'Critic 审核中',
-  risk_check: '风控检查中',
-  awaiting_human: '待决策',
-  completed: '已完成',
-  failed: '失败',
-  cancelled: '已取消',
+const statusLabelKeys: Record<AgentRunStatus, string> = {
+  pending: 'agent.pending',
+  fetching: 'agent.fetching',
+  debating: 'agent.debating',
+  critiquing: 'agent.critiquing',
+  risk_check: 'agent.riskCheck',
+  awaiting_human: 'agent.awaitingHuman',
+  completed: 'agent.completed',
+  failed: 'agent.failed',
+  cancelled: 'agent.cancelled',
 };
 
-/** Chinese display labels per evidence category */
-const roleLabels: Record<EvidenceRole, string> = {
-  fundamental: '基本面',
-  news: '新闻资讯',
-  technical: '技术分析',
-  macro: '宏观经济',
+const roleLabelKeys: Record<EvidenceRole, string> = {
+  fundamental: 'ui.agent.evidenceRoleFundamental',
+  news: 'ui.agent.evidenceRoleNews',
+  technical: 'ui.agent.evidenceRoleTechnical',
+  macro: 'ui.agent.evidenceRoleMacro',
 };
 
 /** Lucide icon per evidence category, used as the section header icon */
@@ -128,11 +127,11 @@ const roleIcons: Record<EvidenceRole, typeof FileText> = {
 
 /** Ordered pipeline stages shown in the overview timeline (with their icons) */
 const pipelineSteps = [
-  { key: 'fetching', label: '取证', icon: FileText },
-  { key: 'debating', label: '多空辩论', icon: TrendingUp },
-  { key: 'critiquing', label: 'Critic 质疑', icon: AlertCircle },
-  { key: 'risk_check', label: '风控检查', icon: ShieldAlert },
-  { key: 'completed', label: '最终评级', icon: Target },
+  { key: 'fetching', labelKey: 'ui.agent.stepEvidence', icon: FileText },
+  { key: 'debating', labelKey: 'ui.agent.debate', icon: TrendingUp },
+  { key: 'critiquing', labelKey: 'ui.agent.criticChallenge', icon: AlertCircle },
+  { key: 'risk_check', labelKey: 'ui.agent.riskCheck', icon: ShieldAlert },
+  { key: 'completed', labelKey: 'ui.agent.finalRating', icon: Target },
 ] as const;
 
 /** Linear order of pipeline stages used to compute done/active/pending per step */
@@ -176,6 +175,7 @@ function AgentRunDetailModal({
   onOpenChange,
   runId,
 }: AgentRunDetailModalProps) {
+  const { t, i18n } = useTranslation();
   const [run, setRun] = useState<AgentRunDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -206,11 +206,11 @@ function AgentRunDetailModal({
       }
     } catch (err) {
       logger.error('加载 run 详情失败', err);
-      setError('加载详情失败，请稍后重试');
+      setError(t('ui.agent.loadFailed'));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   // (Re)load whenever the dialog opens with a runId; reset tab/decision state and
   // clear data when closed. Note: this modal loads once per open; live updates
@@ -265,18 +265,18 @@ function AgentRunDetailModal({
       await submitHumanDecision(runId, payload);
 
       if (decision === 'approved') {
-        toast.success('评级已同步到持仓和分析记录');
+        toast.success(t('ui.agent.ratingSynced'));
       } else if (decision === 'modified') {
-        toast.success('修改后的评级已同步到持仓和分析记录');
+        toast.success(t('ui.agent.modifiedRatingSynced'));
       } else {
-        toast.info('已拒绝该评级');
+        toast.info(t('ui.agent.ratingRejected'));
       }
 
       setDecisionMode('none');
       await loadRun(runId);
     } catch (err) {
       logger.error('提交决策失败', err);
-      toast.error('提交失败，请稍后重试');
+      toast.error(t('ui.agent.submitFailed'));
     } finally {
       setSubmitting(false);
     }
@@ -332,7 +332,7 @@ function AgentRunDetailModal({
                           : 'border-primary/40 bg-primary/15 text-primary'
                   }
                 >
-                  {statusLabels[run.status]}
+            {t(statusLabelKeys[run.status])}
                 </Badge>
               </>
             ) : null}
@@ -351,7 +351,7 @@ function AgentRunDetailModal({
                 className="mt-4"
                 onClick={() => runId && loadRun(runId)}
               >
-                重试
+                {t('ui.analysis.retry')}
               </Button>
             </div>
           )}
@@ -366,11 +366,11 @@ function AgentRunDetailModal({
             >
               <div className="px-6 pt-4 border-b">
                 <TabsList className="mb-0">
-                  <TabsTrigger value="overview">概览</TabsTrigger>
-                  <TabsTrigger value="evidence">证据链</TabsTrigger>
-                  <TabsTrigger value="debate">多空辩论</TabsTrigger>
-                  <TabsTrigger value="risk">风控检查</TabsTrigger>
-                  <TabsTrigger value="rating">最终评级</TabsTrigger>
+                  <TabsTrigger value="overview">{t('ui.agent.overview')}</TabsTrigger>
+                  <TabsTrigger value="evidence">{t('ui.agent.evidenceChain')}</TabsTrigger>
+                  <TabsTrigger value="debate">{t('ui.agent.debate')}</TabsTrigger>
+                  <TabsTrigger value="risk">{t('ui.agent.riskCheck')}</TabsTrigger>
+                  <TabsTrigger value="rating">{t('ui.agent.finalRating')}</TabsTrigger>
                 </TabsList>
               </div>
 
@@ -385,7 +385,7 @@ function AgentRunDetailModal({
                       <Badge variant="secondary">{run.rating.action}</Badge>
                       {run.rating.targetPrice && (
                         <Badge variant="outline">
-                          目标价 ${run.rating.targetPrice}
+                          {t('ui.agent.targetPrice')} ${run.rating.targetPrice}
                         </Badge>
                       )}
                       {run.riskGate.length > 0 && (
@@ -398,7 +398,7 @@ function AgentRunDetailModal({
                   <Card>
                     <CardHeader>
                       <CardTitle className="text-base font-semibold">
-                        流水线进度
+                        {t('ui.agent.pipelineProgress')}
                       </CardTitle>
                     </CardHeader>
                     <CardContent>
@@ -444,14 +444,14 @@ function AgentRunDetailModal({
                               </div>
                               <div className="pt-1">
                                 <div className="font-medium text-sm">
-                                  {step.label}
+                                  {t(step.labelKey)}
                                 </div>
                                 <div className="text-xs text-muted-foreground">
                                   {state === 'done'
-                                    ? '已完成'
+                                    ? t('ui.agent.stepDone')
                                     : state === 'active'
-                                      ? '进行中...'
-                                      : '待处理'}
+                                      ? t('ui.agent.stepInProgress')
+                                      : t('ui.agent.stepPending')}
                                 </div>
                               </div>
                             </div>
@@ -466,7 +466,7 @@ function AgentRunDetailModal({
                     <Card>
                       <CardHeader>
                         <CardTitle className="text-base font-semibold">
-                          最终评级摘要
+                          {t('ui.agent.ratingSummary')}
                         </CardTitle>
                       </CardHeader>
                       <CardContent className="space-y-4">
@@ -501,7 +501,7 @@ function AgentRunDetailModal({
                         {run.rating.aggregationLogic && (
                           <div className="text-sm text-muted-foreground">
                             <span className="font-medium text-foreground">
-                              聚合逻辑：
+                              {t('ui.agent.aggregationLabel')}
                             </span>
                             {run.rating.aggregationLogic}
                           </div>
@@ -516,7 +516,7 @@ function AgentRunDetailModal({
                       <CardHeader>
                         <CardTitle className="text-base font-semibold text-rose-700 dark:text-rose-400 flex items-center gap-2">
                           <XCircle size={16} />
-                          运行失败
+                          {t('ui.agent.runFailedLabel')}
                         </CardTitle>
                       </CardHeader>
                       <CardContent>
@@ -532,7 +532,7 @@ function AgentRunDetailModal({
                 <TabsContent value="evidence" className="mt-0 space-y-4">
                   {(Object.keys(evidenceByRole) as EvidenceRole[]).length === 0 && (
                     <div className="text-center py-8 text-muted-foreground text-sm">
-                      暂无证据数据
+                      {t('ui.agent.noEvidence')}
                     </div>
                   )}
                   {(Object.keys(evidenceByRole) as EvidenceRole[]).map(
@@ -544,9 +544,9 @@ function AgentRunDetailModal({
                           <CardHeader className="pb-3">
                             <CardTitle className="text-sm font-semibold flex items-center gap-2">
                               <RoleIcon size={16} />
-                              {roleLabels[role]}
+                              {t(roleLabelKeys[role])}
                               <Badge variant="outline" className="ml-auto text-xs">
-                                {items.length} 条
+                                {t('ui.agent.itemCount', { count: items.length })}
                               </Badge>
                             </CardTitle>
                           </CardHeader>
@@ -569,7 +569,7 @@ function AgentRunDetailModal({
                                         <span>
                                           {new Date(
                                             item.fetchedAt,
-                                          ).toLocaleString('zh-CN', {
+                                          ).toLocaleString(i18n.language, {
                                             month: 'short',
                                             day: 'numeric',
                                             hour: '2-digit',
@@ -581,7 +581,7 @@ function AgentRunDetailModal({
                                           item.relevanceScore !==
                                             undefined && (
                                             <span className="text-primary">
-                                              相关度{' '}
+                                              {t('ui.agent.relevance')}{' '}
                                               {Number(
                                                 item.relevanceScore,
                                               ).toFixed(2)}
@@ -613,13 +613,13 @@ function AgentRunDetailModal({
                       <CardHeader className="pb-2">
                         <CardTitle className="text-sm font-semibold text-emerald-700 dark:text-emerald-400 flex items-center gap-2">
                           <TrendingUp size={16} />
-                          多头论点 (Bull)
+                          {t('ui.agent.bullArguments')}
                         </CardTitle>
                       </CardHeader>
                       <CardContent className="space-y-3">
                         {bullArguments.length === 0 && (
                           <p className="text-sm text-muted-foreground">
-                            暂无多头论点
+                            {t('ui.agent.noBullArguments')}
                           </p>
                         )}
                         {bullArguments.map((arg: BullBearArgument, idx: number) => (
@@ -629,11 +629,11 @@ function AgentRunDetailModal({
                           >
                             <div className="flex items-center justify-between mb-1.5">
                               <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
-                                第 {arg.round} 轮 · 论点 #{idx + 1}
+                                {t('ui.agent.roundArgument', { round: arg.round, index: idx + 1 })}
                               </span>
                               {arg.evidenceIds.length > 0 && (
                                 <span className="text-xs text-muted-foreground">
-                                  引用 {arg.evidenceIds.length} 条证据
+                                  {t('ui.agent.referencedEvidence', { count: arg.evidenceIds.length })}
                                 </span>
                               )}
                             </div>
@@ -648,13 +648,13 @@ function AgentRunDetailModal({
                       <CardHeader className="pb-2">
                         <CardTitle className="text-sm font-semibold text-rose-700 dark:text-rose-400 flex items-center gap-2">
                           <TrendingDown size={16} />
-                          空头论点 (Bear)
+                          {t('ui.agent.bearArguments')}
                         </CardTitle>
                       </CardHeader>
                       <CardContent className="space-y-3">
                         {bearArguments.length === 0 && (
                           <p className="text-sm text-muted-foreground">
-                            暂无空头论点
+                            {t('ui.agent.noBearArguments')}
                           </p>
                         )}
                         {bearArguments.map((arg: BullBearArgument, idx: number) => (
@@ -664,11 +664,11 @@ function AgentRunDetailModal({
                           >
                             <div className="flex items-center justify-between mb-1.5">
                               <span className="text-xs font-medium text-rose-600 dark:text-rose-400">
-                                第 {arg.round} 轮 · 论点 #{idx + 1}
+                                {t('ui.agent.roundArgument', { round: arg.round, index: idx + 1 })}
                               </span>
                               {arg.evidenceIds.length > 0 && (
                                 <span className="text-xs text-muted-foreground">
-                                  引用 {arg.evidenceIds.length} 条证据
+                                  {t('ui.agent.referencedEvidence', { count: arg.evidenceIds.length })}
                                 </span>
                               )}
                             </div>
@@ -685,7 +685,7 @@ function AgentRunDetailModal({
                       <CardHeader className="pb-2">
                         <CardTitle className="text-sm font-semibold text-amber-700 dark:text-amber-400 flex items-center gap-2">
                           <AlertCircle size={16} />
-                          Critic 质疑
+                          {t('ui.agent.criticChallenge')}
                         </CardTitle>
                       </CardHeader>
                       <CardContent className="space-y-3">
@@ -695,7 +695,7 @@ function AgentRunDetailModal({
                             className="rounded-md border border-amber-500/20 bg-white dark:bg-slate-900 p-3 text-sm"
                           >
                             <div className="text-xs font-medium text-amber-600 dark:text-amber-400 mb-1.5">
-                              第 {record.round} 轮
+                              {t('ui.agent.round', { round: record.round })}
                             </div>
                             <p className="text-foreground/90 whitespace-pre-wrap">
                               {record.content}
@@ -713,7 +713,7 @@ function AgentRunDetailModal({
                     <CardHeader className="pb-2">
                       <CardTitle className="text-base font-semibold flex items-center gap-2">
                         <ShieldAlert size={16} />
-                        风控检查结果
+                        {t('ui.agent.riskResults')}
                         {run.riskGate.length > 0 && (
                           <RiskAlertBadge results={run.riskGate} />
                         )}
@@ -722,7 +722,7 @@ function AgentRunDetailModal({
                     <CardContent className="pt-0">
                       {run.riskGate.length === 0 ? (
                         <div className="text-center py-8 text-muted-foreground text-sm">
-                          暂无风控数据
+                          {t('ui.agent.noRiskData')}
                         </div>
                       ) : (
                         <div className="rounded-md border overflow-hidden">
@@ -730,21 +730,21 @@ function AgentRunDetailModal({
                             <TableHeader>
                               <TableRow>
                                 <TableHead className="w-[180px]">
-                                  规则名称
+                                  {t('ui.agent.ruleName')}
                                 </TableHead>
                                 <TableHead className="w-[80px]">
-                                  类型
+                                  {t('ui.agent.type')}
                                 </TableHead>
                                 <TableHead className="w-[100px]">
-                                  当前值
+                                  {t('ui.agent.currentValue')}
                                 </TableHead>
                                 <TableHead className="w-[100px]">
-                                  阈值
+                                  {t('ui.agent.threshold')}
                                 </TableHead>
                                 <TableHead className="w-[80px]">
-                                  状态
+                                  {t('ui.agent.status')}
                                 </TableHead>
-                                <TableHead>建议操作</TableHead>
+                                <TableHead>{t('ui.agent.suggestedAction')}</TableHead>
                               </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -764,8 +764,8 @@ function AgentRunDetailModal({
                                         }
                                       >
                                         {result.ruleType === 'hard'
-                                          ? '硬规则'
-                                          : '软规则'}
+                                          ? t('ui.agent.hardRule')
+                                          : t('ui.agent.softRule')}
                                       </Badge>
                                     </TableCell>
                                     <TableCell className="text-sm">
@@ -781,7 +781,7 @@ function AgentRunDetailModal({
                                           className="border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 gap-1 text-xs"
                                         >
                                           <CheckCircle2 size={12} />
-                                          通过
+                                          {t('ui.agent.passed')}
                                         </Badge>
                                       ) : (
                                         <Badge
@@ -789,7 +789,7 @@ function AgentRunDetailModal({
                                           className="border-rose-500/30 bg-rose-500/10 text-rose-600 dark:text-rose-400 gap-1 text-xs"
                                         >
                                           <XCircle size={12} />
-                                          未通过
+                                          {t('ui.agent.failedStatus')}
                                         </Badge>
                                       )}
                                     </TableCell>
@@ -814,7 +814,7 @@ function AgentRunDetailModal({
                       <Card>
                         <CardHeader>
                           <CardTitle className="text-base font-semibold">
-                            评级结果
+                            {t('ui.agent.ratingResult')}
                           </CardTitle>
                         </CardHeader>
                         <CardContent className="space-y-4">
@@ -824,11 +824,11 @@ function AgentRunDetailModal({
                               confidence={run.rating.confidence}
                             />
                             <Badge variant="secondary">
-                              操作：{run.rating.action}
+                              {t('ui.agent.actionLabel', { action: run.rating.action })}
                             </Badge>
                             {run.rating.targetPrice && (
                               <Badge variant="outline">
-                                目标价 ${run.rating.targetPrice}
+                                {t('ui.agent.targetPrice')} ${run.rating.targetPrice}
                               </Badge>
                             )}
                           </div>
@@ -836,7 +836,7 @@ function AgentRunDetailModal({
                           {run.rating.aggregationLogic && (
                             <div className="space-y-1">
                               <div className="text-sm font-medium">
-                                聚合逻辑说明
+                                {t('ui.agent.aggregationLogic')}
                               </div>
                               <p className="text-sm text-muted-foreground">
                                 {run.rating.aggregationLogic}
@@ -851,7 +851,7 @@ function AgentRunDetailModal({
                                   size={14}
                                   className="text-amber-500"
                                 />
-                                主要不确定性
+                                {t('ui.agent.mainUncertainty')}
                               </div>
                               <p className="text-sm text-muted-foreground">
                                 {run.rating.keyUncertainty}
@@ -866,7 +866,7 @@ function AgentRunDetailModal({
                           <CardHeader className="pb-2">
                             <CardTitle className="text-sm font-semibold text-emerald-700 dark:text-emerald-400 flex items-center gap-2">
                               <Zap size={16} />
-                              催化剂
+                              {t('ui.agent.catalysts')}
                             </CardTitle>
                           </CardHeader>
                           <CardContent>
@@ -882,7 +882,7 @@ function AgentRunDetailModal({
                           <CardHeader className="pb-2">
                             <CardTitle className="text-sm font-semibold text-rose-700 dark:text-rose-400 flex items-center gap-2">
                               <AlertTriangle size={16} />
-                              风险
+                              {t('ui.agent.risks')}
                             </CardTitle>
                           </CardHeader>
                           <CardContent>
@@ -895,7 +895,7 @@ function AgentRunDetailModal({
                     </>
                   ) : (
                     <div className="text-center py-8 text-muted-foreground text-sm">
-                      暂无评级结果
+                      {t('ui.agent.noRating')}
                     </div>
                   )}
                 </TabsContent>
@@ -912,10 +912,10 @@ function AgentRunDetailModal({
                 <div className="flex items-center gap-2 text-sm">
                   <Clock size={16} className="text-amber-500" />
                   <span className="font-medium text-amber-700 dark:text-amber-400">
-                    等待人工决策
+                    {t('ui.agent.awaitingDecision')}
                   </span>
                   <span className="text-muted-foreground">
-                    请审核 AI 给出的评级结果并做出决策
+                    {t('ui.agent.reviewPrompt')}
                   </span>
                 </div>
                 <div className="flex gap-2">
@@ -926,7 +926,7 @@ function AgentRunDetailModal({
                     disabled={submitting}
                   >
                     <XCircle className="mr-1.5 h-4 w-4" />
-                    拒绝
+                    {t('ui.agent.reject')}
                   </Button>
                   <Button
                     variant="outline"
@@ -935,7 +935,7 @@ function AgentRunDetailModal({
                     disabled={submitting}
                   >
                     <AlertTriangle className="mr-1.5 h-4 w-4" />
-                    修改
+                    {t('ui.agent.modify')}
                   </Button>
                   <Button
                     className="bg-emerald-600 hover:bg-emerald-700 text-white"
@@ -943,7 +943,7 @@ function AgentRunDetailModal({
                     disabled={submitting}
                   >
                     <CheckCircle2 className="mr-1.5 h-4 w-4" />
-                    采纳
+                    {t('ui.agent.approve')}
                   </Button>
                 </div>
               </div>
@@ -957,12 +957,12 @@ function AgentRunDetailModal({
                     className="text-amber-500"
                   />
                   <span className="font-medium text-amber-700 dark:text-amber-400">
-                    修改评级
+                    {t('ui.agent.modifyRating')}
                   </span>
                 </div>
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
-                    <Label>评级</Label>
+                    <Label>{t('ui.agent.rating')}</Label>
                     <Select
                       value={modifyRating}
                       onValueChange={(v) =>
@@ -987,7 +987,7 @@ function AgentRunDetailModal({
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label>置信度</Label>
+                    <Label>{t('ui.agent.confidence')}</Label>
                     <Select
                       value={modifyConfidence}
                       onValueChange={(v) =>
@@ -998,36 +998,36 @@ function AgentRunDetailModal({
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="high">高</SelectItem>
-                        <SelectItem value="medium">中</SelectItem>
-                        <SelectItem value="low">低</SelectItem>
+                        <SelectItem value="high">{t('ui.agent.confidenceHigh')}</SelectItem>
+                        <SelectItem value="medium">{t('ui.agent.confidenceMedium')}</SelectItem>
+                        <SelectItem value="low">{t('ui.agent.confidenceLow')}</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label>目标价</Label>
+                    <Label>{t('ui.agent.targetPrice')}</Label>
                     <Input
                       type="number"
                       value={modifyTargetPrice}
                       onChange={(e) => setModifyTargetPrice(e.target.value)}
-                      placeholder="例如: 150.00"
+                      placeholder={t('ui.agent.targetPricePlaceholder')}
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>操作建议</Label>
+                    <Label>{t('ui.analysis.actionAdvice')}</Label>
                     <Input
                       value={modifyAction}
                       onChange={(e) => setModifyAction(e.target.value)}
-                      placeholder="例如: 买入 / 持有 / 卖出"
+                      placeholder={t('ui.agent.actionPlaceholder')}
                     />
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label>备注</Label>
+                  <Label>{t('ui.agent.note')}</Label>
                   <Textarea
                     value={modifyNote}
                     onChange={(e) => setModifyNote(e.target.value)}
-                    placeholder="请输入修改原因或备注..."
+                    placeholder={t('ui.agent.notePlaceholder')}
                     rows={3}
                   />
                 </div>
@@ -1037,7 +1037,7 @@ function AgentRunDetailModal({
                     onClick={() => setDecisionMode('none')}
                     disabled={submitting}
                   >
-                    取消
+                    {t('ui.agent.cancel')}
                   </Button>
                   <Button
                     onClick={() => handleSubmitDecision('modified')}
@@ -1046,7 +1046,7 @@ function AgentRunDetailModal({
                     {submitting && (
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     )}
-                    提交修改
+                    {t('ui.agent.submitModification')}
                   </Button>
                 </div>
               </div>

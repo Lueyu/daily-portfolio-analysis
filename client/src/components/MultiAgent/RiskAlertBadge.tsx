@@ -10,6 +10,7 @@
 import { Badge } from '@/components/ui/badge';
 import { AlertTriangle, ShieldCheck } from 'lucide-react';
 import type { RiskGateResult } from '@shared/api.interface';
+import { useTranslation } from 'react-i18next';
 
 interface RiskAlertBadgeProps {
   /** All risk-gate rule results for the current agent run */
@@ -18,6 +19,7 @@ interface RiskAlertBadgeProps {
 
 /** Renders the aggregate risk-gate status badge (hard > soft > pass priority). */
 function RiskAlertBadge({ results }: RiskAlertBadgeProps) {
+  const { t } = useTranslation();
   // Count blocking vs advisory rule failures separately
   const failedHard = results.filter((r: RiskGateResult) => r.ruleType === 'hard' && !r.passed).length;
   const failedSoft = results.filter((r: RiskGateResult) => r.ruleType === 'soft' && !r.passed).length;
@@ -29,7 +31,7 @@ function RiskAlertBadge({ results }: RiskAlertBadgeProps) {
         className="gap-1 border-rose-500/40 bg-rose-500/15 text-rose-700 dark:text-rose-400 font-medium"
       >
         <AlertTriangle size={12} />
-        {failedHard} 条硬规则未通过
+        {t('ui.agent.riskHardFailed', { count: failedHard })}
       </Badge>
     );
   }
@@ -41,7 +43,7 @@ function RiskAlertBadge({ results }: RiskAlertBadgeProps) {
         className="gap-1 border-amber-500/40 bg-amber-500/15 text-amber-700 dark:text-amber-400 font-medium"
       >
         <AlertTriangle size={12} />
-        {failedSoft} 条软规则告警
+        {t('ui.agent.riskSoftFailed', { count: failedSoft })}
       </Badge>
     );
   }
@@ -52,7 +54,7 @@ function RiskAlertBadge({ results }: RiskAlertBadgeProps) {
       className="gap-1 border-emerald-500/40 bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 font-medium"
     >
       <ShieldCheck size={12} />
-      风控通过
+      {t('ui.agent.riskPassed')}
     </Badge>
   );
 }

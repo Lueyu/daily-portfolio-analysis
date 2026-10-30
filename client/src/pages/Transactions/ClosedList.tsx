@@ -6,6 +6,7 @@
  * dates, buy/sell prices, shares, and optional notes.
  */
 import { TrendingDown, Plus } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import type { ClosedPosition } from '@shared/api.interface';
 import {
   formatPrice,
@@ -45,6 +46,7 @@ export default function ClosedList({
   closed,
   onAdd,
 }: ClosedListProps) {
+  const { t } = useTranslation();
   if (loading) {
     return (
       <div className="md:hidden space-y-3">
@@ -80,15 +82,15 @@ export default function ClosedList({
             <TrendingDown />
           </EmptyMedia>
           <EmptyHeader>
-            <EmptyTitle>暂无已平仓记录</EmptyTitle>
+            <EmptyTitle>{t('ui.tx.emptyClosed')}</EmptyTitle>
             <EmptyDescription>
-              记录已完成的交易，追踪实现盈亏
+              {t('ui.tx.emptyClosedHint')}
             </EmptyDescription>
           </EmptyHeader>
           <EmptyContent>
             <Button size="sm" onClick={onAdd}>
               <Plus className="size-4" />
-              添加已平仓
+              {t('ui.tx.addClosed')}
             </Button>
           </EmptyContent>
         </Empty>
@@ -132,31 +134,31 @@ export default function ClosedList({
 
             <div className="grid grid-cols-2 gap-2 mt-3 text-sm">
               <div>
-                <div className="text-xs text-muted-foreground">开仓日期</div>
+                <div className="text-xs text-muted-foreground">{t('tx.openDate')}</div>
                 <div className="font-mono-nums">
                   {formatDate(c.openDate)}
                 </div>
               </div>
               <div>
-                <div className="text-xs text-muted-foreground">平仓日期</div>
+                <div className="text-xs text-muted-foreground">{t('tx.closeDate')}</div>
                 <div className="font-mono-nums">
                   {formatDate(c.closeDate)}
                 </div>
               </div>
               <div>
-                <div className="text-xs text-muted-foreground">买入价</div>
+                <div className="text-xs text-muted-foreground">{t('tx.buyPrice')}</div>
                 <div className="font-mono-nums">
                   {formatPrice(c.buyPrice)}
                 </div>
               </div>
               <div>
-                <div className="text-xs text-muted-foreground">卖出价</div>
+                <div className="text-xs text-muted-foreground">{t('tx.sellPrice')}</div>
                 <div className="font-mono-nums">
                   {formatPrice(c.sellPrice)}
                 </div>
               </div>
               <div>
-                <div className="text-xs text-muted-foreground">股数</div>
+                <div className="text-xs text-muted-foreground">{t('tx.shares')}</div>
                 <div className="font-mono-nums">
                   {formatShares(c.shares)}
                 </div>

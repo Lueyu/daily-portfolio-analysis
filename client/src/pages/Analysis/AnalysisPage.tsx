@@ -13,6 +13,7 @@
  * through the available analysis dates (newest first).
  */
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import {
   ChevronLeft,
@@ -75,6 +76,14 @@ const PORTFOLIO_TICKER = 'PORTFOLIO';
 /** Rating order used for the filter pills. */
 const RATING_ORDER = ['Strong Buy', 'Buy', 'Hold', 'Sell', 'Strong Sell'];
 
+function localizedRating(value: string | null | undefined, t: (key: string) => string): string {
+  const keys: Record<string, string> = {
+    'Strong Buy': 'analysis.strongBuy', Buy: 'analysis.buy', Hold: 'analysis.hold',
+    Sell: 'analysis.sell', 'Strong Sell': 'analysis.strongSell',
+  };
+  return value && keys[value] ? t(keys[value]) : value ?? '';
+}
+
 /** View mode toggle: traditional daily cards vs. multi-agent deep reports. */
 type ViewMode = 'traditional' | 'multiagent';
 
@@ -82,6 +91,7 @@ type ViewMode = 'traditional' | 'multiagent';
  * Analysis page component.
  */
 function AnalysisPage() {
+  const { t } = useTranslation();
   const [analyses, setAnalyses] = useState<AnalysisType[]>([]);
   const [dates, setDates] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -128,7 +138,7 @@ function AnalysisPage() {
         setLoading(false);
       }
     } catch {
-      toast.error('分析日期加载失败，请稍后重试');
+      toast.error(t('ui.analysis.datesLoadFailed'));
       setLoading(false);
     } finally {
       setDatesLoading(false);
@@ -143,8 +153,8 @@ function AnalysisPage() {
       const data: AnalysisType[] = await fetchAnalysis(date);
       setAnalyses(Array.isArray(data) ? data : []);
     } catch {
-      setError('分析内容加载失败，请稍后重试');
-      toast.error('分析内容加载失败，请稍后重试');
+      setError(t('ui.analysis.contentLoadFailed'));
+      toast.error(t('ui.analysis.contentLoadFailed'));
     } finally {
       setLoading(false);
     }
@@ -211,11 +221,11 @@ function AnalysisPage() {
       );
       setDeepReports(items);
     } catch {
-      toast.error('深度报告列表加载失败，请稍后重试');
+      toast.error(t('ui.analysis.reportsLoadFailed'));
     } finally {
       setDeepReportsLoading(false);
     }
-  }, []);
+  }, [t]);
 
   // Load deep reports on page init so traditional view can show deep report badges
   useEffect(() => {
@@ -349,7 +359,7 @@ function AnalysisPage() {
       <aside className="w-full shrink-0 md:w-48">
         <Card className="md:sticky md:top-4">
           <CardHeader className="p-4 pb-2">
-            <CardTitle className="font-serif text-base">历史分析</CardTitle>
+            <CardTitle className="font-serif text-base">{t('ui.analysis.history')}</CardTitle>
           </CardHeader>
           <CardContent className="p-2">
             {datesLoading ? (
@@ -360,7 +370,7 @@ function AnalysisPage() {
               </div>
             ) : dates.length === 0 ? (
               <div className="px-3 py-6 text-center text-xs text-muted-foreground">
-                暂无分析记录
+                {t('ui.analysis.noHistory')}
               </div>
             ) : (
               <div className="max-h-[300px] space-y-0.5 overflow-y-auto md:max-h-[calc(100vh-200px)]">
@@ -398,7 +408,7 @@ function AnalysisPage() {
                     size="icon"
                     onClick={goPrev}
                     disabled={prevDisabled}
-                    aria-label="上一天"
+                    aria-label={t('ui.analysis.prevDay')}
                   >
                     <ChevronLeft className="h-4 w-4" />
                   </Button>
@@ -406,22 +416,22 @@ function AnalysisPage() {
               </TooltipTrigger>
               {prevDisabled && (
                 <TooltipContent>
-                  {datesLoading ? '正在加载分析日期' : '已是最早的分析日期'}
+                  {datesLoading ? t('ui.analysis.loadingDates') : t('ui.analysis.earliestDate')}
                 </TooltipContent>
               )}
             </Tooltip>
             <div className="text-center">
               <div className="font-serif text-xl font-semibold md:text-2xl">
-                {currentDate ? formatDate(currentDate) : '选择日期'}
+                {currentDate ? formatDate(currentDate) : t('ui.analysis.chooseDate')}
               </div>
               <div className="text-xs text-muted-foreground">
                 {viewMode === 'traditional'
                   ? stockAnalyses.length > 0
-                    ? `${stockAnalyses.length} 只股票分析`
-                    : '当日无股票分析'
+                    ? t('ui.analysis.stockCount', { count: stockAnalyses.length })
+                    : t('ui.analysis.noStocksToday')
                   : deepReports.length > 0
-                    ? `${deepReports.length} 份深度报告`
-                    : '暂无深度报告'}
+                    ? t('ui.analysis.reportCount', { count: deepReports.length })
+                    : t('ui.analysis.noDeepReports')}
               </div>
             </div>
             <Tooltip>
@@ -432,7 +442,7 @@ function AnalysisPage() {
                     size="icon"
                     onClick={goNext}
                     disabled={nextDisabled}
-                    aria-label="下一天"
+                    aria-label={t('ui.analysis.nextDay')}
                   >
                     <ChevronRight className="h-4 w-4" />
                   </Button>
@@ -440,7 +450,7 @@ function AnalysisPage() {
               </TooltipTrigger>
               {nextDisabled && (
                 <TooltipContent>
-                  {datesLoading ? '正在加载分析日期' : '已是最新的分析日期'}
+                  {datesLoading ? t('ui.analysis.loadingDates') : t('ui.analysis.latestDate')}
                 </TooltipContent>
               )}
             </Tooltip>
@@ -454,11 +464,11 @@ function AnalysisPage() {
             <div className="flex flex-wrap items-center gap-2">
               <Button onClick={handleOpenBatchInfo}>
                 <Bot className="mr-1.5 h-4 w-4" />
-                运行 Multi-Agent 分析
+                {t('ui.analysis.runMultiAgent')}
               </Button>
               <Button variant="outline" onClick={handleOpenSingleInfo}>
                 <Info className="mr-1.5 h-4 w-4" />
-                单只深度分析
+                {t('ui.analysis.singleDeepAnalysis')}
               </Button>
             </div>
             <div
@@ -479,7 +489,7 @@ function AnalysisPage() {
                 )}
               >
                 <LayoutGrid className="mr-1.5 h-3.5 w-3.5" />
-                传统分析
+                {t('ui.analysis.traditional')}
               </button>
               <button
                 type="button"
@@ -516,7 +526,7 @@ function AnalysisPage() {
                     variant="outline"
                     onClick={() => currentDate && loadAnalysis(currentDate)}
                   >
-                    重试
+                    {t('ui.analysis.retry')}
                   </Button>
                 </CardContent>
               </Card>
@@ -540,10 +550,10 @@ function AnalysisPage() {
                     <Sparkles className="h-5 w-5 text-primary/60" />
                     <div>
                       <div className="text-sm font-medium text-foreground/80">
-                        今日暂无策略复盘
+                        {t('ui.analysis.noPortfolioReview')}
                       </div>
                       <div className="text-xs text-muted-foreground">
-                        当日未发布组合层面的策略总结
+                        {t('ui.analysis.noPortfolioReviewHint')}
                       </div>
                     </div>
                   </CardContent>
@@ -557,9 +567,9 @@ function AnalysisPage() {
             {!loading && !error && stockAnalyses.length > 0 && (
               <div className="space-y-4">
                 <h2 className="font-serif text-lg font-semibold">
-                  个股分析
+                  {t('ui.analysis.stocks')}
                   <span className="ml-2 text-sm font-normal text-muted-foreground">
-                    {stockAnalyses.length} 只
+                    {t('ui.analysis.stockUnit', { count: stockAnalyses.length })}
                   </span>
                 </h2>
                 <div className="flex flex-wrap gap-2">
@@ -573,7 +583,7 @@ function AnalysisPage() {
                         : 'bg-muted text-muted-foreground hover:text-foreground'
                     )}
                   >
-                    全部
+                    {t('ui.analysis.all')}
                   </button>
                   {ratingOptions.map(({ rating, count }) => (
                     <button
@@ -589,7 +599,7 @@ function AnalysisPage() {
                           : 'bg-muted text-muted-foreground hover:text-foreground'
                       )}
                     >
-                      {rating} ({count})
+                      {localizedRating(rating, t)} ({count})
                     </button>
                   ))}
                 </div>
@@ -612,10 +622,10 @@ function AnalysisPage() {
                         </EmptyMedia>
                         <EmptyContent>
                           <EmptyTitle className="font-serif">
-                            该评级下暂无分析
+                            {t('ui.analysis.noRatingAnalysis')}
                           </EmptyTitle>
                           <EmptyDescription>
-                            试试切换其他评级或选择「全部」
+                            {t('ui.analysis.switchRatingHint')}
                           </EmptyDescription>
                         </EmptyContent>
                       </Empty>
@@ -635,12 +645,12 @@ function AnalysisPage() {
                     </EmptyMedia>
                     <EmptyContent>
                       <EmptyTitle className="font-serif">
-                        该日期无分析记录
+                        {t('ui.analysis.noAnalysisDate')}
                       </EmptyTitle>
                       <EmptyDescription>
                         {dates.length > 0
-                          ? '请从左侧选择其他有分析记录的日期'
-                          : '系统中暂无任何分析记录'}
+                          ? t('ui.analysis.chooseAnalysisDate')
+                          : t('ui.analysis.systemNoAnalysis')}
                       </EmptyDescription>
                     </EmptyContent>
                   </Empty>
@@ -653,7 +663,7 @@ function AnalysisPage() {
         {viewMode === 'multiagent' && (
           <div className="space-y-3">
             <p className="text-xs text-muted-foreground">
-              深度报告徽章仅对已完成深度分析的股票显示，可通过「单只深度分析」或「运行 Multi-Agent 分析」生成
+              {t('ui.analysis.deepBadgeHint')}
             </p>
             <DeepReportListContent
               loading={deepReportsLoading}
@@ -669,40 +679,36 @@ function AnalysisPage() {
       <Dialog open={batchInfoOpen} onOpenChange={setBatchInfoOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>由豆包 Agent 运行</DialogTitle>
+            <DialogTitle>{t('ui.analysis.batchDialogTitle')}</DialogTitle>
             <DialogDescription>
-              Multi-Agent 分析不再从本页面直接触发
+              {t('ui.analysis.batchDialogDesc')}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 py-2 text-sm leading-relaxed text-foreground/90">
             <p>
-              Multi-Agent 分析由豆包 Agent 运行
-              <span className="font-medium">
-                「daily-portfolio-analysis」
-              </span>
-              技能完成。
+              {t('ui.analysis.batchAgentIntro')}
             </p>
             <div>
-              <p className="mb-1 font-medium text-foreground">触发方式：</p>
+              <p className="mb-1 font-medium text-foreground">{t('ui.analysis.triggerMethod')}</p>
               <ul className="list-disc space-y-1 pl-5">
-                <li>在豆包对话中发送「执行每日持仓分析」</li>
-                <li>或直接调用 daily-portfolio-analysis 技能</li>
+                <li>{t('ui.analysis.triggerDaily')}</li>
+                <li>{t('ui.analysis.orInvokeSkill')}</li>
               </ul>
             </div>
             <div>
               <p className="mb-1 font-medium text-foreground">
-                Agent 会依次完成：
+                {t('ui.analysis.agentSteps')}
               </p>
               <p className="text-foreground/80">
-                取数 → Bull/Bear 多空辩论 → Critic 批判 → 风控闸 → 最终评级
+                {t('ui.analysis.agentFlow')}
               </p>
             </div>
             <p className="text-foreground/70">
-              结果写入本页并自动刷新。
+              {t('ui.analysis.autoRefreshResult')}
             </p>
           </div>
           <DialogFooter>
-            <Button onClick={() => setBatchInfoOpen(false)}>我知道了</Button>
+            <Button onClick={() => setBatchInfoOpen(false)}>{t('ui.analysis.gotIt')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -711,29 +717,27 @@ function AnalysisPage() {
       <Dialog open={singleInfoOpen} onOpenChange={setSingleInfoOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>单只深度分析</DialogTitle>
+            <DialogTitle>{t('ui.analysis.singleDialogTitle')}</DialogTitle>
             <DialogDescription>
-              单只股票深度分析由豆包 Agent 完成
+              {t('ui.analysis.singleDialogDesc')}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 py-2 text-sm leading-relaxed text-foreground/90">
             <div>
-              <p className="mb-1 font-medium text-foreground">触发方式：</p>
+              <p className="mb-1 font-medium text-foreground">{t('ui.analysis.triggerMethod')}</p>
               <ul className="list-disc space-y-1 pl-5">
                 <li>
-                  在豆包对话中发送「深度分析
-                  <span className="font-mono-nums">{' '}股票代码{' '}</span>
-                  」，例如「深度分析 MSFT」
+                  {t('ui.analysis.deepAnalysisCommand', { ticker: t('holdings.ticker') })}
                 </li>
-                <li>或运行 daily-portfolio-analysis 技能时一并完成</li>
+                <li>{t('ui.analysis.runSkillWithAnalysis')}</li>
               </ul>
             </div>
             <p>
-              Agent 会对该股票跑完整 Multi-Agent 流程并写入本页。
+              {t('ui.analysis.singleAgentDesc')}
             </p>
           </div>
           <DialogFooter>
-            <Button onClick={() => setSingleInfoOpen(false)}>我知道了</Button>
+            <Button onClick={() => setSingleInfoOpen(false)}>{t('ui.analysis.gotIt')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -776,6 +780,7 @@ function DeepReportListContent({
   onReportClick,
   onRefresh,
 }: DeepReportListContentProps) {
+  const { t } = useTranslation();
   if (loading) {
     return (
       <div className="grid gap-4 xl:grid-cols-2">
@@ -811,14 +816,14 @@ function DeepReportListContent({
             </EmptyMedia>
             <EmptyContent>
               <EmptyTitle className="font-serif">
-                还没有深度报告
+                {t('ui.analysis.noReportsYet')}
               </EmptyTitle>
               <EmptyDescription>
-                请在豆包运行 daily-portfolio-analysis，或对豆包说「深度分析 股票代码」生成
+                {t('ui.analysis.generateReportHint')}
               </EmptyDescription>
               <div className="mt-4">
                 <Button variant="outline" size="sm" onClick={onRefresh}>
-                  刷新
+                  {t('ui.analysis.refresh')}
                 </Button>
               </div>
             </EmptyContent>
@@ -834,12 +839,12 @@ function DeepReportListContent({
         <div className="flex items-center gap-2">
           <Sparkles className="h-4 w-4 text-amber-500" />
           <h2 className="font-serif text-lg font-semibold">
-            深度报告列表
+            {t('ui.analysis.reportList')}
           </h2>
           <Badge variant="secondary">{reports.length}</Badge>
         </div>
         <Button variant="outline" size="sm" onClick={onRefresh}>
-          刷新
+          {t('ui.analysis.refresh')}
         </Button>
       </div>
       <div className="grid gap-4 xl:grid-cols-2">
@@ -866,6 +871,7 @@ function DeepReportCard({
   run: AgentRunWithRating;
   onClick: () => void;
 }) {
+  const { t } = useTranslation();
   const hasThreeTargets =
     run.targetBear != null || run.targetBase != null || run.targetBull != null;
   const ratingValue: string | null =
@@ -879,10 +885,10 @@ function DeepReportCard({
 
   const confidenceLabel = (c: string | null | undefined): string => {
     switch (c) {
-      case 'high': return '高置信度';
-      case 'medium': return '中置信度';
-      case 'low': return '低置信度';
-      default: return '置信度未知';
+      case 'high': return t('report.highConfidence');
+      case 'medium': return t('report.mediumConfidence');
+      case 'low': return t('report.lowConfidence');
+      default: return t('ui.analysis.unknownConfidence');
     }
   };
 
@@ -930,7 +936,7 @@ function DeepReportCard({
               className="mt-1.5 gap-1 border-amber-500/50 bg-amber-500/10 text-amber-700 dark:text-amber-400 font-medium"
             >
               <Sparkles size={12} />
-              深度报告
+              {t('ui.analysis.deepReport')}
             </Badge>
           </div>
           {ratingValue && (
@@ -939,7 +945,7 @@ function DeepReportCard({
               data-testid="deep-report-rating-badge"
               className={cn('border-transparent shrink-0', ratingBadgeColor(ratingValue))}
             >
-              {ratingValue}
+              {localizedRating(ratingValue, t)}
             </Badge>
           )}
         </div>
@@ -959,7 +965,7 @@ function DeepReportCard({
           <div className="grid grid-cols-3 gap-2 text-center">
             <div className="rounded-md bg-muted/30 px-2 py-2">
               <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                悲观
+                {t('report.bear')}
               </div>
               <div className="font-mono-nums text-sm font-semibold text-destructive">
                 {run.targetBear ? `$${Number(run.targetBear).toFixed(2)}` : '—'}
@@ -967,7 +973,7 @@ function DeepReportCard({
             </div>
             <div className="rounded-md bg-muted/30 px-2 py-2">
               <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                基准
+                {t('report.base')}
               </div>
               <div className="font-mono-nums text-sm font-semibold text-foreground">
                 {run.targetBase ? `$${Number(run.targetBase).toFixed(2)}` : '—'}
@@ -975,7 +981,7 @@ function DeepReportCard({
             </div>
             <div className="rounded-md bg-muted/30 px-2 py-2">
               <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                乐观
+                {t('report.bull')}
               </div>
               <div className="font-mono-nums text-sm font-semibold text-success">
                 {run.targetBull ? `$${Number(run.targetBull).toFixed(2)}` : '—'}
@@ -990,7 +996,7 @@ function DeepReportCard({
             {formatDateTime(run.completedAt)}
           </span>
           <span className="flex items-center gap-0.5 text-xs font-medium text-amber-600 dark:text-amber-400">
-            查看完整深度报告
+            {t('ui.analysis.viewFullReport')}
             <ArrowRight size={12} />
           </span>
         </div>

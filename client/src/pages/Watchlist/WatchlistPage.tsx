@@ -70,11 +70,21 @@ import { useTranslation } from 'react-i18next';
 function signalFilters(t: (k: string) => string): Array<{ value: 'all' | string; label: string }> {
   return [
     { value: 'all', label: t('watchlist.allSignals') },
-    { value: '强烈买入', label: '强烈买入' },
-    { value: '买入', label: '买入' },
-    { value: '观望', label: '观望' },
-    { value: '回避', label: '回避' },
+    { value: '强烈买入', label: t('analysis.strongBuy') },
+    { value: '买入', label: t('analysis.buy') },
+    { value: '观望', label: t('analysis.watch') },
+    { value: '回避', label: t('analysis.avoid') },
   ];
+}
+
+function localizedSignal(signal: string, t: (k: string) => string): string {
+  const keys: Record<string, string> = {
+    '强烈买入': 'analysis.strongBuy', 'Strong Buy': 'analysis.strongBuy',
+    '买入': 'analysis.buy', Buy: 'analysis.buy',
+    '观望': 'analysis.watch', Watch: 'analysis.watch',
+    '回避': 'analysis.avoid', Avoid: 'analysis.avoid',
+  };
+  return keys[signal] ? t(keys[signal]) : signal;
 }
 
 /** Blank watch-form state; `dateAdded` defaults to today. */
@@ -149,9 +159,9 @@ function WatchlistPage() {
       const data: WatchItem[] = await fetchWatchlist();
       setItems(Array.isArray(data) ? data : []);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : '加载失败';
+      const msg = err instanceof Error ? err.message : t('watchlist.loadFailed');
       setError(msg);
-      toast.error('加载关注列表失败', { description: msg });
+      toast.error(t('watchlist.loadListFailed'), { description: msg });
     } finally {
       setLoading(false);
     }
@@ -192,7 +202,7 @@ function WatchlistPage() {
   /** Validate and submit the create-watch form, then reset and refetch. */
   const handleCreate = async () => {
     if (!formData.ticker.trim()) {
-      toast.error('请输入股票代码');
+      toast.error(t('ui.watchlist.enterTicker'));
       return;
     }
     setSubmitting(true);
@@ -209,13 +219,13 @@ function WatchlistPage() {
         signal: formData.signal || undefined,
         analysis: formData.analysis.trim() || undefined,
       });
-      toast.success('已添加关注');
+      toast.success(t('ui.watchlist.signalAdded'));
       setAddOpen(false);
       setFormData(EMPTY_FORM);
       void loadData();
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : '创建失败';
-      toast.error('添加失败', { description: msg });
+      const msg = err instanceof Error ? err.message : t('ui.watchlist.addFailed');
+      toast.error(t('ui.watchlist.addFailed'), { description: msg });
     } finally {
       setSubmitting(false);
     }
@@ -231,7 +241,7 @@ function WatchlistPage() {
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div className="flex-1">
           <h1 className="font-serif text-2xl font-semibold tracking-tight text-foreground">
-            关注列表
+            {t('watchlist.title')}
           </h1>
           <p className="mt-1 flex flex-wrap items-center gap-1.5 text-sm text-muted-foreground">
             <MarketStatusBadges
@@ -247,7 +257,7 @@ function WatchlistPage() {
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              placeholder="搜索代码或公司名称…"
+              placeholder={t('ui.watchlist.search')}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="pl-9"
@@ -258,7 +268,7 @@ function WatchlistPage() {
             onValueChange={(v) => setSignalFilter(v as 'all' | Signal)}
           >
             <SelectTrigger className="w-full sm:w-40">
-              <SelectValue placeholder="信号筛选" />
+              <SelectValue placeholder={t('ui.watchlist.signalFilter')} />
             </SelectTrigger>
             <SelectContent>
               {signalFilters(t).map((f) => (
@@ -273,22 +283,22 @@ function WatchlistPage() {
           <DialogTrigger asChild>
             <Button>
               <Plus className="h-4 w-4" />
-              添加关注
+              {t('watchlist.addWatch')}
             </Button>
           </DialogTrigger>
           <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
             <DialogHeader>
               <DialogTitle className="font-serif text-xl">
-                添加关注
+                {t('watchlist.addWatch')}
               </DialogTitle>
             </DialogHeader>
             <WatchForm data={formData} onChange={setFormData} includeTicker />
             <DialogFooter>
               <DialogClose asChild>
-                <Button variant="outline">取消</Button>
+                <Button variant="outline">{t('common.cancel')}</Button>
               </DialogClose>
               <Button onClick={handleCreate} disabled={submitting}>
-                {submitting ? '保存中…' : '添加'}
+                {submitting ? t('common.saving') : t('watchlist.addWatch')}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -303,7 +313,7 @@ function WatchlistPage() {
               <span className="text-sm">{error}</span>
             </div>
             <Button size="sm" variant="outline" onClick={loadData}>
-              重试
+              {t('ui.watchlist.retry')}
             </Button>
           </CardContent>
         </Card>
@@ -317,24 +327,24 @@ function WatchlistPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="font-serif">代码</TableHead>
-                    <TableHead className="font-serif">公司名称</TableHead>
-                    <TableHead className="font-serif">行业</TableHead>
-                    <TableHead className="font-serif">信号</TableHead>
+                    <TableHead className="font-serif">{t('watchlist.ticker')}</TableHead>
+                    <TableHead className="font-serif">{t('watchlist.company')}</TableHead>
+                    <TableHead className="font-serif">{t('ui.holdings.sector')}</TableHead>
+                    <TableHead className="font-serif">{t('watchlist.signal')}</TableHead>
                     <TableHead className="text-right font-serif">
-                      买入价
+                      {t('ui.watchlist.entryPrice')}
                     </TableHead>
                      <TableHead className="text-right font-serif">
-                       现价
+                       {t('watchlist.currentPrice')}
                      </TableHead>
                      <TableHead className="text-right font-serif">
-                       涨跌幅
+                       {t('ui.watchlist.changePct')}
                      </TableHead>
                      <TableHead className="text-right font-serif">
-                      目标买入价
+                      {t('ui.watchlist.targetBuyPrice')}
                     </TableHead>
-                    <TableHead className="font-serif">评级</TableHead>
-                    <TableHead className="font-serif">加入日期</TableHead>
+                    <TableHead className="font-serif">{t('watchlist.rating')}</TableHead>
+                    <TableHead className="font-serif">{t('ui.watchlist.joinedDate')}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -365,7 +375,7 @@ function WatchlistPage() {
                                 signalColor(item.signal)
                               )}
                             >
-                              {item.signal}
+                              {localizedSignal(item.signal, t)}
                             </Badge>
                           ) : (
                             <span className="text-muted-foreground">—</span>
@@ -378,7 +388,7 @@ function WatchlistPage() {
                            {formatPrice(getDisplayPrice(item))}
                            {belowPct !== null && (
                              <div className="text-xs text-success">
-                               低于目标{' '}
+                               {t('ui.watchlist.belowTarget')}{' '}
                                {formatPercent(belowPct).replace('+', '')}
                              </div>
                            )}
@@ -425,7 +435,7 @@ function WatchlistPage() {
                           {item.dateAdded ? (
                             formatDate(item.dateAdded)
                           ) : (
-                            <span title="未记录加入日期">--</span>
+                            <span title={t('ui.watchlist.dateMissing')}>--</span>
                           )}
                         </TableCell>
                       </TableRow>
@@ -467,7 +477,7 @@ function WatchlistPage() {
                               signalColor(item.signal)
                             )}
                           >
-                            {item.signal}
+                            {localizedSignal(item.signal, t)}
                           </Badge>
                         )}
                       </div>
@@ -481,7 +491,7 @@ function WatchlistPage() {
                    <div className="grid grid-cols-4 gap-2 text-sm">
                      <div>
                        <div className="text-xs text-muted-foreground">
-                         现价
+                          {t('watchlist.currentPrice')}
                        </div>
                        <div className="font-mono-nums font-medium">
                          {formatPrice(getDisplayPrice(item))}
@@ -489,7 +499,7 @@ function WatchlistPage() {
                      </div>
                      <div>
                        <div className="text-xs text-muted-foreground">
-                         涨跌幅
+                         {t('ui.watchlist.changePct')}
                        </div>
                         {quotes[item.ticker] ? (
                           <div
@@ -510,7 +520,7 @@ function WatchlistPage() {
                      </div>
                     <div>
                       <div className="text-xs text-muted-foreground">
-                        目标买入
+                        {t('watchlist.targetBuy')}
                       </div>
                       <div className="font-mono-nums font-medium">
                         {formatPrice(item.targetBuy)}
@@ -518,7 +528,7 @@ function WatchlistPage() {
                     </div>
                     <div>
                       <div className="text-xs text-muted-foreground">
-                        买入价
+                        {t('ui.watchlist.entryPrice')}
                       </div>
                       <div className="font-mono-nums font-medium">
                         {formatPrice(item.entryPrice)}
@@ -527,7 +537,7 @@ function WatchlistPage() {
                   </div>
                   {belowPct !== null && (
                     <div className="mt-2 text-xs text-success">
-                      低于目标{' '}
+                      {t('ui.watchlist.belowTarget')}{' '}
                       {formatPercent(belowPct).replace('+', '')}
                     </div>
                   )}
@@ -549,13 +559,13 @@ function WatchlistPage() {
               <EmptyContent>
                 <EmptyTitle className="font-serif">
                   {search || signalFilter !== 'all'
-                    ? '没有匹配的关注股票'
+                    ? t('watchlist.noMatch')
                     : t('watchlist.noItems')}
                 </EmptyTitle>
                 <EmptyDescription>
                   {search || signalFilter !== 'all'
-                    ? '试试调整搜索关键词或筛选条件'
-                    : '点击"添加关注"开始追踪你感兴趣的股票'}
+                    ? t('ui.watchlist.noMatchHint')
+                    : t('ui.watchlist.emptyHint')}
                 </EmptyDescription>
               </EmptyContent>
             </Empty>

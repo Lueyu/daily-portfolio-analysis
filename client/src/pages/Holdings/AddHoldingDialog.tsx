@@ -7,6 +7,7 @@
  * empty so the backend can default them. Market is auto-detected from ticker.
  */
 import { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import type { Group, Market, Currency } from '@shared/api.interface';
 import { createHolding, createGroup } from '@/api';
@@ -85,12 +86,6 @@ function detectMarket(symbol: string): {
   return { market: 'US', currency: 'USD', displaySymbol: upper };
 }
 
-const MARKET_LABEL: Record<Market, string> = {
-  US: '美股 USD',
-  HK: '港股 HKD',
-  CN: 'A股 CNY',
-};
-
 export default function AddHoldingDialog({
   open,
   onOpenChange,
@@ -98,6 +93,7 @@ export default function AddHoldingDialog({
   onCreated,
   onGroupsChanged,
 }: AddHoldingDialogProps) {
+  const { t } = useTranslation();
   const [saving, setSaving] = useState(false);
   const [creatingGroup, setCreatingGroup] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
@@ -151,7 +147,7 @@ export default function AddHoldingDialog({
   const handleCreateGroup = async () => {
     const name = newGroupName.trim();
     if (!name) {
-      toast.error('请输入分组名称');
+      toast.error(t('ui.holdings.enterGroupName'));
       return;
     }
     setCreatingGroup(true);
@@ -161,10 +157,10 @@ export default function AddHoldingDialog({
       setForm((f) => ({ ...f, groupId: g.id }));
       setNewGroupName('');
       setCreatingGroup(false);
-      toast.success(`已创建分组「${name}」`);
+      toast.success(t('ui.holdings.groupCreated', { name }));
       onGroupsChanged?.();
     } catch (err) {
-      toast.error('创建分组失败');
+      toast.error(t('ui.holdings.createGroupFailed'));
     } finally {
       setCreatingGroup(false);
     }
@@ -176,11 +172,11 @@ export default function AddHoldingDialog({
    */
   const handleSubmit = async () => {
     if (!form.ticker.trim()) {
-      toast.error('请输入代码 (Ticker)');
+      toast.error(t('holdings.tickerInvalid'));
       return;
     }
     if (!form.shares || parseFloat(form.shares) <= 0) {
-      toast.error('请输入有效的股数');
+      toast.error(t('tx.sharesInvalid'));
       return;
     }
     setSaving(true);
@@ -203,12 +199,12 @@ export default function AddHoldingDialog({
       if (form.groupId) payload.groupId = form.groupId;
 
       await createHolding(payload);
-      toast.success('持仓已添加');
+      toast.success(t('holdings.addHolding'));
       reset();
       onOpenChange(false);
       onCreated();
     } catch (err) {
-      toast.error('添加失败');
+      toast.error(t('ui.holdings.addFailed'));
     } finally {
       setSaving(false);
     }
@@ -218,20 +214,20 @@ export default function AddHoldingDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="font-serif text-xl">添加持仓</DialogTitle>
+          <DialogTitle className="font-serif text-xl">{t('holdings.addHolding')}</DialogTitle>
           <DialogDescription>
-            填写新的持仓信息，带 * 为必填项；市场会按代码自动识别
+            {t('ui.holdings.addDescription')}
           </DialogDescription>
         </DialogHeader>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-2">
           <div className="space-y-1.5">
             <Label>
-              代码 <span className="text-destructive">*</span>
+              {t('holdings.ticker')} <span className="text-destructive">*</span>
             </Label>
             <div className="flex items-center gap-2">
               <Input
-                placeholder="如 AAPL / 600089 / 00700"
+                placeholder={t('ui.holdings.tickerExample')}
                 value={form.ticker}
                 onChange={(e) =>
                   setForm({ ...form, ticker: e.target.value.toUpperCase() })
@@ -242,13 +238,13 @@ export default function AddHoldingDialog({
                   variant="outline"
                   className="shrink-0 text-[10px] font-normal whitespace-nowrap"
                 >
-                  {MARKET_LABEL[marketPreview.market]} · {marketPreview.displaySymbol}
+                  {t(`common.${marketPreview.market === 'US' ? 'usMarket' : marketPreview.market === 'HK' ? 'hkMarket' : 'cnMarket'}`)} {marketPreview.currency} · {marketPreview.displaySymbol}
                 </Badge>
               )}
             </div>
           </div>
           <div className="space-y-1.5">
-            <Label>公司名称</Label>
+            <Label>{t('holdings.company')}</Label>
             <Input
               value={form.company}
               onChange={(e) =>
@@ -257,7 +253,7 @@ export default function AddHoldingDialog({
             />
           </div>
           <div className="space-y-1.5">
-            <Label>行业</Label>
+            <Label>{t('ui.holdings.sector')}</Label>
             <Input
               value={form.sector}
               onChange={(e) =>
@@ -266,14 +262,14 @@ export default function AddHoldingDialog({
             />
           </div>
           <div className="space-y-1.5">
-            <Label>所属分组</Label>
+            <Label>{t('ui.holdings.groupName')}</Label>
             <div className="flex items-center gap-2">
               <Select
                 value={form.groupId}
                 onValueChange={(v) => setForm({ ...form, groupId: v })}
               >
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder="未分组" />
+                  <SelectValue placeholder={t('holdings.noGroup')} />
                 </SelectTrigger>
                 <SelectContent>
                   {allGroups.map((g) => (
@@ -291,14 +287,14 @@ export default function AddHoldingDialog({
                 onClick={() => setCreatingGroup((v) => !v)}
               >
                 <Plus className="size-3.5" />
-                新建
+                {t('ui.holdings.newGroup')}
               </Button>
             </div>
             {creatingGroup && (
               <div className="flex items-center gap-2 pt-1">
                 <Input
                   autoFocus
-                  placeholder="新分组名称，如「港股科技」"
+                  placeholder={t('ui.holdings.newGroupPlaceholder')}
                   value={newGroupName}
                   onChange={(e) => setNewGroupName(e.target.value)}
                   onKeyDown={(e) => {
@@ -316,13 +312,13 @@ export default function AddHoldingDialog({
                   disabled={!newGroupName.trim()}
                   className="h-8"
                 >
-                  确定
+                  {t('common.confirm')}
                 </Button>
               </div>
             )}
           </div>
           <div className="space-y-1.5">
-            <Label>买入日期</Label>
+            <Label>{t('holdings.buyDate')}</Label>
             <Input
               type="date"
               value={form.buyDate}
@@ -332,7 +328,7 @@ export default function AddHoldingDialog({
             />
           </div>
           <div className="space-y-1.5">
-            <Label>买入价</Label>
+            <Label>{t('holdings.buyPrice')}</Label>
             <Input
               type="number"
               step="0.01"
@@ -344,7 +340,7 @@ export default function AddHoldingDialog({
           </div>
           <div className="space-y-1.5">
             <Label>
-              股数 <span className="text-destructive">*</span>
+              {t('holdings.shares')} <span className="text-destructive">*</span>
             </Label>
             <Input
               type="number"
@@ -356,7 +352,7 @@ export default function AddHoldingDialog({
             />
           </div>
           <div className="space-y-1.5">
-            <Label>现价</Label>
+            <Label>{t('ui.holdings.currentPrice')}</Label>
             <Input
               type="number"
               step="0.01"
@@ -367,13 +363,13 @@ export default function AddHoldingDialog({
             />
           </div>
           <div className="space-y-1.5">
-            <Label>评级</Label>
+            <Label>{t('ui.holdings.rating')}</Label>
             <Select
               value={form.rating}
               onValueChange={(v) => setForm({ ...form, rating: v })}
             >
               <SelectTrigger className="w-full">
-                <SelectValue placeholder="选择评级" />
+                <SelectValue placeholder={t('ui.holdings.chooseRating')} />
               </SelectTrigger>
               <SelectContent>
                 {['Strong Buy', 'Buy', 'Hold', 'Sell', 'Strong Sell'].map(
@@ -387,27 +383,32 @@ export default function AddHoldingDialog({
             </Select>
           </div>
           <div className="space-y-1.5">
-            <Label>操作建议</Label>
+            <Label>{t('ui.holdings.actions')}</Label>
             <Select
               value={form.action}
               onValueChange={(v) => setForm({ ...form, action: v })}
             >
               <SelectTrigger className="w-full">
-                <SelectValue placeholder="选择操作" />
+                <SelectValue placeholder={t('ui.holdings.chooseAction')} />
               </SelectTrigger>
               <SelectContent>
-                {['加仓', '买入', '持有', '减仓', '卖出', '观望'].map(
-                  (a) => (
-                    <SelectItem key={a} value={a}>
-                      {a}
+                {[
+                  ['加仓', 'analysis.add'],
+                  ['买入', 'analysis.buy'],
+                  ['持有', 'analysis.hold'],
+                  ['减仓', 'analysis.reduce'],
+                  ['卖出', 'analysis.sell'],
+                  ['观望', 'analysis.watch'],
+                ].map(([value, label]) => (
+                    <SelectItem key={value} value={value}>
+                      {t(label)}
                     </SelectItem>
-                  )
-                )}
+                  ))}
               </SelectContent>
             </Select>
           </div>
           <div className="space-y-1.5 md:col-span-2">
-            <Label>目标价</Label>
+            <Label>{t('ui.holdings.targetPrice')}</Label>
             <Input
               type="number"
               step="0.01"
@@ -418,7 +419,7 @@ export default function AddHoldingDialog({
             />
           </div>
           <div className="space-y-1.5 md:col-span-2">
-            <Label>分析</Label>
+            <Label>{t('ui.holdings.analysis')}</Label>
             <Textarea
               rows={3}
               value={form.analysis}
@@ -435,10 +436,10 @@ export default function AddHoldingDialog({
             size="sm"
             onClick={() => onOpenChange(false)}
           >
-            取消
+            {t('common.cancel')}
           </Button>
           <Button size="sm" onClick={handleSubmit} disabled={saving}>
-            {saving ? '保存中...' : '添加'}
+            {saving ? t('common.saving') : t('holdings.add')}
           </Button>
         </DialogFooter>
       </DialogContent>

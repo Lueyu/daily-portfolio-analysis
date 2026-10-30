@@ -8,6 +8,7 @@
  * entry or a snapshot, for quick navigation.
  */
 import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Edit3, Save, X } from 'lucide-react';
 import { toast } from 'sonner';
 import http from '@/api/http';
@@ -43,6 +44,7 @@ function safeDateStr(value: string | null | undefined): string {
  * values, and loading/saving flags.
  */
 export default function JournalPage() {
+  const { t } = useTranslation();
   const [currentDate, setCurrentDate] = useState<Date>(() => new Date());
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [journal, setJournal] = useState<JournalEntry | null>(null);
@@ -64,11 +66,11 @@ export default function JournalPage() {
       setJournal(items && items.length > 0 ? items[0] : null);
     } catch (error) {
       logger.error('加载日志失败', error);
-      toast.error('加载日志失败');
+      toast.error(t('journal.loadFailed'));
     } finally {
       setLoadingJournal(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     let mounted = true;
@@ -86,14 +88,14 @@ export default function JournalPage() {
         }
       } catch (error) {
         logger.error('加载快照失败', error);
-        toast.error('加载快照失败');
+        toast.error(t('journal.loadNavFailed'));
       } finally {
         if (mounted) setLoadingSnap(false);
       }
     };
     load();
     return () => { mounted = false; };
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     loadJournal(dateStr);
@@ -171,11 +173,11 @@ export default function JournalPage() {
       });
       setJournal(response.data);
       setEditing(false);
-      toast.success('日志已保存');
+      toast.success(t('journal.saved'));
       loadJournal(dateStr);
     } catch (error) {
       logger.error('保存日志失败', error);
-      toast.error('保存失败，请重试');
+      toast.error(t('journal.editFailed'));
     } finally {
       setSaving(false);
     }
@@ -200,27 +202,27 @@ export default function JournalPage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="font-serif text-3xl font-semibold tracking-tight text-foreground">
-            投资日志
+            {t('journal.title')}
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            每日复盘、操作记录与投资心得
+            {t('ui.journal.subtitle')}
           </p>
         </div>
         <div className="flex items-center gap-2">
           {!editing ? (
             <Button onClick={startEdit} size="sm" className="gap-1.5">
               <Edit3 size={14} />
-              编辑日志
+              {t('ui.journal.editJournal')}
             </Button>
           ) : (
             <>
               <Button variant="outline" size="sm" onClick={cancelEdit} className="gap-1.5">
                 <X size={14} />
-                取消
+                {t('common.cancel')}
               </Button>
               <Button size="sm" onClick={saveJournal} disabled={saving} className="gap-1.5">
                 <Save size={14} />
-                {saving ? '保存中...' : '保存'}
+                {saving ? t('common.saving') : t('common.save')}
               </Button>
             </>
           )}
@@ -240,7 +242,7 @@ export default function JournalPage() {
 
       <div className="grid gap-6 lg:grid-cols-[1fr_240px]">
         <div>
-          <h2 className="mb-3 font-serif text-xl font-semibold">每日投资总结</h2>
+          <h2 className="mb-3 font-serif text-xl font-semibold">{t('ui.journal.dailySummary')}</h2>
           {loadingJournal ? (
             <div className="grid gap-3 sm:grid-cols-2">
               {Array.from({ length: 5 }).map((_, i) => (
@@ -271,12 +273,12 @@ export default function JournalPage() {
         </div>
 
         <div>
-          <h2 className="mb-3 font-serif text-xl font-semibold">历史日志</h2>
+          <h2 className="mb-3 font-serif text-xl font-semibold">{t('ui.journal.history')}</h2>
           <Card>
             <CardContent className="p-2">
               {historyDates.length === 0 ? (
                 <div className="py-6 text-center text-sm text-muted-foreground">
-                  暂无历史记录
+                  {t('ui.journal.noHistory')}
                 </div>
               ) : (
                 <div className="max-h-[500px] space-y-0.5 overflow-y-auto">

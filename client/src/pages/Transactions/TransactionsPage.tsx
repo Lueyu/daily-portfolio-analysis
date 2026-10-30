@@ -126,8 +126,8 @@ export default function TransactionsPage() {
       );
       setTransactions(list);
     } catch (err) {
-      setTxError('加载交易记录失败');
-      toast.error('加载交易记录失败');
+      setTxError(t('tx.loadTxFailed'));
+      toast.error(t('tx.loadTxFailed'));
     } finally {
       setTxLoading(false);
     }
@@ -141,8 +141,8 @@ export default function TransactionsPage() {
       const data = await fetchClosed();
       setClosed(data as ClosedPosition[]);
     } catch (err) {
-      setClosedError('加载已平仓记录失败');
-      toast.error('加载已平仓记录失败');
+      setClosedError(t('tx.loadClosedFailed'));
+      toast.error(t('tx.loadClosedFailed'));
     } finally {
       setClosedLoading(false);
     }
@@ -156,8 +156,8 @@ export default function TransactionsPage() {
       const data = await fetchRealizedPlSummary();
       setRealizedPl(data as RealizedPlSummary);
     } catch (err) {
-      setRealizedPlError('加载已实现盈亏失败');
-      toast.error('加载已实现盈亏失败');
+      setRealizedPlError(t('tx.loadPlFailed'));
+      toast.error(t('tx.loadPlFailed'));
     } finally {
       setRealizedPlLoading(false);
     }
@@ -185,14 +185,14 @@ export default function TransactionsPage() {
         url: `/api/portfolio/transactions/${deleteTarget}`,
         method: 'DELETE',
       });
-      toast.success('已删除，持仓已同步更新');
+      toast.success(t('ui.tx.deleteSynced'));
       setTransactions((prev) => prev.filter((tx) => tx.id !== deleteTarget));
       setDeleteTarget(null);
       loadClosed();
       loadRealizedPl();
       notifyPortfolioUpdate();
     } catch (err) {
-      toast.error('删除失败');
+      toast.error(t('tx.deleteFailed'));
     } finally {
       setDeleting(false);
     }
@@ -207,14 +207,18 @@ export default function TransactionsPage() {
     try {
       const result = await reconcileTransactions();
       toast.success(
-        `对账完成：${result.holdingsCount} 只持仓 / ${result.closedCount} 笔已平仓 / ${result.processedTxCount} 笔交易`
+        t('ui.tx.reconcileComplete', {
+          holdings: result.holdingsCount,
+          closed: result.closedCount,
+          transactions: result.processedTxCount,
+        })
       );
       loadTransactions();
       loadClosed();
       loadRealizedPl();
       notifyPortfolioUpdate();
     } catch (err) {
-      toast.error('对账失败');
+      toast.error(t('ui.tx.reconcileFailed'));
     } finally {
       setReconciling(false);
     }
@@ -252,10 +256,10 @@ export default function TransactionsPage() {
         <div>
           <h1 className="font-serif text-2xl md:text-3xl font-semibold tracking-tight flex items-center gap-2.5">
             <Receipt className="size-6 text-primary" />
-            交易记录
+            {t('tx.title')}
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            追踪每一笔交易与已平仓盈亏
+            {t('ui.tx.subtitle')}
           </p>
         </div>
           <Button
@@ -268,7 +272,7 @@ export default function TransactionsPage() {
             }}
           >
           <RefreshCw className="size-4" />
-          刷新
+          {t('ui.tx.refresh')}
         </Button>
       </div>
 
@@ -276,11 +280,11 @@ export default function TransactionsPage() {
         <TabsList className="mb-4">
           <TabsTrigger value="transactions">
             <TrendingUp className="size-4 mr-1.5" />
-            交易流水
+            {t('ui.tx.ledger')}
           </TabsTrigger>
           <TabsTrigger value="realized">
             <TrendingUp className="size-4 mr-1.5" />
-            已实现盈亏
+            {t('ui.tx.realized')}
           </TabsTrigger>
         </TabsList>
 
@@ -289,7 +293,7 @@ export default function TransactionsPage() {
             <div className="relative flex-1 sm:w-64">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
               <Input
-                placeholder="筛选代码..."
+                placeholder={t('ui.tx.tickerFilter')}
                 value={tickerFilter}
                 onChange={(e) => setTickerFilter(e.target.value)}
                 className="pl-9"
@@ -303,19 +307,19 @@ export default function TransactionsPage() {
                 disabled={reconciling}
               >
                 <Calculator className="size-4" />
-                {reconciling ? '对账中...' : '重算对账'}
+                {reconciling ? t('ui.tx.reconciling') : t('ui.tx.reconcile')}
               </Button>
               <Button size="sm" onClick={() => setAddTxOpen(true)}>
                 <Plus className="size-4" />
-                添加交易
+                {t('tx.addTx')}
               </Button>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-3 mb-4 sm:grid-cols-3">
+          <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3">
              <Card>
                <CardContent className="p-4">
-                 <div className="text-xs text-muted-foreground">交易笔数</div>
+                 <div className="text-xs text-muted-foreground">{t('ui.tx.tradeCount')}</div>
                 <div className="font-mono-nums text-xl font-semibold mt-1">
                   {txLoading ? '—' : txStats.count}
                 </div>
@@ -325,18 +329,18 @@ export default function TransactionsPage() {
               <CardContent className="p-4">
                 <div className="text-xs text-muted-foreground flex items-center gap-1">
                   <ArrowDownToLine className="size-3 text-muted-foreground" />
-                  买入总额
+                  {t('ui.tx.totalBuys')}
                 </div>
                 <div className="font-mono-nums text-xl font-semibold mt-1 text-foreground">
                   {txLoading ? '—' : formatCurrency(txStats.buyTotal)}
                 </div>
               </CardContent>
             </Card>
-            <Card>
+            <Card className="col-span-2 sm:col-span-1">
               <CardContent className="p-4">
                 <div className="text-xs text-muted-foreground flex items-center gap-1">
                   <ArrowUpFromLine className="size-3 text-muted-foreground" />
-                  卖出总额
+                  {t('ui.tx.totalSells')}
                 </div>
                 <div className="font-mono-nums text-xl font-semibold mt-1 text-foreground">
                   {txLoading ? '—' : formatCurrency(txStats.sellTotal)}
@@ -365,15 +369,15 @@ export default function TransactionsPage() {
                       <Receipt />
                     </EmptyMedia>
                     <EmptyHeader>
-                      <EmptyTitle>暂无交易记录</EmptyTitle>
+                      <EmptyTitle>{t('ui.tx.emptyTx')}</EmptyTitle>
                       <EmptyDescription>
-                        点击「添加交易」记录第一笔交易
+                        {t('ui.tx.emptyTxHint')}
                       </EmptyDescription>
                     </EmptyHeader>
                     <EmptyContent>
                       <Button size="sm" onClick={() => setAddTxOpen(true)}>
                         <Plus className="size-4" />
-                        添加交易
+                        {t('tx.addTx')}
                       </Button>
                     </EmptyContent>
                   </Empty>
@@ -382,15 +386,15 @@ export default function TransactionsPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>日期</TableHead>
-                      <TableHead>类型</TableHead>
-                      <TableHead>代码</TableHead>
-                      <TableHead>币种</TableHead>
-                      <TableHead className="text-right">股数</TableHead>
-                      <TableHead className="text-right">价格</TableHead>
-                      <TableHead className="text-right">手续费</TableHead>
-                      <TableHead className="text-right">金额</TableHead>
-                      <TableHead className="max-w-[200px]">备注</TableHead>
+                      <TableHead>{t('tx.date')}</TableHead>
+                      <TableHead>{t('tx.type')}</TableHead>
+                      <TableHead>{t('holdings.ticker')}</TableHead>
+                      <TableHead>{t('ui.tx.currency')}</TableHead>
+                      <TableHead className="text-right">{t('tx.shares')}</TableHead>
+                      <TableHead className="text-right">{t('tx.price')}</TableHead>
+                      <TableHead className="text-right">{t('tx.fees')}</TableHead>
+                      <TableHead className="text-right">{t('ui.tx.amount')}</TableHead>
+                      <TableHead className="max-w-[200px]">{t('tx.notes')}</TableHead>
                       <TableHead className="w-[60px]"></TableHead>
                     </TableRow>
                   </TableHeader>
@@ -412,7 +416,7 @@ export default function TransactionsPage() {
                                 ? parseFloat(tx.fees || '0')
                                 : -parseFloat(tx.fees || '0'));
                       const isOutflow = isBuy || isWithdrawal;
-                      const typeLabel = isBuy ? t('tx.buy') : isSell ? t('tx.sell') : isDeposit ? '存入' : isWithdrawal ? '取款' : t('tx.opening');
+                      const typeLabel = isBuy ? t('tx.buy') : isSell ? t('tx.sell') : isDeposit ? t('ui.tx.typeDeposit') : isWithdrawal ? t('ui.tx.typeWithdrawal') : t('tx.opening');
                       const typeClass = isOpening
                         ? 'bg-slate-500/15 text-slate-300 border-slate-500/30'
                         : isBuy
@@ -521,15 +525,15 @@ export default function TransactionsPage() {
                   <TrendingUp />
                 </EmptyMedia>
                 <EmptyHeader>
-                  <EmptyTitle>暂无已实现盈亏</EmptyTitle>
+                  <EmptyTitle>{t('ui.tx.emptyRealized')}</EmptyTitle>
                   <EmptyDescription>
-                    完成平仓后，这里将汇总你的已实现盈亏表现
+                    {t('ui.tx.emptyRealizedHint')}
                   </EmptyDescription>
                 </EmptyHeader>
                 <EmptyContent>
                   <Button size="sm" onClick={() => setAddClosedOpen(true)}>
                     <Plus className="size-4" />
-                    添加已平仓
+                    {t('ui.tx.addClosed')}
                   </Button>
                 </EmptyContent>
               </Empty>
@@ -565,18 +569,18 @@ export default function TransactionsPage() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>确认删除</AlertDialogTitle>
+            <AlertDialogTitle>{t('tx.deleteConfirm')}</AlertDialogTitle>
             <AlertDialogDescription>
-              确定要删除这笔交易记录吗？此操作无法撤销。
+              {t('ui.tx.confirmDeleteDesc')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {deleting ? '删除中...' : '确认删除'}
+              {deleting ? t('ui.tx.deleteProgress') : t('ui.tx.confirmDelete')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -596,6 +600,7 @@ function RealizedPlContent({
   summary: RealizedPlSummary;
   onAddClosed: () => void;
 }) {
+  const { t } = useTranslation();
   const totalPl = Object.values(summary.totalByCurrency).reduce(
     (acc, v) => acc + parseFloat(v || '0'),
     0
@@ -613,7 +618,7 @@ function RealizedPlContent({
       <div className="flex justify-end">
         <Button size="sm" onClick={onAddClosed}>
           <Plus className="size-4" />
-          添加已平仓
+          {t('ui.tx.addClosed')}
         </Button>
       </div>
 
@@ -628,7 +633,7 @@ function RealizedPlContent({
       >
         <CardContent className="p-6 md:p-8">
           <div className="text-sm font-medium text-muted-foreground">
-            Total Realized P&L
+            {t('tx.realizedPl')}
           </div>
           <div
             className={cn(
@@ -644,14 +649,14 @@ function RealizedPlContent({
               <span className="font-semibold text-success">
                 {summary.totalWinners}
               </span>
-              笔盈利
+              {t('ui.tx.countWinners')}
             </span>
             <span className="text-border">·</span>
             <span className="flex items-center gap-1">
               <span className="font-semibold text-destructive">
                 {summary.totalLosers}
               </span>
-              笔亏损
+              {t('ui.tx.countLosers')}
             </span>
           </div>
         </CardContent>
@@ -662,7 +667,7 @@ function RealizedPlContent({
         <Card>
           <CardContent className="p-4 space-y-2">
             <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              分币种汇总
+              {t('ui.tx.byCurrency')}
             </div>
             {currencies.map(([currency, value]) => {
               const num = parseFloat(value);
@@ -696,13 +701,13 @@ function RealizedPlContent({
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>股票</TableHead>
-                <TableHead>已实现盈亏</TableHead>
-                <TableHead className="text-right">收益率</TableHead>
-                <TableHead className="text-right">累计平仓股数</TableHead>
-                <TableHead className="text-right">平仓次数</TableHead>
-                <TableHead className="text-right">最近平仓</TableHead>
-                <TableHead className="text-right">币种</TableHead>
+                <TableHead>{t('ui.tx.stock')}</TableHead>
+                <TableHead>{t('tx.realizedPl')}</TableHead>
+                <TableHead className="text-right">{t('ui.tx.returnPct')}</TableHead>
+                <TableHead className="text-right">{t('ui.tx.closedShares')}</TableHead>
+                <TableHead className="text-right">{t('ui.tx.closeCount')}</TableHead>
+                <TableHead className="text-right">{t('ui.tx.recentClose')}</TableHead>
+                <TableHead className="text-right">{t('ui.tx.currency')}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -790,17 +795,17 @@ function RealizedPlContent({
               </div>
               <div className="grid grid-cols-3 gap-2 text-sm pt-2 border-t border-border/50">
                 <div>
-                  <div className="text-xs text-muted-foreground">股数</div>
+                  <div className="text-xs text-muted-foreground">{t('tx.shares')}</div>
                   <div className="font-mono-nums">
                     {formatShares(item.totalShares)}
                   </div>
                 </div>
                 <div>
-                  <div className="text-xs text-muted-foreground">次数</div>
+                  <div className="text-xs text-muted-foreground">{t('ui.tx.closeCount')}</div>
                   <div className="font-mono-nums">{item.closeCount}</div>
                 </div>
                 <div>
-                  <div className="text-xs text-muted-foreground">最近</div>
+                  <div className="text-xs text-muted-foreground">{t('ui.tx.recentClose')}</div>
                   <div className="font-mono-nums text-xs">
                     {formatDate(item.lastCloseDate)}
                   </div>
