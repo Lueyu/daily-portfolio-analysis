@@ -4,6 +4,31 @@ import type {
   PaperSide,
   RecordBuilderFillDto,
 } from '../../../shared/api.interface';
+import type { CouncilConfig } from '../../../shared/council.interface';
+import { normalizeCadence } from './trading-cadence';
+
+export function normalizeCouncil(input?: CouncilConfig): CouncilConfig {
+  if (input === undefined) return { enabled: false, members: [
+    { id: 'researcher', role: 'researcher', name: 'Researcher', instructions: '', model: 'fast' },
+    { id: 'challenger', role: 'challenger', name: 'Challenger', instructions: '', model: 'fast' },
+    { id: 'manager', role: 'manager', name: 'Portfolio manager', instructions: '', model: 'slow' },
+  ] };
+  if (!input || typeof input.enabled !== 'boolean' || !Array.isArray(input.members) || input.members.length !== 3) {
+    throw new Error('Council needs three members and an enabled preference');
+  }
+  const roles = new Set<string>();
+  const ids = new Set<string>();
+  const members = input.members.map((member) => {
+    if (!member || !['researcher', 'challenger', 'manager'].includes(member.role) || roles.has(member.role)) throw new Error('Council roles must be unique');
+    if (typeof member.id !== 'string' || !/^[a-zA-Z0-9_-]{1,32}$/.test(member.id) || ids.has(member.id)) throw new Error('Invalid council member id');
+    if (typeof member.name !== 'string' || !member.name.trim() || member.name.trim().length > 40) throw new Error('Member name must contain 1–40 characters');
+    if (typeof member.instructions !== 'string' || member.instructions.length > 1000) throw new Error('Member instructions must be at most 1000 characters');
+    if (member.model !== 'fast' && member.model !== 'slow') throw new Error('Invalid member model tier');
+    roles.add(member.role); ids.add(member.id);
+    return { id: member.id, role: member.role, name: member.name.trim(), instructions: member.instructions.trim(), model: member.model };
+  });
+  return { enabled: input.enabled, members };
+}
 
 /** Inputs that are known at one bot scan, before an order is considered. */
 export interface BuilderSignalContext {
@@ -33,6 +58,7 @@ const TEMPLATES: BuilderTemplate[] = ['guard', 'scout', 'balanced'];
 /** Validate executable limits and normalize the investor's allowlist. */
 export function normalizeBuilderConfig(input: BuilderConfig): BuilderConfig {
   if (!input || typeof input !== 'object') throw new Error('Agent configuration is required');
+  if (input.language !== undefined && input.language !== 'zh-CN' && input.language !== 'en') throw new Error('Invalid agent language');
   const name = typeof input.name === 'string' ? input.name.trim() : '';
   if (!name || name.length > 64) throw new Error('Agent name must contain 1–64 characters');
   if (!TEMPLATES.includes(input.template)) throw new Error('Unknown agent template');
@@ -89,7 +115,8 @@ export function normalizeBuilderConfig(input: BuilderConfig): BuilderConfig {
     throw new Error('Daily order cap must be between 1 and 20');
   }
   if (typeof input.notifyOnProposal !== 'boolean') throw new Error('Notification preference is required');
-  return { ...input, name, tickers, priceRules, customPrompt: input.customPrompt.trim() };
+  return { ...input, name, tickers, priceRules, customPrompt: input.customPrompt.trim(), language: input.language ?? 'zh-CN',
+    cadence: normalizeCadence(input.cadence), council: normalizeCouncil(input.council) };
 }
 
 /** A transparent, deterministic decision. The LLM may veto but never bypass it. */

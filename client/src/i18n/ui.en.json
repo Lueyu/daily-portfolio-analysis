@@ -805,7 +805,7 @@
     "previewBehavior": "Preview behavior",
     "previewTitle": "How this agent would respond",
     "previewHint": "These are illustrative scenarios using your chosen rules, not a live backtest or an order forecast.",
-    "previewResult": { "paper": "Paper order", "wait": "Wait", "block": "Blocked" },
+    "previewResult": { "paper": "Paper candidate", "wait": "Wait", "block": "Blocked" },
     "scenario": {
       "rated-buy": "Qualifying buy rating",
       "stale-price": "Stale quote",
@@ -813,10 +813,10 @@
       "price-trigger": "Your price trigger"
     },
     "scenarioExplanation": {
-      "rated-buy": "A qualifying rating can open a paper position up to {{maxOrderPct}}% of equity, except in Guard mode, which never opens new positions.",
+      "rated-buy": "A qualifying rating can create a paper candidate up to {{maxOrderPct}}% of equity. Council review, cadence and risk checks still apply. Guard mode never opens new positions.",
       "stale-price": "Without a current quote, the agent waits. Stored portfolio prices cannot trigger an order.",
       "risk-limit": "The paper risk gate blocks orders beyond the {{dailyLossLimitPct}}% daily loss limit.",
-      "price-trigger": "Your price can create a paper signal without an AI rating when the template allows it. Guard never opens new positions. Risk limits still apply."
+      "price-trigger": "Your price can create a paper candidate without an AI rating when the template allows it. Council review, cadence and risk checks still apply. Guard never opens new positions."
     },
     "paperOnlyNotice": "Activation can place orders in the paper account only. A proposal is never a real trade, and recording a real fill here does not change your holdings or transaction ledger.",
     "createDraft": "Create draft",

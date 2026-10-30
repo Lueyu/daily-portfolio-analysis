@@ -288,6 +288,11 @@ export default function SettingsPage() {
 
       <AppearanceSettingsCard />
       <RecoveryCodeCard />
+      <Card><CardContent className="flex flex-wrap items-center justify-between gap-4 pt-5">
+        <div><p className="font-semibold">{t('council.budget.title')}</p>
+          <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">{t('council.budget.intro')}</p></div>
+        <Button asChild variant="outline" size="sm"><Link to="/agent-builder?tab=budget">{t('council.budget.open')}</Link></Button>
+      </CardContent></Card>
 
       {llm?.engine === 'basic' && (
         <Card className="border-success/30 bg-success/5">

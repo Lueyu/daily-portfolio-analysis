@@ -18,9 +18,19 @@
  *    debate, critique, and rating aggregation.
  */
 import { Injectable, Logger } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 import axios from 'axios';
 import { SettingsService } from '../settings/settings.service';
 import { normalizePublicLlmBaseUrl, publicHttpsAgent } from '../settings/settings-security';
+import { LlmBudgetService } from '../llm-budget/llm-budget.service';
+
+export interface LlmCallOptions {
+  taskId?: string;
+  purpose?: string;
+  maxOutputTokens?: number;
+  /** Checked before every paid attempt, including transport retries. */
+  shouldContinue?: () => Promise<boolean>;
+}
 
 class ProviderHttpError extends Error {
   constructor(readonly status: number) {
@@ -54,7 +64,10 @@ export class LlmService {
   /** Number of retries after the initial attempt (so max total = 1 + 2 = 3). */
   private readonly maxRetries = 2;
 
-  constructor(private readonly settings: SettingsService) {}
+  constructor(
+    private readonly settings: SettingsService,
+    private readonly budgets: LlmBudgetService,
+  ) {}
 
   /** A broken saved key is still configured: callers must not silently downgrade it. */
   async isConfigured(userId: string): Promise<boolean> {
@@ -73,23 +86,23 @@ export class LlmService {
   }
 
   /** Free-text chat on the fast (cheap) model. */
-  async chatFast(messages: ChatMessage[], userId: string): Promise<ChatResponse> {
-    return this.chat(messages, 'fast', userId);
+  async chatFast(messages: ChatMessage[], userId: string, options?: LlmCallOptions): Promise<ChatResponse> {
+    return this.chat(messages, 'fast', userId, options);
   }
 
   /** Free-text chat on the slow (pro) model. */
-  async chatSlow(messages: ChatMessage[], userId: string): Promise<ChatResponse> {
-    return this.chat(messages, 'slow', userId);
+  async chatSlow(messages: ChatMessage[], userId: string, options?: LlmCallOptions): Promise<ChatResponse> {
+    return this.chat(messages, 'slow', userId, options);
   }
 
   /** JSON-mode chat on the fast model; returns parsed object + token count. */
-  async chatFastJSON(messages: ChatMessage[], userId: string): Promise<{ data: unknown; tokens: number }> {
-    return this.chatJSON(messages, 'fast', userId);
+  async chatFastJSON(messages: ChatMessage[], userId: string, options?: LlmCallOptions): Promise<{ data: unknown; tokens: number }> {
+    return this.chatJSON(messages, 'fast', userId, options);
   }
 
   /** JSON-mode chat on the slow model; returns parsed object + token count. */
-  async chatSlowJSON(messages: ChatMessage[], userId: string): Promise<{ data: unknown; tokens: number }> {
-    return this.chatJSON(messages, 'slow', userId);
+  async chatSlowJSON(messages: ChatMessage[], userId: string, options?: LlmCallOptions): Promise<{ data: unknown; tokens: number }> {
+    return this.chatJSON(messages, 'slow', userId, options);
   }
 
   /**
@@ -101,6 +114,7 @@ export class LlmService {
     messages: ChatMessage[],
     tier: 'fast' | 'slow',
     userId: string,
+    options: LlmCallOptions = {},
   ): Promise<ChatResponse> {
     const config = await this.settings.getLlmConfig(userId);
     if (!config) throw new Error('No LLM API key configured');
@@ -109,12 +123,18 @@ export class LlmService {
       : config.baseUrl.replace(/\/+$/u, '');
     const model = tier === 'fast' ? config.fastModel : config.slowModel;
 
-    const body = {
-      model,
-      messages,
-    };
+    // All retries share a task id, but every attempted HTTP request has its own reservation.
+    const taskId = options.taskId ?? randomUUID();
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt += 1) {
+      if (options.shouldContinue && !(await options.shouldContinue())) throw new Error('LLM request cancelled');
+      // Deliberately outside the network catch: budget/DB failures must never retry or bypass accounting.
+      const reservation = await this.budgets.reserve(userId, { ...options, taskId, model, messages });
+      const outputLimit = /^(?:o[1-9](?:-|$)|gpt-5(?:[.-]|$))/u.test(model)
+        ? { max_completion_tokens: reservation.maxOutputTokens }
+        : { max_tokens: reservation.maxOutputTokens };
+      const body = { model, messages, ...outputLimit };
+      let result: ProviderChatPayload;
       try {
         const response = await axios.post<ProviderChatPayload>(
           `${baseUrl}/chat/completions`,
@@ -135,18 +155,11 @@ export class LlmService {
           throw new ProviderHttpError(response.status);
         }
 
-        const result = response.data;
-
-        const content = result?.choices?.[0]?.message?.content ?? '';
-        const usage = result?.usage ?? {};
-
-        return {
-          content,
-          promptTokens: usage.prompt_tokens ?? 0,
-          completionTokens: usage.completion_tokens ?? 0,
-          totalTokens: usage.total_tokens ?? 0,
-        };
+        result = response.data;
       } catch (error) {
+        // Timeouts/errors are ambiguous: keep the full charge, including on retries.
+        // If settlement itself fails, the persisted reservation remains charged and execution stops.
+        await this.budgets.settle(userId, reservation.id, undefined, true);
         const safeError = error instanceof ProviderHttpError
           ? error
           : new Error('LLM request failed. Check provider URL and server network.');
@@ -160,7 +173,15 @@ export class LlmService {
         const delayMs = 1000 * Math.pow(2, attempt);
         this.logger.warn(`LLM call attempt ${attempt + 1} failed; retrying in ${delayMs}ms`);
         await new Promise((resolve) => setTimeout(resolve, delayMs));
+        continue;
       }
+      const usage = await this.budgets.settle(userId, reservation.id, result?.usage);
+      return {
+        content: result?.choices?.[0]?.message?.content ?? '',
+        promptTokens: usage.inputTokens,
+        completionTokens: usage.outputTokens,
+        totalTokens: usage.chargedTokens,
+      };
     }
 
     // Unreachable: loop always either returns or throws.
@@ -174,12 +195,13 @@ export class LlmService {
    *   2. Try JSON.parse directly.
    *   3. On failure, regex-scan for the outermost {…} block and retry parse
    *      (handles LLM prose around the JSON).
-   *   4. Still failing → throw with the first 200 chars of the response for debugging.
+   *   4. Still failing → return a safe error without echoing private model content.
    */
   private async chatJSON(
     messages: ChatMessage[],
     tier: 'fast' | 'slow',
     userId: string,
+    options?: LlmCallOptions,
   ): Promise<{ data: unknown; tokens: number }> {
     const systemMsg: ChatMessage = {
       role: 'system',
@@ -193,7 +215,7 @@ export class LlmService {
 
     const allMessages: ChatMessage[] = [...systemMsgs, systemMsg, ...userMsgs];
 
-    const result = await this.chat(allMessages, tier, userId);
+    const result = await this.chat(allMessages, tier, userId, options);
 
     let cleaned = result.content.trim();
     // Strip markdown code fences (```json … ```) if the LLM wrapped the output.
@@ -215,7 +237,7 @@ export class LlmService {
           // fall through to final throw
         }
       }
-      throw new Error(`Failed to parse LLM JSON response: ${cleaned.slice(0, 200)}`);
+      throw new Error('Failed to parse LLM JSON response');
     }
   }
 }

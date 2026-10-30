@@ -339,6 +339,7 @@ test('debate stores only current saved evidence IDs and drops unsupported argume
 
 test('pipeline passes IDs returned by evidence persistence into the debate', async () => {
   const prompts = [];
+  const budgetCalls = [];
   const savedArguments = [];
   const savedEvidence = [evidenceRow({ id: 'saved-id' })];
   const detail = {
@@ -353,7 +354,8 @@ test('pipeline passes IDs returned by evidence persistence into the debate', asy
   const llm = {
     isConfigured: async () => true,
     getExecutionInfo: async () => ({ provider: 'user', modelFast: 'fast', modelSlow: 'slow' }),
-    chatSlowJSON: async (messages) => {
+    chatSlowJSON: async (messages, userId, options) => {
+      budgetCalls.push({ userId, options });
       prompts.push(messages.map(message => message.content).join('\n'));
       const data = jsonCalls < 2
         ? { arguments: [{ point: '有证据', evidence_refs: ['saved-id'] }] }
@@ -363,7 +365,10 @@ test('pipeline passes IDs returned by evidence persistence into the debate', asy
       jsonCalls += 1;
       return { data, tokens: 1 };
     },
-    chatSlow: async () => ({ content: '审稿意见', totalTokens: 1 }),
+    chatSlow: async (_messages, userId, options) => {
+      budgetCalls.push({ userId, options });
+      return { content: '审稿意见', totalTokens: 1 };
+    },
   };
   const multi = {
     getRun: async () => detail,
@@ -403,6 +408,25 @@ test('pipeline passes IDs returned by evidence persistence into the debate', asy
 
   assert.match(prompts[0], /saved-id/);
   assert.ok(savedArguments.some((arg) => arg.evidenceIds?.includes('saved-id')));
+  assert.equal(budgetCalls.length, 6);
+  assert.ok(budgetCalls.every(call => call.userId === 'user-1'
+    && call.options?.taskId === 'analysis:run-1' && call.options.maxOutputTokens === 1000));
+  assert.equal(new Set(budgetCalls.map(call => call.options.purpose)).size, 6);
+});
+
+test('budget exhaustion in optional rebuttal stops the analysis rather than requesting more model work', async () => {
+  let calls = 0;
+  const exceeded = Object.assign(new Error('untrusted private payload'), { code: 'LLM_BUDGET_EXCEEDED' });
+  const pipeline = pipelineWith({ llm: {
+    chatSlowJSON: async () => {
+      calls += 1;
+      if (calls > 2) throw exceeded;
+      return { data: { arguments: [] }, tokens: 1 };
+    },
+  }, multi: { addArgument: async () => undefined, addDebateRecord: async () => undefined } });
+  await assert.rejects(() => pipeline.runDebatePhase('run-1', 'alice', 'AAPL', [evidenceRow()]),
+    error => error === exceeded);
+  assert.equal(calls, 4);
 });
 
 test('critic receives original evidence text and linked IDs', async () => {

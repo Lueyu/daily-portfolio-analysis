@@ -321,13 +321,13 @@ export class McpService {
     }));
   }
 
-  private async toolGetResearchReport(_ctx: McpSessionContext, args: Record<string, unknown>) {
+  private async toolGetResearchReport(ctx: McpSessionContext, args: Record<string, unknown>) {
     const ticker = String(args.ticker ?? '').trim().toUpperCase();
     if (!ticker) throw new BadRequestException('ticker cannot be empty');
     const [report] = await this.db
       .select()
       .from(deepReport)
-      .where(eq(deepReport.ticker, ticker))
+      .where(and(eq(deepReport.owner, ctx.userId), eq(deepReport.ticker, ticker)))
       .orderBy(desc(deepReport.createdAt))
       .limit(1);
     if (!report) {

@@ -17,6 +17,7 @@ import type { Response } from 'express';
 import { BusinessException } from '../interfaces/exception.interface';
 import { HTTP_STATUS_TO_RESPONSE_CODE_MAP, ResponseCode } from '../constants/api_response_code';
 import { ApiErrorResponse } from '../interfaces/api_response.interface';
+import { BudgetExceededException } from '../../modules/llm-budget/llm-budget.rules';
 
 /**
  * Catch-all exception filter that turns exceptions into the unified error JSON
@@ -52,6 +53,17 @@ export class GlobalExceptionFilter implements ExceptionFilter {
           message: exception.message,
           details: exception.details,
           fieldErrors: exception.fieldErrors,
+          timestamp: Date.now(),
+        },
+      };
+    } else if (exception instanceof BudgetExceededException) {
+      httpStatus = HttpStatus.TOO_MANY_REQUESTS;
+      errorResponse = {
+        error: {
+          code: exception.code,
+          message: exception.message,
+          reason: exception.reason,
+          taskId: exception.taskId,
           timestamp: Date.now(),
         },
       };

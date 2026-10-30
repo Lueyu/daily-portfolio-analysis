@@ -13,6 +13,7 @@ or a model key to try the web application.
 
 For using the product / 功能使用：
 
+- [Investment council](investment-council.md) / [投委会与研究室](investment-council.zh-CN.md): three-member teams, user discussion, report versions, budgets and paper execution boundaries.
 - [Import a portfolio / 持仓导入](import.md): CSV mapping, Robinhood exports and optional screenshot extraction.
 - [Appearance / 外观](appearance.md): four themes, light/dark mode and browser preferences.
 - Provider setup instructions and connection tests are in the app's **API Settings**. / API 配置教程与连接测试在应用的「**API 设置**」页内。

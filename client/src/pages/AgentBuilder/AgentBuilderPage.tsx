@@ -1,11 +1,11 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
   ArrowRight, Bell, Bot, CirclePause, ClipboardCheck, FlaskConical,
-  Loader2, Pencil, Play, Plus, RefreshCw, ShieldCheck,
+  Loader2, Pencil, Play, Plus, RefreshCw, ShieldCheck, Users,
 } from 'lucide-react';
 
 import {
@@ -32,6 +32,9 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import BuilderWizard from './BuilderWizard';
 import { errorMessage } from './errorMessage';
+import BudgetPanel from './BudgetPanel';
+import { DEFAULT_CADENCE } from '@/utils/council-state';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 function localDateTimeNow(): string {
   const now: Date = new Date();
@@ -57,6 +60,7 @@ const EMPTY_FILL: FillForm = {
 
 export default function AgentBuilderPage() {
   const { t, i18n } = useTranslation();
+  const [params, setParams] = useSearchParams();
   const queryClient = useQueryClient();
   const [wizardOpen, setWizardOpen] = useState(false);
   const [editing, setEditing] = useState<BuilderProfile | null>(null);
@@ -152,10 +156,12 @@ export default function AgentBuilderPage() {
   };
 
   const openNew = () => {
+    setParams({}, { replace: true });
     setEditing(null);
     setWizardOpen(true);
   };
   const openEdit = (profile: BuilderProfile) => {
+    setParams({}, { replace: true });
     setEditing(profile);
     setWizardOpen(true);
   };
@@ -203,11 +209,14 @@ export default function AgentBuilderPage() {
               {t('ui.builder.intro')}
             </p>
           </div>
+          <div className="flex shrink-0 flex-wrap gap-2">
+            <Button asChild variant="outline"><Link to="/council"><Users />{t('council.open')}</Link></Button>
           {!wizardOpen && (
             <Button type="button" onClick={openNew} className="shrink-0">
               <Plus /> {t('ui.builder.createAgent')}
             </Button>
           )}
+          </div>
         </div>
         <div className="relative mt-6 flex flex-wrap gap-2 text-xs">
           <span className="rounded-full border border-border bg-background px-3 py-1.5">
@@ -222,6 +231,12 @@ export default function AgentBuilderPage() {
         </div>
       </section>
 
+      <Tabs value={params.get('tab') === 'budget' ? 'budget' : 'profiles'}
+        onValueChange={(value: string) => setParams(value === 'budget' ? { tab: 'budget' } : {}, { replace: true })}>
+        <TabsList className="mb-5 max-w-full"><TabsTrigger value="profiles">{t('ui.builder.yourAgents')}</TabsTrigger>
+          <TabsTrigger value="budget">{t('council.budget.title')}</TabsTrigger></TabsList>
+        <TabsContent value="budget"><BudgetPanel /></TabsContent>
+        <TabsContent value="profiles" className="space-y-8">
       {wizardOpen && (
         <BuilderWizard key={editing?.id ?? 'new'} editing={editing}
           onSaved={() => void refresh()} onClose={() => setWizardOpen(false)} />
@@ -282,6 +297,13 @@ export default function AgentBuilderPage() {
                     <p className="mt-1 truncate font-semibold">{profile.config.tickers.length
                       ? profile.config.tickers.join(', ') : t('ui.builder.allTracked')}</p></div>
                 </div>
+                <div className="rounded-lg border border-border p-3 text-xs leading-5 text-muted-foreground">
+                  <p>{t('council.cadence.summary', {
+                    days: profile.config.cadence?.reviewEveryTradingDays ?? DEFAULT_CADENCE.reviewEveryTradingDays,
+                    orders: profile.config.cadence?.maxOrdersPerWeek ?? DEFAULT_CADENCE.maxOrdersPerWeek,
+                  })}</p>
+                  <p className="mt-1">{t(profile.config.council?.enabled ? 'council.team.enabledHint' : 'council.team.rulesOnly')}</p>
+                </div>
                 {(profile.config.priceRules?.length ?? 0) > 0 && (
                   <div className="space-y-2">
                     <p className="text-xs font-medium text-muted-foreground">
@@ -306,6 +328,9 @@ export default function AgentBuilderPage() {
                   </div>
                 )}
                 <div className="flex flex-wrap gap-2">
+                  <Button asChild size="sm" variant="outline">
+                    <Link to={`/council?profileId=${encodeURIComponent(profile.id)}`}><Users />{t('council.nav')}</Link>
+                  </Button>
                   <Button type="button" size="sm" variant="outline"
                     disabled={profile.status === 'active'} onClick={() => openEdit(profile)}>
                     <Pencil /> {t('ui.builder.edit')}
@@ -387,6 +412,8 @@ export default function AgentBuilderPage() {
         )}
       </section>
 
+        </TabsContent>
+      </Tabs>
       <Dialog open={selected !== null} onOpenChange={(open: boolean) => {
         if (!open) setSelected(null);
       }}>

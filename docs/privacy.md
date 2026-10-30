@@ -34,6 +34,8 @@ operator's database when using their instance.
 | Account | Username, display name, bcrypt password hash, SHA-256 recovery-code hash, session version, and timestamps in the instance database. Registration requires no phone number, real name, or verified email. Optional notification recipients may include an email address. |
 | Portfolio workspace | Holdings, cash accounts, transactions, watchlists, journals, snapshots, imported rows and import history in the instance database. Free-text fields can contain personal information you enter. |
 | Research and automation | Reports, evidence, model-generated arguments and summaries, risk checks, execution steps, run events, strategy rules, and Agent Builder preferences/prompts in the instance database. Reports distinguish basic rules from AI analysis. |
+| Council discussions | Full user notes, member names/preferences, frozen profile configuration and version, candidate orders, collected evidence snapshots, member replies and report versions in the instance database. Old revisions remain saved when new input invalidates them. An approved report can link to its paper order. |
+| Model budget | Per-user limits, optional estimated prices, model and task identifiers, request purpose, reserved/reported token counts, status and timestamps in the instance database. The budget ledger does not itself store prompt bodies. Failed or interrupted requests can retain their reserved usage. |
 | Paper trading | Paper accounts, positions, orders, trades, proposals, and manually recorded execution notes in the instance database. Paper records use separate tables from real holdings and transactions. |
 | Saved LLM and Finnhub credentials | Encrypted with AES-256-GCM in the instance database. Settings responses expose status and a masked suffix, not the full saved key. The server decrypts the key when making a provider request. |
 | Notification configuration | Destinations, webhook URLs, bot tokens, SMTP credentials, and other channel settings in the instance database. **These fields do not currently use the LLM/Finnhub credential-encryption mechanism** and are returned to the owning user's channel settings. |
@@ -52,6 +54,7 @@ third-party records.** A deployment can add its own monitoring.
 | Quotes, symbol search, and FX updates | Public market-data sources such as Tencent, Sina, and Yahoo receive symbols or search queries; Frankfurter receives currency queries. These services also see normal connection metadata. This traffic exists in basic mode, without a personal API key. Some public quote/search endpoints currently use HTTP. |
 | AI analysis | The resolved model endpoint receives research prompts, evidence, and selected portfolio context, which can include holdings, quantity, cost, market value, and portfolio weight. It receives the provider key needed to authenticate the request. |
 | Agent Builder AI review | When enabled, the model receives the custom prompt and candidate-signal context. Explicit rule evaluation itself does not require an LLM. |
+| Investment council | The configured model receives member preferences, profile/candidate context, selected evidence excerpts, full user notes included in the request, and previous member opinion excerpts for the manager. Pausing cannot retract a request already sent. Full discussion records and evidence snapshots remain stored on the instance even when only excerpts are sent. |
 | Finnhub research | When configured, Finnhub receives the API key and company/symbol queries for available research data. |
 | Screenshot recognition | The chosen vision endpoint receives the full submitted image, extraction prompt, and recognition API key through the instance server. Crop unrelated names, account numbers, and balances before submitting. |
 | Notifications | Enabled Webhook, Bark, ServerChan, SMTP, or Telegram channels receive event messages and required routing/authentication information. Proposal messages may include the symbol, direction, paper quantity, and rationale. A channel test also sends a message. |
@@ -60,6 +63,8 @@ third-party records.** A deployment can add its own monitoring.
 Model and financial connection tests can also make provider requests and incur
 usage. Check the selected provider's own retention and data-use terms; this app
 cannot set them or retract data already delivered.
+
+The research budget applies to calls through the shared server LLM client, including model connection tests and retries. Screenshot recognition/OCR uses a separate path and is not covered. Conservative reservations and user-entered cost estimates are not provider bills. See the [council and budget guide](investment-council.md).
 
 ### Basic mode and the operator's model key
 
@@ -82,6 +87,7 @@ asks for re-entry; it does not silently switch to the operator's model.
 - **Notifications and agents:** disable or delete notification channels; pause
   Agent Builder or disable its AI review/proposal notifications; revoke agent
   sessions you no longer use.
+- **Council and budget:** pause a discussion, disable the council for a Builder profile, and change per-user model limits. Pausing stops later work; an in-flight provider call may still finish. Full notes and report history are retained, and resuming does not reset the discussion's task allowance.
 - **Account recovery:** save the one-time recovery code offline. Recovery resets
   the password, replaces the code, and revokes earlier account and agent
   sessions. Generating a new code with your password replaces the old code and

@@ -14,6 +14,9 @@ export interface ApiErrorResponse {
     message: string;
     /** Additional structured detail (often a JSON string). */
     details?: string;
+    /** Safe budget metadata, without prompts or provider credentials. */
+    reason?: string;
+    taskId?: string;
     /** Per-field validation errors, keyed by field name. */
     fieldErrors?: Record<string, string[]>;
     /** Stack trace, included only for unexpected server errors. */

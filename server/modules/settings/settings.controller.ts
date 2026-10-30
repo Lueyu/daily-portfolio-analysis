@@ -9,6 +9,7 @@ import type {
 } from '@shared/api.interface';
 import { LlmService } from '../multi-agent/llm.service';
 import { SettingsService } from './settings.service';
+import { BudgetExceededException } from '../llm-budget/llm-budget.rules';
 
 @NeedLogin()
 @Controller('api/settings/integrations')
@@ -50,11 +51,13 @@ export class SettingsController {
       const response = await this.llm.chatFast(
         [{ role: 'user', content: 'Reply with OK only.' }],
         req.userContext.userId,
+        { purpose: 'connection-test', maxOutputTokens: 16 },
       );
       return response.content.trim()
         ? { ok: true, message: 'The model returned a response.' }
         : { ok: false, message: 'The model returned an empty response.' };
-    } catch {
+    } catch (error) {
+      if (error instanceof BudgetExceededException) throw error;
       return {
         ok: false,
         message: 'Could not reach the model. Check the API URL, key, model and server network.',

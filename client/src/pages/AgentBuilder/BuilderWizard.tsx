@@ -24,6 +24,8 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { errorMessage } from './errorMessage';
+import CouncilConfigEditor, { defaultCouncil } from './CouncilConfigEditor';
+import { DEFAULT_CADENCE, validateCouncilSettings } from '@/utils/council-state';
 
 interface BuilderWizardProps {
   editing: BuilderProfile | null;
@@ -35,9 +37,9 @@ type Template = BuilderConfig['template'];
 
 const TEMPLATE_DEFAULTS: Record<Template, Pick<BuilderConfig,
   'minimumRating' | 'maxOrderPct' | 'dailyLossLimitPct' | 'maxOrdersPerDay'>> = {
-  guard: { minimumRating: 'Strong Buy', maxOrderPct: 2, dailyLossLimitPct: 2, maxOrdersPerDay: 2 },
-  balanced: { minimumRating: 'Buy', maxOrderPct: 4, dailyLossLimitPct: 3, maxOrdersPerDay: 3 },
-  scout: { minimumRating: 'Buy', maxOrderPct: 6, dailyLossLimitPct: 4, maxOrdersPerDay: 4 },
+  guard: { minimumRating: 'Strong Buy', maxOrderPct: 2, dailyLossLimitPct: 2, maxOrdersPerDay: 1 },
+  balanced: { minimumRating: 'Buy', maxOrderPct: 4, dailyLossLimitPct: 3, maxOrdersPerDay: 1 },
+  scout: { minimumRating: 'Buy', maxOrderPct: 6, dailyLossLimitPct: 4, maxOrdersPerDay: 1 },
 };
 
 const TEMPLATES: Array<{ key: Template; icon: typeof Shield }> = [
@@ -54,7 +56,7 @@ const DEFAULT_CONFIG: BuilderConfig = {
   customPrompt: '',
   maxOrderPct: 4,
   dailyLossLimitPct: 3,
-  maxOrdersPerDay: 3,
+  maxOrdersPerDay: 1,
   notifyOnProposal: true,
 };
 
@@ -124,12 +126,13 @@ function validateConfig(config: BuilderConfig): string | null {
 }
 
 export default function BuilderWizard({ editing, onSaved, onClose }: BuilderWizardProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [step, setStep] = useState(0);
-  const [config, setConfig] = useState<BuilderConfig>(editing?.config ?? {
-    ...DEFAULT_CONFIG,
-    name: t('ui.builder.template.balanced.defaultName'),
-  });
+  const [config, setConfig] = useState<BuilderConfig>(() => ({
+    ...(editing?.config ?? { ...DEFAULT_CONFIG, name: t('ui.builder.template.balanced.defaultName') }),
+    council: editing ? (editing.config.council ?? { ...defaultCouncil(t), enabled: false }) : defaultCouncil(t),
+    cadence: editing?.config.cadence ?? { ...DEFAULT_CADENCE },
+  }));
   const [tickerText, setTickerText] = useState(editing?.config.tickers.join(', ') ?? '');
   const [priceRows, setPriceRows] = useState<PriceRuleForm[]>(formPriceRules(editing?.config));
   const [saved, setSaved] = useState<BuilderProfile | null>(null);
@@ -196,6 +199,11 @@ export default function BuilderWizard({ editing, onSaved, onClose }: BuilderWiza
       setFormError(t('ui.builder.nameInvalid'));
       return;
     }
+    const councilInvalid = validateCouncilSettings(config.council, config.cadence);
+    if (councilInvalid) {
+      setFormError(t(`council.${councilInvalid}`));
+      return;
+    }
     setFormError(null);
     setStep(1);
   };
@@ -203,6 +211,7 @@ export default function BuilderWizard({ editing, onSaved, onClose }: BuilderWiza
   const goToPreview = async () => {
     const nextConfig: BuilderConfig = {
       ...config,
+      language: i18n.language.startsWith('zh') ? 'zh-CN' : 'en',
       name: config.name.trim(),
       tickers: normalizeTickers(tickerText),
       priceRules: parsePriceRules(priceRows),
@@ -211,6 +220,11 @@ export default function BuilderWizard({ editing, onSaved, onClose }: BuilderWiza
     const invalid: string | null = validateConfig(nextConfig);
     if (invalid) {
       setFormError(t(`ui.builder.${invalid}`));
+      return;
+    }
+    const councilInvalid = validateCouncilSettings(nextConfig.council, nextConfig.cadence);
+    if (councilInvalid) {
+      setFormError(t(`council.${councilInvalid}`));
       return;
     }
     setFormError(null);
@@ -295,6 +309,10 @@ export default function BuilderWizard({ editing, onSaved, onClose }: BuilderWiza
                 placeholder={t('ui.builder.namePlaceholder')}
                 onChange={(event) => setConfig({ ...config, name: event.target.value })} />
             </div>
+            <CouncilConfigEditor council={config.council ?? defaultCouncil(t)}
+              cadence={config.cadence ?? DEFAULT_CADENCE}
+              onCouncilChange={(council) => setConfig({ ...config, council })}
+              onCadenceChange={(cadence) => setConfig({ ...config, cadence })} />
             <div className="flex justify-end">
               <Button type="button" onClick={goToRules}>
                 {t('ui.builder.next')} <ChevronRight />
@@ -445,6 +463,13 @@ export default function BuilderWizard({ editing, onSaved, onClose }: BuilderWiza
             <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm">
               {t('ui.builder.paperOnlyNotice')}
             </p>
+            <div className="rounded-lg border border-border bg-muted/30 p-3 text-sm leading-6">
+              <p>{t(config.council?.enabled ? 'council.team.enabledHint' : 'council.team.rulesOnly')}</p>
+              <p className="mt-2 text-muted-foreground">{t('council.cadence.summary', {
+                days: config.cadence?.reviewEveryTradingDays ?? DEFAULT_CADENCE.reviewEveryTradingDays,
+                orders: config.cadence?.maxOrdersPerWeek ?? DEFAULT_CADENCE.maxOrdersPerWeek,
+              })}</p>
+            </div>
             {config.customPrompt && (
               <p className="rounded-lg border border-border bg-muted/30 p-3 text-sm text-muted-foreground">
                 {t('ui.builder.modelNotice')}{' '}
@@ -483,7 +508,9 @@ export default function BuilderWizard({ editing, onSaved, onClose }: BuilderWiza
                 {t('ui.builder.readyDescription', { name: saved.config.name })}
               </p>
             </div>
-            <div className="flex justify-center gap-3">
+            <div className="flex flex-wrap justify-center gap-3">
+              <Button asChild variant="outline"><Link to={`/council?profileId=${encodeURIComponent(saved.id)}`}>
+                {t('council.open')}</Link></Button>
               {saved.status !== 'active' && (
                 <Button type="button" onClick={() => activateMutation.mutate(saved.id)}
                   disabled={activateMutation.isPending}>
