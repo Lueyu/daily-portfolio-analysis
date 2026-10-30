@@ -9,7 +9,8 @@ import { Controller, Get, Post, Query, Req } from '@nestjs/common';
 import { NeedLogin } from '../../common/platform';
 import type { Request } from 'express';
 import { DashboardService } from './dashboard.service';
-import type { DashboardOverview } from '@shared/api.interface';
+import { MarketOverviewService } from './market-overview.service';
+import type { DashboardOverview, MarketOverviewResponse } from '@shared/api.interface';
 
 /**
  * REST controller for the dashboard. Delegates aggregation to `DashboardService`.
@@ -17,7 +18,16 @@ import type { DashboardOverview } from '@shared/api.interface';
 @NeedLogin()
 @Controller('api/portfolio/dashboard')
 export class DashboardController {
-  constructor(private readonly dashboardService: DashboardService) {}
+  constructor(
+    private readonly dashboardService: DashboardService,
+    private readonly marketOverviewService: MarketOverviewService,
+  ) {}
+
+  /** Public index observations; no holding or account data is sent upstream. */
+  @Get('market-overview')
+  async getMarketOverview(): Promise<MarketOverviewResponse> {
+    return this.marketOverviewService.getOverview();
+  }
 
   /**
    * Returns the portfolio overview (market value, cost, cash, P&L, group summary)

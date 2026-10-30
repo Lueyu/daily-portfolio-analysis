@@ -6,7 +6,7 @@
  *  - Traditional: per-date analysis cards, with a special portfolio-level card
  *    (ticker === 'PORTFOLIO'), rating filter pills, and a date sidebar.
  *  - Multi-Agent: list of versioned deep-research reports fetched from the
- *    `window.__pt` agent bridge (falling back to the agent-runs API). Clicking
+ *    authenticated server API. Clicking
  *    a card navigates to DeepReportPage.
  *
  * Refetches on window focus/visibility change; prev/next date buttons step
@@ -24,7 +24,6 @@ import {
   Sparkles,
   Bot,
   LayoutGrid,
-  Info,
   ArrowRight,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -46,14 +45,6 @@ import {
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import {
   Tooltip,
@@ -68,7 +59,9 @@ import {
   EmptyTitle,
 } from '@/components/ui/empty';
 import { formatDate, formatDateTime, cn } from '@/utils/format';
+import { displayCompanyName } from '@/utils/company-name';
 import AnalysisCard from './AnalysisCard';
+import AnalysisRunner from './AnalysisRunner';
 
 /** Ticker sentinel for the portfolio-level analysis card. */
 const PORTFOLIO_TICKER = 'PORTFOLIO';
@@ -79,7 +72,7 @@ const RATING_ORDER = ['Strong Buy', 'Buy', 'Hold', 'Sell', 'Strong Sell'];
 function localizedRating(value: string | null | undefined, t: (key: string) => string): string {
   const keys: Record<string, string> = {
     'Strong Buy': 'analysis.strongBuy', Buy: 'analysis.buy', Hold: 'analysis.hold',
-    Sell: 'analysis.sell', 'Strong Sell': 'analysis.strongSell',
+    Sell: 'analysis.sell', 'Strong Sell': 'analysis.strongSell', Watch: 'analysis.watch',
   };
   return value && keys[value] ? t(keys[value]) : value ?? '';
 }
@@ -100,14 +93,11 @@ function AnalysisPage() {
   const [currentDate, setCurrentDate] = useState<string>('');
 
   // Multi-Agent view state (deep reports list)
-  const [viewMode, setViewMode] = useState<ViewMode>('traditional');
+  const [viewMode, setViewMode] = useState<ViewMode>('multiagent');
   const [ratingFilter, setRatingFilter] = useState<string | null>(null);
   const [deepReports, setDeepReports] = useState<AgentRunWithRating[]>([]);
   const [deepReportsLoading, setDeepReportsLoading] = useState(false);
 
-  // Multi-Agent info dialogs
-  const [batchInfoOpen, setBatchInfoOpen] = useState(false);
-  const [singleInfoOpen, setSingleInfoOpen] = useState(false);
 
   useEffect(() => {
     void loadDates();
@@ -160,66 +150,14 @@ function AnalysisPage() {
     }
   };
 
-  /**
-   * Load the list of deep research reports. Prefers the `window.__pt` agent
-   * bridge (`listDeepReports`); falls back to the agent-runs REST API.
-   */
+  /** Read saved server reports, including basic and AI runs. */
   const loadDeepReports = useCallback(async () => {
     setDeepReportsLoading(true);
     try {
-      const pt = window.__pt;
-      let items: AgentRunWithRating[] = [];
-      if (pt && typeof pt.listDeepReports === 'function') {
-        const raw = await pt.listDeepReports();
-        const list = Array.isArray(raw) ? raw : [];
-        items = list.map((r: {
-          runId: string;
-          ticker: string;
-          tickerName: string | null;
-          rating: string | null;
-          confidence: string | null;
-          targetBear: string | null;
-          targetBase: string | null;
-          targetBull: string | null;
-          reportDate: string;
-          updatedAt: string;
-          url?: string;
-        }) => ({
-          id: r.runId,
-          ticker: r.ticker,
-          tickerName: r.tickerName,
-          market: null,
-          triggerType: 'manual',
-          runMode: 'full',
-          status: 'completed',
-          modelFast: null,
-          modelSlow: null,
-          tokensUsed: 0,
-          costEstimate: '0',
-          startedAt: null,
-          completedAt: r.reportDate + 'T00:00:00.000Z',
-          errorMessage: null,
-          humanDecision: null,
-          humanNote: null,
-          createdAt: r.updatedAt,
-          updatedAt: r.updatedAt,
-          targetBear: r.targetBear,
-          targetBase: r.targetBase,
-          targetBull: r.targetBull,
-          confidence: (r.confidence as AgentRunWithRating['confidence']) ?? null,
-          rating: r.rating
-            ? ({ rating: r.rating } as unknown as AgentRunWithRating['rating'])
-            : null,
-        }));
-      } else {
-        const data = await getAgentRuns({ runMode: 'full', status: 'completed', limit: 50 });
-        items = data?.items ?? [];
-      }
-      items.sort(
-        (a: AgentRunWithRating, b: AgentRunWithRating) =>
-          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
-      );
-      setDeepReports(items);
+      const data = await getAgentRuns({ limit: 100 });
+      const items: AgentRunWithRating[] = data?.items ?? [];
+      setDeepReports(items.filter(run => run.hasReport
+        && (run.status === 'completed' || run.status === 'awaiting_human')));
     } catch {
       toast.error(t('ui.analysis.reportsLoadFailed'));
     } finally {
@@ -227,18 +165,8 @@ function AnalysisPage() {
     }
   }, [t]);
 
-  // Load deep reports on page init so traditional view can show deep report badges
-  useEffect(() => {
-    void loadDeepReports();
-  }, [loadDeepReports]);
-
-  // When user switches to multiagent tab, reload if list is empty
-  // (window.__pt may not be ready on first mount)
-  useEffect(() => {
-    if (viewMode === 'multiagent' && deepReports.length === 0 && !deepReportsLoading) {
-      void loadDeepReports();
-    }
-  }, [viewMode, deepReports.length, deepReportsLoading, loadDeepReports]);
+  useEffect(() => { void loadDeepReports(); }, [loadDeepReports]);
+  const handleRunFinished = useCallback(() => { void loadDeepReports(); }, [loadDeepReports]);
 
   // Auto-refresh when page becomes visible or regains focus
   useEffect(() => {
@@ -271,8 +199,6 @@ function AnalysisPage() {
 
   const navigate = useNavigate();
 
-  const handleOpenBatchInfo = () => setBatchInfoOpen(true);
-  const handleOpenSingleInfo = () => setSingleInfoOpen(true);
 
   /** Navigate to the deep-report detail page for the given run id. */
   const handleDeepReportClick = (runId: string) => {
@@ -307,7 +233,7 @@ function AnalysisPage() {
     const map = new Map<string, string>();
     const normalizeTicker = (t: string): string => t.replace(/\.(HK|US)$/i, '');
     for (const r of deepReports) {
-      if (r.ticker && r.id) {
+      if (r.ticker && r.id && !map.has(normalizeTicker(r.ticker))) {
         map.set(normalizeTicker(r.ticker), r.id);
       }
     }
@@ -377,7 +303,7 @@ function AnalysisPage() {
                 {dates.map((d) => (
                   <button
                     key={d}
-                    onClick={() => setCurrentDate(d)}
+                    onClick={() => { setCurrentDate(d); setViewMode('traditional'); }}
                     className={cn(
                       'flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors',
                       d === currentDate
@@ -407,7 +333,7 @@ function AnalysisPage() {
                     variant="outline"
                     size="icon"
                     onClick={goPrev}
-                    disabled={prevDisabled}
+                    disabled={prevDisabled || viewMode !== 'traditional'}
                     aria-label={t('ui.analysis.prevDay')}
                   >
                     <ChevronLeft className="h-4 w-4" />
@@ -422,7 +348,7 @@ function AnalysisPage() {
             </Tooltip>
             <div className="text-center">
               <div className="font-serif text-xl font-semibold md:text-2xl">
-                {currentDate ? formatDate(currentDate) : t('ui.analysis.chooseDate')}
+                {viewMode === 'multiagent' ? t('analysisFlow.reports') : currentDate ? formatDate(currentDate) : t('ui.analysis.chooseDate')}
               </div>
               <div className="text-xs text-muted-foreground">
                 {viewMode === 'traditional'
@@ -430,7 +356,7 @@ function AnalysisPage() {
                     ? t('ui.analysis.stockCount', { count: stockAnalyses.length })
                     : t('ui.analysis.noStocksToday')
                   : deepReports.length > 0
-                    ? t('ui.analysis.reportCount', { count: deepReports.length })
+                    ? t('analysisFlow.reportCount', { count: deepReports.length })
                     : t('ui.analysis.noDeepReports')}
               </div>
             </div>
@@ -441,7 +367,7 @@ function AnalysisPage() {
                     variant="outline"
                     size="icon"
                     onClick={goNext}
-                    disabled={nextDisabled}
+                    disabled={nextDisabled || viewMode !== 'traditional'}
                     aria-label={t('ui.analysis.nextDay')}
                   >
                     <ChevronRight className="h-4 w-4" />
@@ -457,20 +383,10 @@ function AnalysisPage() {
           </CardContent>
         </Card>
 
-        {/* Tabs root wraps action bar + all tab content */}
-        {/* Action bar */}
+        <AnalysisRunner onFinished={handleRunFinished} />
         <Card>
-          <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex flex-wrap items-center gap-2">
-              <Button onClick={handleOpenBatchInfo}>
-                <Bot className="mr-1.5 h-4 w-4" />
-                {t('ui.analysis.runMultiAgent')}
-              </Button>
-              <Button variant="outline" onClick={handleOpenSingleInfo}>
-                <Info className="mr-1.5 h-4 w-4" />
-                {t('ui.analysis.singleDeepAnalysis')}
-              </Button>
-            </div>
+          <CardContent className="flex flex-wrap items-center justify-between gap-3 p-3">
+            <p className="max-w-lg text-xs leading-relaxed text-muted-foreground">{t('analysisFlow.reportHint')}</p>
             <div
               role="tablist"
               className="inline-flex h-9 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground w-full sm:w-auto"
@@ -505,7 +421,7 @@ function AnalysisPage() {
                 )}
               >
                 <Bot className="mr-1.5 h-3.5 w-3.5" />
-                Multi-Agent
+                {t('analysisFlow.reports')}
               </button>
             </div>
           </CardContent>
@@ -662,9 +578,6 @@ function AnalysisPage() {
 
         {viewMode === 'multiagent' && (
           <div className="space-y-3">
-            <p className="text-xs text-muted-foreground">
-              {t('ui.analysis.deepBadgeHint')}
-            </p>
             <DeepReportListContent
               loading={deepReportsLoading}
               reports={deepReports}
@@ -675,72 +588,6 @@ function AnalysisPage() {
         )}
       </div>
 
-      {/* Multi-Agent batch info dialog */}
-      <Dialog open={batchInfoOpen} onOpenChange={setBatchInfoOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t('ui.analysis.batchDialogTitle')}</DialogTitle>
-            <DialogDescription>
-              {t('ui.analysis.batchDialogDesc')}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3 py-2 text-sm leading-relaxed text-foreground/90">
-            <p>
-              {t('ui.analysis.batchAgentIntro')}
-            </p>
-            <div>
-              <p className="mb-1 font-medium text-foreground">{t('ui.analysis.triggerMethod')}</p>
-              <ul className="list-disc space-y-1 pl-5">
-                <li>{t('ui.analysis.triggerDaily')}</li>
-                <li>{t('ui.analysis.orInvokeSkill')}</li>
-              </ul>
-            </div>
-            <div>
-              <p className="mb-1 font-medium text-foreground">
-                {t('ui.analysis.agentSteps')}
-              </p>
-              <p className="text-foreground/80">
-                {t('ui.analysis.agentFlow')}
-              </p>
-            </div>
-            <p className="text-foreground/70">
-              {t('ui.analysis.autoRefreshResult')}
-            </p>
-          </div>
-          <DialogFooter>
-            <Button onClick={() => setBatchInfoOpen(false)}>{t('ui.analysis.gotIt')}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Single ticker deep analysis info dialog */}
-      <Dialog open={singleInfoOpen} onOpenChange={setSingleInfoOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t('ui.analysis.singleDialogTitle')}</DialogTitle>
-            <DialogDescription>
-              {t('ui.analysis.singleDialogDesc')}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3 py-2 text-sm leading-relaxed text-foreground/90">
-            <div>
-              <p className="mb-1 font-medium text-foreground">{t('ui.analysis.triggerMethod')}</p>
-              <ul className="list-disc space-y-1 pl-5">
-                <li>
-                  {t('ui.analysis.deepAnalysisCommand', { ticker: t('holdings.ticker') })}
-                </li>
-                <li>{t('ui.analysis.runSkillWithAnalysis')}</li>
-              </ul>
-            </div>
-            <p>
-              {t('ui.analysis.singleAgentDesc')}
-            </p>
-          </div>
-          <DialogFooter>
-            <Button onClick={() => setSingleInfoOpen(false)}>{t('ui.analysis.gotIt')}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
@@ -819,7 +666,7 @@ function DeepReportListContent({
                 {t('ui.analysis.noReportsYet')}
               </EmptyTitle>
               <EmptyDescription>
-                {t('ui.analysis.generateReportHint')}
+                {t('analysisFlow.noTickers')}
               </EmptyDescription>
               <div className="mt-4">
                 <Button variant="outline" size="sm" onClick={onRefresh}>
@@ -871,7 +718,8 @@ function DeepReportCard({
   run: AgentRunWithRating;
   onClick: () => void;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const companyName = displayCompanyName(run.tickerName, run.ticker, i18n.language);
   const hasThreeTargets =
     run.targetBear != null || run.targetBase != null || run.targetBull != null;
   const ratingValue: string | null =
@@ -925,9 +773,9 @@ function DeepReportCard({
               <h3 className="font-mono-nums text-lg font-semibold tracking-tight">
                 {run.ticker}
               </h3>
-              {run.tickerName && (
+              {companyName && (
                 <span className="truncate text-sm text-muted-foreground">
-                  {run.tickerName}
+                  {companyName}
                 </span>
               )}
             </div>
@@ -936,7 +784,7 @@ function DeepReportCard({
               className="mt-1.5 gap-1 border-amber-500/50 bg-amber-500/10 text-amber-700 dark:text-amber-400 font-medium"
             >
               <Sparkles size={12} />
-              {t('ui.analysis.deepReport')}
+              {t('analysisFlow.report')}
             </Badge>
           </div>
           {ratingValue && (
@@ -996,7 +844,7 @@ function DeepReportCard({
             {formatDateTime(run.completedAt)}
           </span>
           <span className="flex items-center gap-0.5 text-xs font-medium text-amber-600 dark:text-amber-400">
-            {t('ui.analysis.viewFullReport')}
+            {t('analysisFlow.openReport')}
             <ArrowRight size={12} />
           </span>
         </div>

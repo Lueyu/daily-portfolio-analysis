@@ -58,6 +58,7 @@ import {
 } from '@/components/ui/alert';
 
 import { useTranslation } from 'react-i18next';
+import { Link } from 'react-router-dom';
 
 /** Columns that the holdings table can sort by. */
 type SortKey =
@@ -159,7 +160,7 @@ export default function HoldingsPage() {
     try {
       const result = await getAgentRuns({ status: 'awaiting_human', limit: 10 });
       const items = (result?.items ?? []) as AgentRun[];
-      setAwaitingHumanCount(items.length);
+      setAwaitingHumanCount(result?.total ?? items.length);
     } catch (err) {
       // 静默失败
     }
@@ -346,27 +347,25 @@ export default function HoldingsPage() {
         </div>
       </div>
 
-      {/* Risk Alert */}
+      {/* Pending analysis reviews */}
       {awaitingHumanCount > 0 && (
-        <Alert variant="warning">
-          <AlertTriangle className="size-4" />
+        <Alert className="border-warning/35 bg-warning/10 text-foreground">
+          <AlertTriangle className="size-4 text-warning" />
           <AlertTitle className="font-medium">{t('ui.holdings.riskAlert')}</AlertTitle>
-          <AlertDescription className="flex items-center justify-between gap-4">
+          <AlertDescription className="flex flex-wrap items-center justify-between gap-3 text-muted-foreground">
             <span>
               {t('ui.holdings.riskMessage', { count: awaitingHumanCount })}
             </span>
             <Button
+              asChild
               variant="outline"
               size="sm"
-              className="shrink-0 border-warning/30 text-warning-foreground hover:bg-warning/20"
-              onClick={() => {
-                // 跳转到风控规则页（如 settings/rules）
-                // 简单实现：滚动到顶部提示
-                toast.info(t('ui.holdings.riskDetail'));
-              }}
+              className="shrink-0 border-warning/35 bg-background/70 text-foreground hover:bg-warning/15"
             >
-              {t('ui.holdings.viewDetails')}
-              <ChevronRight className="size-3" />
+              <Link to="/analysis">
+                {t('ui.holdings.viewDetails')}
+                <ChevronRight className="size-3" />
+              </Link>
             </Button>
           </AlertDescription>
         </Alert>

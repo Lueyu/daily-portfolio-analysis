@@ -1,7 +1,8 @@
 # Self-Hosting Guide
 
 吵股 Squabble is designed to be self-hosted first: your data stays on your
-machine. Research and optional AI review use your configured LLM; quotes use
+machine. Free basic analysis runs local rules without an LLM; AI analysis and
+optional AI review use your configured model. Quotes and dashboard indices use
 public market-data providers. Optional Finnhub research requests and push
 messages use the credentials or channels you configure.
 See [privacy.md](privacy.md).
@@ -18,8 +19,9 @@ Open http://localhost:3000 and log in with the built-in demo account
 (**demo / demo1234** — the login page can fill it with one click). The demo
 loads a fictional portfolio (6 holdings across US/HK/CN, 3 completed agent
 runs including a 2-version NVDA research report, one triggered risk gate).
-No API keys are needed to inspect the pre-generated demo reports; quote
-requests may still contact public data providers. Change or drop the demo account
+No API keys are needed to inspect demo reports or generate new basic reports
+inside **Daily Analysis**. Public quote requests still leave the server.
+Change or drop the demo account
 for any public deployment.
 
 ## What the two containers do
@@ -28,11 +30,12 @@ for any public deployment.
   `scripts/db/01_schema.sql` (base tables including `users`, in the public
   schema, with text ownership columns), `02_demo_seed.sql` (the fictional demo
   dataset and account), `03_agent_builder.sql` (builder profiles and
-  proposals), then `04_user_api_settings.sql` (per-user API settings). Data
+  proposals), `04_user_api_settings.sql` (per-user API settings), then
+  `05_analysis_language.sql` (run language and persisted report traces). Data
   persists in the `dpa-data` volume.
 - **app** — the NestJS server serving both the API and the built SPA on port
   3000, connecting to the db service directly via Drizzle (no platform layer).
-  On startup it also applies the idempotent Agent Builder and API Settings
+  On startup it also applies the idempotent Agent Builder, API Settings and analysis-language
   SQL to existing database volumes. Docker generates a private settings
   encryption key once in the separate `settings-secrets` volume and reuses it
   after app rebuilds. Back up that volume with `dpa-data`.
@@ -47,13 +50,22 @@ for any public deployment.
 | `SETTINGS_ENCRYPTION_KEY` | *(auto-generated in Docker)* | Optional explicit secret (at least 16 characters) for encrypting each user's saved LLM and Finnhub API keys. Docker keeps its generated key in `settings-secrets`. In source installs without this value, the app derives encryption from a private `JWT_SECRET`; the known demo JWT value is refused for saved API keys. Keep the effective key stable and backed up: changing it requires users to re-enter saved keys |
 | `REGISTER_ENABLED` | `true` | Set to `false` to close registration for a private deployment |
 | `ACCESS_TOKEN_TTL` / `REFRESH_TOKEN_TTL` | `2h` / `30d` | Session lifetimes |
-| `DOUBAO_API_KEY` | *(unset)* | Host-wide LLM fallback for running fresh analyses and Agent Builder custom-prompt review. A user's saved Settings configuration overrides it; deleting that configuration returns to this fallback. Explicit builder rules and the pre-generated demo work without it |
+| `DOUBAO_API_KEY` | *(unset)* | Optional host-wide model for AI analysis and Agent Builder custom-prompt review. A user's saved configuration overrides it. With neither configured, new analyses use free basic mode and explicit builder rules still work |
 | `AGENT_GATEWAY_ENABLED` | `false` | Enables the `/openapi/agent-gateway` used by the Python agent service |
 | `PAPER_TRADING_ENABLED` | *(enabled)* | Set to `false` to disable the paper-trading bot scheduler entirely |
 | `PAPER_TRADING_SCAN_MINUTES` | `15` | Minutes between bot scans (only runs while some market is open) |
 
-To run analyses against real stocks, the simplest route is to log in, open
-**API Settings**, choose an OpenAI-compatible provider, and
+To start, open **Daily Analysis**, choose a stock or your portfolio, and run
+the analysis. No separate Doubao agent or Python service is needed. With no
+model configured, basic mode checks public prices, portfolio exposure and
+your risk rules. Reports are labelled basic, retain Watch/low, and do not
+invent a target price. New reports use the Chinese/English language selected
+when you start; changing the UI language does not translate existing reports.
+Each report retains its evidence, risk checks and execution steps. AI reports
+also show the analysts' written arguments and critique, not hidden model
+reasoning tokens.
+
+For AI debate, open **API Settings**, choose an OpenAI-compatible provider, and
 save its API key, Base URL, fast model and slow model. The Settings page has
 step-by-step provider links and a connection test. A host-wide alternative is
 to put a Doubao key in `docker-compose.override.yml`:
@@ -96,20 +108,25 @@ Examples and official setup guides:
 | OpenAI | `https://api.openai.com/v1` | [API keys](https://platform.openai.com/api-keys), [quickstart](https://developers.openai.com/api/docs/quickstart), [available models](https://developers.openai.com/api/docs/models/all) |
 | DeepSeek | `https://api.deepseek.com` | [API key and current models](https://api-docs.deepseek.com/en/) |
 | Doubao / Ark | `https://ark.cn-beijing.volces.com/api/v3` | [beginner quickstart](https://docs.volcengine.com/docs/ark/quick-start-beginner?lang=zh), [API key management](https://docs.volcengine.com/docs/ark/manage-api-keys?lang=zh) |
+| OpenRouter | `https://openrouter.ai/api/v1` | [Free models](https://openrouter.ai/collections/free-models); Settings can prefill `openrouter/free`. Your own API key is required and free usage has provider limits |
 
 Model IDs and availability change, so copy the IDs shown in your provider's
 console. **Test connection** sends a small request with the *saved* key and
 may count toward your provider usage. Leaving the key field blank while saving
-other settings keeps the current saved key. Settings only reports whether a
+other settings keeps the current saved key; changing the Base URL requires
+entering a key for that endpoint. Settings only reports whether a
 key exists and a masked hint; the original key is never returned to the
-browser. Delete the user LLM configuration to return to the host-wide Doubao
-fallback, if configured.
+browser. Delete the user LLM configuration to return to the host-wide model
+if configured, or free basic mode otherwise. A configured model's errors are
+reported as failures; they do not silently become basic results.
 If the saved key becomes unreadable after encryption-key rotation, Settings
 asks for a replacement key and analysis stops; it does not silently switch to
-the host-wide fallback. Explicitly removing the user connection restores that
-fallback.
+the host-wide fallback or basic mode. Explicitly removing the user connection
+restores the available default.
 
-For financial data, [register with Finnhub](https://finnhub.io/register),
+Financial data defaults to free public quotes: **Test public quotes** checks
+an actual example stock without a key. For optional company metrics and news,
+[register with Finnhub](https://finnhub.io/register),
 find your API key, then save it under **API Settings → Financial data** and test
 with the sample US ticker. Squabble uses it to add available US-company basic
 metrics and company news to research. Finnhub's official
@@ -119,6 +136,12 @@ companies. A configured key does not guarantee every field or ticker will
 return data. Unavailable inputs remain explicit gaps in the research. Public
 quote providers remain separate, and deleting the Finnhub key returns research
 to those existing sources and explicit data gaps.
+
+The dashboard also fetches US/HK/CN indices from public sources, displaying
+each quote's source and trading date. Its market-mood score is an estimate
+from the latest available same-session index changes, not an official fear
+and greed index or a prediction. Unavailable or stale inputs are labelled and
+excluded from the score.
 
 ## Agent Builder
 
@@ -166,14 +189,18 @@ git pull
 docker compose up --build -d
 ```
 
-The app applies `scripts/db/03_agent_builder.sql` and
-`scripts/db/04_user_api_settings.sql` at startup. They use additive,
-idempotent table/index creation, so an existing data volume is preserved. To
+The app applies `scripts/db/03_agent_builder.sql`,
+`scripts/db/04_user_api_settings.sql` and `scripts/db/05_analysis_language.sql`
+at startup. They use additive, idempotent changes, preserving existing data.
+Migration 05 adds `agent_runs.language` (existing runs default to `zh-CN`)
+and `deep_report.analysis_trace`; old reports are not translated or given
+fabricated traces. To
 apply the migrations manually while the database container is running:
 
 ```bash
 docker compose exec -T db psql -U postgres -d portfolio < scripts/db/03_agent_builder.sql
 docker compose exec -T db psql -U postgres -d portfolio < scripts/db/04_user_api_settings.sql
+docker compose exec -T db psql -U postgres -d portfolio < scripts/db/05_analysis_language.sql
 ```
 
 Then restart the app (`docker compose up --build -d app`) and check its logs

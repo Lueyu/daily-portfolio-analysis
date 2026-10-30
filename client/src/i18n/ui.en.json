@@ -24,7 +24,7 @@
     "dailyChartNoData": "No NAV data yet",
     "noPositions": "No holdings",
     "loadFailed": "Could not load dashboard. Refresh and try again.",
-    "analysisStatusLoadFailed": "Could not load AI analysis status"
+    "analysisStatusLoadFailed": "Could not load analysis status"
   },
   "tickerSearch": {
     "placeholder": "Enter a ticker or company name",
@@ -43,9 +43,9 @@
     "floatingPl": "Unrealized P&L",
     "searchPlaceholder": "Search ticker or company...",
     "allGroups": "All groups",
-    "riskAlert": "Risk alert",
-    "riskMessage": "{{count}} hard rules failed. Review your portfolio exposure.",
-    "riskDetail": "Open Strategy Rules to review the details",
+    "riskAlert": "Analysis awaiting review",
+    "riskMessage": "{{count}} analyses need your review. Check their conclusions and risk results.",
+    "riskDetail": "Open Daily Analysis to review the results",
     "viewDetails": "View details",
     "currentPrice": "Current price",
     "marketValue": "Market value",
@@ -78,7 +78,7 @@
     "bearView": "Bear case",
     "riskPassed": "Risk checks passed through the Multi-Agent risk gate",
     "viewReasoning": "View full reasoning",
-    "noAiAnalysis": "No AI analysis yet",
+    "noAiAnalysis": "No analysis yet",
     "runDeepAnalysis": "Run a Multi-Agent deep analysis from Daily Analysis",
     "deleteHoldingTitle": "Delete holding?",
     "deleteHoldingDesc": "Delete the holding record for {{ticker}}? This action cannot be undone.",

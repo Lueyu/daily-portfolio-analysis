@@ -56,9 +56,20 @@ export class LlmService {
 
   constructor(private readonly settings: SettingsService) {}
 
-  /** @returns true if an API key is configured; false otherwise. */
+  /** A broken saved key is still configured: callers must not silently downgrade it. */
   async isConfigured(userId: string): Promise<boolean> {
-    return (await this.settings.getLlmConfig(userId)) !== null;
+    return (await this.settings.getSettings(userId)).llm.engine === 'llm';
+  }
+
+  /** Public execution metadata only; credentials never enter reports. */
+  async getExecutionInfo(userId: string): Promise<{
+    provider: string;
+    modelFast: string;
+    modelSlow: string;
+  } | null> {
+    const { llm } = await this.settings.getSettings(userId);
+    if (llm.engine === 'basic') return null;
+    return { provider: llm.source, modelFast: llm.fastModel, modelSlow: llm.slowModel };
   }
 
   /** Free-text chat on the fast (cheap) model. */

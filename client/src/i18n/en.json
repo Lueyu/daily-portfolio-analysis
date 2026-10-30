@@ -36,7 +36,7 @@
     "title": "Investment Dashboard", "subtitle": "Full-asset overview, market grouping and daily P&L",
     "accountValue": "Account Value", "marketValue": "Market Value", "totalCost": "Total Cost",
     "cashTotal": "Total Cash", "totalPl": "Cumulative P&L", "totalReturn": "Total Return",
-    "aiStatus": "AI Analysis Status", "viewAll": "View All", "inProgress": "In Progress",
+    "aiStatus": "Analysis Status", "viewAll": "View All", "inProgress": "In Progress",
     "awaitingDecision": "Awaiting Decision", "completed": "Completed",
     "recentCompleted": "Latest Completed", "riskAlerts": "Risk Alerts", "allPassed": "All Passed",
     "dailyPlOverview": "Daily P&L Overview", "realtime": "Live",

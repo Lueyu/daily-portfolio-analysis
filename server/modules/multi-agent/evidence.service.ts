@@ -5,11 +5,13 @@
  * inputs are stored as explicit data gaps, never as positive/negative facts.
  */
 import { Injectable, Inject, Logger } from '@nestjs/common';
+import { englishEvidenceText } from './evidence-language';
+import { analysisErrorCode } from './analysis-report';
 import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '../../common/platform';
 import { eq } from 'drizzle-orm';
 import { holdings, watchlist } from '@server/database/schema';
 import { QuoteService } from '@server/modules/quote/quote.service';
-import type { EvidenceType, PortfolioContext, QuoteResponse } from '@shared/api.interface';
+import type { EvidenceType, PortfolioContext, QuoteResponse, AnalysisLanguage } from '@shared/api.interface';
 import { FinnhubEvidenceService } from './finnhub-evidence.service';
 
 /** High-level category of evidence; used to label evidence rows in the UI. */
@@ -47,6 +49,7 @@ export class EvidenceService {
     ticker: string,
     userId: string,
     portfolioContext: PortfolioContext,
+    language: AnalysisLanguage = 'zh-CN',
   ): Promise<EvidenceInput[]> {
     const [fundamental, news, technical] = await Promise.allSettled([
       this.collectFundamental(ticker, userId, portfolioContext),
@@ -59,7 +62,7 @@ export class EvidenceService {
     if (fundamental.status === 'fulfilled') {
       allEvidence.push(...fundamental.value);
     } else {
-      this.logger.warn(`Fundamental analysis failed for ${ticker}: ${fundamental.reason}`);
+      this.logger.warn(`Fundamental analysis failed for ${ticker}: ${analysisErrorCode(fundamental.reason)}`);
       allEvidence.push(this.dataGap(
         'fundamental', '基本面数据获取失败',
         '持仓、关注列表或行情获取失败，当前基本面数据不完整。',
@@ -69,7 +72,7 @@ export class EvidenceService {
     if (news.status === 'fulfilled') {
       allEvidence.push(...news.value);
     } else {
-      this.logger.warn(`News analysis failed for ${ticker}: ${news.reason}`);
+      this.logger.warn(`News analysis failed for ${ticker}: ${analysisErrorCode(news.reason)}`);
       allEvidence.push(this.dataGap(
         'news', '新闻数据获取失败', '新闻数据获取失败，无法判断最新事件与情绪。',
       ));
@@ -78,14 +81,17 @@ export class EvidenceService {
     if (technical.status === 'fulfilled') {
       allEvidence.push(...technical.value);
     } else {
-      this.logger.warn(`Technical analysis failed for ${ticker}: ${technical.reason}`);
+      this.logger.warn(`Technical analysis failed for ${ticker}: ${analysisErrorCode(technical.reason)}`);
       allEvidence.push(this.dataGap(
         'technical', '技术面数据获取失败',
         '行情或历史K线获取失败，无法完成技术面分析。',
       ));
     }
 
-    return allEvidence;
+    if (language !== 'en') return allEvidence;
+    return allEvidence.map((item) => item.sourceName === 'Finnhub API' ? item : {
+      ...item, title: englishEvidenceText(item.title), content: englishEvidenceText(item.content),
+    });
   }
 
   private dataGap(
@@ -117,7 +123,7 @@ export class EvidenceService {
     try {
       quote = await this.quoteService.getQuote(ticker);
     } catch (error) {
-      this.logger.warn(`Quote lookup failed for ${ticker}: ${String(error)}`);
+      this.logger.warn(`Quote lookup failed for ${ticker}: ${analysisErrorCode(error)}`);
     }
 
     if (quote && Number.isFinite(Number(quote.price)) && Number(quote.price) > 0) {
@@ -208,7 +214,7 @@ export class EvidenceService {
         hasValuation = metrics.hasValuation;
       }
     } catch (error) {
-      this.logger.warn(`Finnhub metrics unavailable for ${ticker}: ${String(error)}`);
+      this.logger.warn(`Finnhub metrics unavailable for ${ticker}: ${analysisErrorCode(error)}`);
     }
 
     evidence.push(this.dataGap(
@@ -256,7 +262,7 @@ export class EvidenceService {
       const news = await this.finnhubEvidence.getNews(userId, ticker);
       if (news?.length) return news;
     } catch (error) {
-      this.logger.warn(`Finnhub news unavailable for ${ticker}: ${String(error)}`);
+      this.logger.warn(`Finnhub news unavailable for ${ticker}: ${analysisErrorCode(error)}`);
     }
     return [
       this.dataGap(
@@ -275,7 +281,7 @@ export class EvidenceService {
     try {
       quote = await this.quoteService.getQuote(ticker);
     } catch (error) {
-      this.logger.warn(`Technical quote lookup failed for ${ticker}: ${String(error)}`);
+      this.logger.warn(`Technical quote lookup failed for ${ticker}: ${analysisErrorCode(error)}`);
     }
 
     if (!quote || !Number.isFinite(Number(quote.price)) || Number(quote.price) <= 0) {

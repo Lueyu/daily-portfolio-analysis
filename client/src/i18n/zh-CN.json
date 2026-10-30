@@ -31,7 +31,7 @@
     "title": "投资仪表盘", "subtitle": "全资产概览、按市场分组与每日盈亏",
     "accountValue": "账户总值", "marketValue": "总市值", "totalCost": "总成本",
     "cashTotal": "现金总额", "totalPl": "累计浮盈亏", "totalReturn": "累计收益率",
-    "aiStatus": "AI 分析状态", "viewAll": "查看全部", "inProgress": "进行中",
+    "aiStatus": "分析状态", "viewAll": "查看全部", "inProgress": "进行中",
     "awaitingDecision": "待决策", "completed": "已完成", "recentCompleted": "最近完成",
     "riskAlerts": "风控告警", "allPassed": "全部通过", "dailyPlOverview": "每日盈亏概览",
     "realtime": "实时", "dailyPl": "当日盈亏 (USD)", "latestNav": "最新净值",

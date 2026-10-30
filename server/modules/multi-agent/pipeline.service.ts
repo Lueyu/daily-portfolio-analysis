@@ -48,8 +48,10 @@ import type {
   AgentRating,
   AgentConfidence,
   AgentRunMode,
+  AnalysisLanguage,
 } from '@shared/api.interface';
 import { MultiAgentService } from './multi-agent.service';
+import { languageInstruction, englishRuleName, safeAnalysisError, analysisErrorCode } from './analysis-report';
 
 @Injectable()
 export class PipelineService {
@@ -84,7 +86,7 @@ export class PipelineService {
       try {
         cb(runId, userId, mode);
       } catch (err) {
-        this.logger.error(`Complete callback error: ${err instanceof Error ? err.message : String(err)}`);
+        this.logger.error(`Complete callback error: ${analysisErrorCode(err)}`);
       }
     }
   }
@@ -96,9 +98,9 @@ export class PipelineService {
    * @param runId the agent_runs.id to run.
    * @param userId owner, used for owner-scoped DB writes and cancellation check.
    */
-  startPipeline(runId: string, userId: string): void {
-    void this.runPipeline(runId, userId).catch((err) => {
-      this.logger.error(`Pipeline failed for run ${runId}: ${err instanceof Error ? err.message : String(err)}`);
+  startPipeline(runId: string, userId: string, queuedMode?: AgentRunMode): void {
+    void this.runPipeline(runId, userId, queuedMode).catch((err) => {
+      this.logger.error(`Pipeline failed for run ${runId}: ${analysisErrorCode(err)}`);
     });
   }
 
@@ -108,24 +110,31 @@ export class PipelineService {
    * `failed` and writes an audit log, then still fires notifyComplete so the
    * batch queue can make progress.
    */
-  private async runPipeline(runId: string, userId: string): Promise<void> {
+  private async runPipeline(runId: string, userId: string, queuedMode?: AgentRunMode): Promise<void> {
     let tokensUsed = 0;
+    let mode: AgentRunMode | null = null;
+    let language: AnalysisLanguage = 'zh-CN';
     const addTokens = (n: number): void => {
       tokensUsed += n;
     };
 
     try {
-      await this.setStatus(runId, userId, 'fetching', { startedAt: new Date() });
-
       const runDetail = await this.multiAgentService.getRun(userId, runId);
+      mode = runDetail.runMode;
+      language = runDetail.language ?? 'zh-CN';
+      if (await this.isCancelled(runId, userId)) return;
+      if (runDetail.status === 'failed') await this.multiAgentService.resetFailedRunArtifacts(userId, runId);
+      await this.setStatus(runId, userId, 'fetching', { startedAt: new Date(), errorMessage: null });
       const ticker = runDetail.ticker;
+      const useLlm = await this.llmService.isConfigured(userId);
+      const execution = useLlm ? await this.llmService.getExecutionInfo(userId) : null;
 
       if (await this.isCancelled(runId, userId)) return;
 
       // Phase 1: Evidence collection
       this.logger.log(`Phase 1: Fetching evidence for ${ticker}`);
       const portfolio = await this.portfolioContextService.getPortfolioContext(userId);
-      const evidence = await this.evidenceService.collectEvidence(ticker, userId, portfolio);
+      const evidence = await this.evidenceService.collectEvidence(ticker, userId, portfolio, language);
 
       // Persist facts and explicit gaps. Debate citations use only returned IDs.
       const savedEvidence = await this.multiAgentService.addEvidence(
@@ -147,16 +156,16 @@ export class PipelineService {
 
       // Phase 2: Bull/Bear debate
       this.logger.log(`Phase 2: Bull/Bear debate for ${ticker}`);
-      await this.setStatus(runId, userId, 'debating');
-      const debateTokens = await this.runDebatePhase(runId, userId, ticker, savedEvidence);
+      if (useLlm) await this.setStatus(runId, userId, 'debating');
+      const debateTokens = useLlm ? await this.runDebatePhase(runId, userId, ticker, savedEvidence, language) : 0;
       addTokens(debateTokens);
 
       if (await this.isCancelled(runId, userId)) return;
 
       // Phase 3: Critique
       this.logger.log(`Phase 3: Critique for ${ticker}`);
-      await this.setStatus(runId, userId, 'critiquing');
-      const critiqueTokens = await this.runCritiquePhase(runId, userId);
+      if (useLlm) await this.setStatus(runId, userId, 'critiquing');
+      const critiqueTokens = useLlm ? await this.runCritiquePhase(runId, userId, language) : 0;
       addTokens(critiqueTokens);
 
       if (await this.isCancelled(runId, userId)) return;
@@ -170,13 +179,19 @@ export class PipelineService {
         userId,
         runId,
         riskResults.map((r) => ({
-          ruleName: r.ruleName,
+          ruleName: language === 'en' ? englishRuleName(r.ruleName) : r.ruleName,
           ruleType: r.ruleType,
           passed: r.passed,
           currentValue: r.currentValue,
           thresholdValue: r.thresholdValue,
-          detail: r.detail,
-          suggestedAction: r.suggestedAction,
+          detail: language === 'en'
+            ? r.currentValue === null
+              ? 'This rule could not be verified from the available data or configured threshold.'
+              : `Measured value: ${r.currentValue}. Configured threshold: ${r.thresholdValue ?? 'unavailable'}. Result: ${r.passed ? 'passed' : 'failed'}.`
+            : r.detail,
+          suggestedAction: language === 'en'
+            ? r.passed ? 'No violation was detected by this check.' : 'Review the configured rule and missing evidence before trading.'
+            : r.suggestedAction,
         })),
       );
 
@@ -188,8 +203,12 @@ export class PipelineService {
 
       // Phase 5: Rating aggregation
       this.logger.log(`Phase 5: Rating aggregation for ${ticker}`);
-      const ratingTokens = await this.runRatingPhase(runId, userId, ticker, hasHardFailure, rules);
+      const ratingTokens = useLlm
+        ? await this.runRatingPhase(runId, userId, ticker, hasHardFailure, rules, language)
+        : await this.runBasicRatingPhase(runId, userId, ticker, language);
       addTokens(ratingTokens);
+      if (await this.isCancelled(runId, userId)) return;
+      await this.multiAgentService.savePipelineReport(userId, runId, useLlm ? 'llm' : 'basic', execution);
 
       // Final: awaiting human decision
       await this.setStatus(runId, userId, 'awaiting_human', {
@@ -201,13 +220,14 @@ export class PipelineService {
         ticker,
         tokensUsed,
         hasHardFailure,
+        language,
+        engine: useLlm ? 'llm' : 'basic',
       });
 
       this.logger.log(`Pipeline completed for run ${runId} (${ticker}), tokens: ${tokensUsed}`);
-      this.notifyComplete(runId, userId, runDetail.runMode);
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      this.logger.error(`Pipeline error for run ${runId}: ${errorMsg}`);
+      const errorMsg = safeAnalysisError(error, language);
+      this.logger.error(`Pipeline error for run ${runId}: ${analysisErrorCode(error)}`);
       try {
         await this.setStatus(runId, userId, 'failed', {
           errorMessage: errorMsg,
@@ -219,13 +239,13 @@ export class PipelineService {
           tokensUsed,
         });
       } catch (updateErr) {
-        this.logger.error(`Failed to update run status to failed: ${updateErr instanceof Error ? updateErr.message : String(updateErr)}`);
+        this.logger.error(`Failed to update run status to failed: ${analysisErrorCode(updateErr)}`);
       }
-      // Still notify batch so the queue can proceed.
-      const runDetail = await this.multiAgentService.getRun(userId, runId).catch(() => null);
-      if (runDetail) {
-        this.notifyComplete(runId, userId, runDetail.runMode);
-      }
+    } finally {
+      // The queue already reserved a mode-specific slot. Release it even when
+      // the first database read fails before the run's mode can be loaded.
+      const completedMode = queuedMode ?? mode;
+      if (completedMode) this.notifyComplete(runId, userId, completedMode);
     }
   }
 
@@ -249,9 +269,9 @@ export class PipelineService {
     runId: string,
     userId: string,
     status: AgentRunStatus,
-    extra?: { startedAt?: Date; completedAt?: Date; errorMessage?: string; tokensUsed?: number },
+    extra?: { startedAt?: Date; completedAt?: Date; errorMessage?: string | null; tokensUsed?: number },
   ): Promise<void> {
-    const patch: Record<string, unknown> = { status };
+    const patch: Record<string, unknown> = { status, updatedBy: userId };
     if (extra?.startedAt !== undefined) patch.startedAt = extra.startedAt;
     if (extra?.completedAt !== undefined) patch.completedAt = extra.completedAt;
     if (extra?.errorMessage !== undefined) patch.errorMessage = extra.errorMessage;
@@ -274,6 +294,7 @@ export class PipelineService {
     userId: string,
     ticker: string,
     evidence: AgentEvidence[],
+    language: AnalysisLanguage = 'zh-CN',
   ): Promise<number> {
     const facts = evidence.filter((item) => !this.isDataGap(item));
     const missing = evidence.filter((item) => this.isDataGap(item));
@@ -282,8 +303,7 @@ export class PipelineService {
     const validIds = new Set(facts.map((item) => item.id));
     let totalTokens = 0;
 
-    // Prompts are written in Chinese because the LLM model (Doubao) is
-    // tuned for Chinese financial reasoning; the JSON keys are English.
+    // Output language is captured on the run; JSON keys and citation IDs stay stable.
     const bullPrompt = `你是一位看多的股票研究员（Bull Analyst）。请仔细阅读以下关于 ${ticker} 的已保存证据。
 仅在证据足够时提出看多理由，每条理由都要引用证据 ID 和具体数据。
 缺失数据不能作为事实引用，也不能自行补造数字；如果没有可引用的理由，返回空 arguments。
@@ -322,8 +342,8 @@ ${missingText || '（无）'}
 
     // Opening round: run bull and bear in parallel via the "slow" (pro) model.
     const [bullResult, bearResult] = await Promise.all([
-      this.llmService.chatSlowJSON([{ role: 'user', content: bullPrompt }], userId),
-      this.llmService.chatSlowJSON([{ role: 'user', content: bearPrompt }], userId),
+      this.llmService.chatSlowJSON([{ role: 'system', content: languageInstruction(language) }, { role: 'user', content: bullPrompt }], userId),
+      this.llmService.chatSlowJSON([{ role: 'system', content: languageInstruction(language) }, { role: 'user', content: bearPrompt }], userId),
     ]);
 
     totalTokens += bullResult.tokens + bearResult.tokens;
@@ -352,13 +372,13 @@ ${missingText || '（无）'}
       this.multiAgentService.addDebateRecord(userId, runId, {
         round: 1,
         speaker: 'bull',
-        content: `【第一轮 - 多头论点】\n${bullArgs.map((a, i) => `${i + 1}. ${a.point}`).join('\n')}`,
+        content: `${language === 'en' ? 'Round 1 — Bull case' : '【第一轮 - 多头论点】'}\n${bullArgs.map((a, i) => `${i + 1}. ${a.point}`).join('\n')}`,
         tokensUsed: bullResult.tokens,
       }),
       this.multiAgentService.addDebateRecord(userId, runId, {
         round: 1,
         speaker: 'bear',
-        content: `【第一轮 - 空头论点】\n${bearArgs.map((a, i) => `${i + 1}. ${a.point}`).join('\n')}`,
+        content: `${language === 'en' ? 'Round 1 — Bear case' : '【第一轮 - 空头论点】'}\n${bearArgs.map((a, i) => `${i + 1}. ${a.point}`).join('\n')}`,
         tokensUsed: bearResult.tokens,
       }),
     ]);
@@ -410,8 +430,8 @@ ${bearArgs.map((a, i) => `${i + 1}. ${a.point}`).join('\n')}
 
     try {
       const [bullRebuttal, bearRebuttal] = await Promise.all([
-        this.llmService.chatSlowJSON([{ role: 'user', content: bullRebuttalPrompt }], userId),
-        this.llmService.chatSlowJSON([{ role: 'user', content: bearRebuttalPrompt }], userId),
+        this.llmService.chatSlowJSON([{ role: 'system', content: languageInstruction(language) }, { role: 'user', content: bullRebuttalPrompt }], userId),
+        this.llmService.chatSlowJSON([{ role: 'system', content: languageInstruction(language) }, { role: 'user', content: bearRebuttalPrompt }], userId),
       ]);
 
       totalTokens += bullRebuttal.tokens + bearRebuttal.tokens;
@@ -439,19 +459,19 @@ ${bearArgs.map((a, i) => `${i + 1}. ${a.point}`).join('\n')}
         this.multiAgentService.addDebateRecord(userId, runId, {
           round: 2,
           speaker: 'bull',
-          content: `【第二轮 - 多头反驳】\n${bullRebuttalArgs.map((a, i) => `${i + 1}. ${a.point}`).join('\n')}`,
+          content: `${language === 'en' ? 'Round 2 — Bull response' : '【第二轮 - 多头反驳】'}\n${bullRebuttalArgs.map((a, i) => `${i + 1}. ${a.point}`).join('\n')}`,
           tokensUsed: bullRebuttal.tokens,
         }),
         this.multiAgentService.addDebateRecord(userId, runId, {
           round: 2,
           speaker: 'bear',
-          content: `【第二轮 - 空头反驳】\n${bearRebuttalArgs.map((a, i) => `${i + 1}. ${a.point}`).join('\n')}`,
+          content: `${language === 'en' ? 'Round 2 — Bear response' : '【第二轮 - 空头反驳】'}\n${bearRebuttalArgs.map((a, i) => `${i + 1}. ${a.point}`).join('\n')}`,
           tokensUsed: bearRebuttal.tokens,
         }),
       ]);
     } catch (rebuttalErr) {
       // Rebuttal is best-effort; opening round is the required minimum.
-      this.logger.warn(`Debate round 2 failed: ${rebuttalErr instanceof Error ? rebuttalErr.message : String(rebuttalErr)}`);
+      this.logger.warn(`Debate round 2 failed: ${analysisErrorCode(rebuttalErr)}`);
     }
 
     return totalTokens;
@@ -462,7 +482,7 @@ ${bearArgs.map((a, i) => `${i + 1}. ${a.point}`).join('\n')}
    * weakest points. Output is stored verbatim as a round-3 debate record.
    * @returns tokens consumed.
    */
-  private async runCritiquePhase(runId: string, userId: string): Promise<number> {
+  private async runCritiquePhase(runId: string, userId: string, language: AnalysisLanguage = 'zh-CN'): Promise<number> {
     const detail = await this.multiAgentService.getRun(userId, runId);
     const facts = detail.evidence.filter((item) => !this.isDataGap(item));
     const missing = detail.evidence.filter((item) => this.isDataGap(item));
@@ -501,7 +521,9 @@ ${bullArgs || '（无）'}
 【空头论点】
 ${bearArgs || '（无）'}`;
 
-    const result = await this.llmService.chatSlow([{ role: 'user', content: critiquePrompt }], userId);
+    const result = await this.llmService.chatSlow([
+      { role: 'system', content: languageInstruction(language) }, { role: 'user', content: critiquePrompt },
+    ], userId);
 
     await this.multiAgentService.addDebateRecord(userId, runId, {
       round: 3,
@@ -530,6 +552,7 @@ ${bearArgs || '（无）'}`;
     ticker: string,
     hasHardFailure: boolean,
     rules: StrategyRule[],
+    language: AnalysisLanguage = 'zh-CN',
   ): Promise<number> {
     const detail = await this.multiAgentService.getRun(userId, runId);
 
@@ -541,13 +564,13 @@ ${bearArgs || '（无）'}`;
     const implicitGaps: string[] = [];
     if (!facts.some((item) => item.role === 'fundamental'
       && item.evidenceType === 'financial')
-      && !criticalGaps.some((item) => item.title.includes('财报'))) {
-      implicitGaps.push('财报证据缺失');
+      && !criticalGaps.some((item) => /财报|financial statements?/iu.test(item.title))) {
+      implicitGaps.push(language === 'en' ? 'Missing financial statement evidence' : '财报证据缺失');
     }
     if (!facts.some((item) => item.role === 'news'
       && item.evidenceType === 'news')
       && !criticalGaps.some((item) => item.role === 'news')) {
-      implicitGaps.push('新闻证据缺失');
+      implicitGaps.push(language === 'en' ? 'Missing news evidence' : '新闻证据缺失');
     }
     criticalGapTitles.push(...implicitGaps);
     const missingText = [
@@ -622,7 +645,9 @@ ${riskSummary}
   "risks": "主要风险（用1) ... 2) ...编号）"
 }`;
 
-    const result = await this.llmService.chatSlowJSON([{ role: 'user', content: ratingPrompt }], userId);
+    const result = await this.llmService.chatSlowJSON([
+      { role: 'system', content: languageInstruction(language) }, { role: 'user', content: ratingPrompt },
+    ], userId);
 
     const data = result.data as Record<string, unknown>;
 
@@ -654,16 +679,16 @@ ${riskSummary}
     const gapSummary = [...new Set([
       ...missing.map((item) => item.title),
       ...implicitGaps,
-    ])].join('、');
+    ])].join(language === 'en' ? '; ' : '、');
     const modelUncertainty = String(data.key_uncertainty ?? '').trim();
     const uncertaintySuffix = modelUncertainty && modelUncertainty !== '无'
-      ? `；${modelUncertainty}` : '';
+      ? `${language === 'en' ? '; ' : '；'}${modelUncertainty}` : '';
     const keyUncertainty = gapSummary
-      ? `缺失数据：${gapSummary}${uncertaintySuffix}`
+      ? `${language === 'en' ? 'Missing data: ' : '缺失数据：'}${gapSummary}${uncertaintySuffix}`
       : modelUncertainty || undefined;
     const modelLogic = String(data.aggregation_logic ?? '').trim();
     const aggregationLogic = hasCriticalGap
-      ? `当前仅能观察，缺失关键数据：${gapSummary}${modelLogic ? `；${modelLogic}` : ''}`
+      ? `${language === 'en' ? 'Watch only; critical data is missing: ' : '当前仅能观察，缺失关键数据：'}${gapSummary}${modelLogic ? `; ${modelLogic}` : ''}`
       : modelLogic || undefined;
     const targetPrice = !hasCriticalGap && data.target_price !== null
       && data.target_price !== undefined ? Number(data.target_price) : undefined;
@@ -675,7 +700,8 @@ ${riskSummary}
       targetPrice: targetPrice !== undefined && Number.isFinite(targetPrice) && targetPrice > 0
         ? targetPrice : undefined,
       action: hasCriticalGap
-        ? `数据不足，暂缓方向性交易；补齐${gapSummary}后复评。`
+        ? language === 'en' ? `Insufficient evidence. Defer directional trades and reassess after obtaining: ${gapSummary}.`
+          : `数据不足，暂缓方向性交易；补齐${gapSummary}后复评。`
         : String(data.action ?? ''),
       aggregationLogic,
       keyUncertainty,
@@ -688,9 +714,32 @@ ${riskSummary}
     return result.tokens;
   }
 
-  /**
-   * Format saved facts with their citation IDs for debate and critique.
-   */
+  /** Free, deterministic summary. This is a data/rule review, never a simulated AI opinion. */
+  private async runBasicRatingPhase(
+    runId: string, userId: string, ticker: string, language: AnalysisLanguage,
+  ): Promise<number> {
+    const detail = await this.multiAgentService.getRun(userId, runId);
+    const en = language === 'en';
+    const facts = detail.evidence.filter((item) => !this.isDataGap(item));
+    const gaps = detail.evidence.filter((item) => this.isDataGap(item));
+    const hardFailures = detail.riskGate.filter((item) => item.ruleType === 'hard' && !item.passed).length;
+    await this.multiAgentService.saveRating(userId, runId, {
+      ticker, rating: 'Watch', confidence: 'low',
+      action: en ? 'Observe the available data and review risk limits. No directional trade is recommended by basic mode.'
+        : '查看现有数据并复核风险限制。基础模式不提供方向性交易建议。',
+      aggregationLogic: en
+        ? `Free basic analysis used ${facts.length} evidence records and ${detail.riskGate.length} local risk checks (${hardFailures} hard-rule failures). It did not call an LLM or estimate a target price. Watch/low describes limited analytical coverage, not a forecast.`
+        : `免费基础分析使用 ${facts.length} 条证据和 ${detail.riskGate.length} 条本地风险检查（${hardFailures} 条硬规则未通过）。未调用大模型，也未预测目标价。观望/低置信度表示分析覆盖有限，不是行情预测。`,
+      keyUncertainty: gaps.length
+        ? gaps.map((item) => item.title).join(en ? '; ' : '；')
+        : en ? 'Basic mode does not assess company valuation or future returns.' : '基础模式未评估企业估值或未来收益。',
+      risks: en ? `${hardFailures} hard risk rules failed. Review the local risk gate details.`
+        : `${hardFailures} 条风险硬规则未通过，请查看本地风控明细。`,
+    });
+    return 0;
+  }
+
+  /** Format saved facts with their citation IDs for debate and critique. */
   private formatEvidence(evidence: AgentEvidence[]): string {
     return evidence.map((item, index) => [
       `证据 ${index + 1} [ID: ${item.id}, ${item.role}/${item.evidenceType}] ${item.title}`,

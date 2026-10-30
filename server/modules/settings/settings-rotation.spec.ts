@@ -3,6 +3,9 @@ import { test } from 'node:test';
 import type { PostgresJsDatabase } from '../../common/platform';
 import { SettingsService } from './settings.service';
 import { encryptSecret } from './settings-security';
+import type { QuoteService } from '../quote/quote.service';
+
+const quotes = { getQuote: async () => null } as unknown as QuoteService;
 
 test('rotated master key lets a user reopen Settings and re-enter saved keys', async () => {
   const row = {
@@ -21,7 +24,7 @@ test('rotated master key lets a user reopen Settings and re-enter saved keys', a
   process.env.SETTINGS_ENCRYPTION_KEY = 'new-master-secret-long-enough';
   process.env.DOUBAO_API_KEY = 'host-fallback-key';
   try {
-    const service = new SettingsService(db as unknown as PostgresJsDatabase);
+    const service = new SettingsService(db as unknown as PostgresJsDatabase, quotes);
     const settings = await service.getSettings('alice');
     assert.equal(settings.llm.source, 'user');
     assert.equal(settings.llm.needsReentry, true);
@@ -54,7 +57,7 @@ test('known demo JWT secret cannot encrypt a personal API key', async () => {
   delete process.env.SETTINGS_ENCRYPTION_KEY;
   process.env.JWT_SECRET = 'change-me-in-production-0123456789abcdef';
   try {
-    const service = new SettingsService(db as unknown as PostgresJsDatabase);
+    const service = new SettingsService(db as unknown as PostgresJsDatabase, quotes);
     await assert.rejects(
       () => service.saveFinancial('alice', { provider: 'finnhub', apiKey: 'sample-key' }),
       /SETTINGS_ENCRYPTION_KEY/u,

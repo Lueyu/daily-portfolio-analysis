@@ -38,13 +38,34 @@ export default function SettingsGuide() {
           {t('ui.settings.guide.title')}
         </CardTitle>
         <CardDescription className="leading-6">
-          {t('ui.settings.guide.intro')}
+          {t('integrations.guideIntro')}
         </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-8 lg:grid-cols-2">
+        <section className="min-w-0 space-y-4" aria-labelledby="settings-default-guide">
+          <h2 id="settings-default-guide" className="text-base font-semibold">{t('integrations.guideDefaultTitle')}</h2>
+          <ol className="list-decimal space-y-3 pl-5 text-sm leading-6 text-muted-foreground">
+            <li>{t('integrations.guideDefaultStep1')}</li>
+            <li>{t('integrations.guideDefaultStep2')}</li>
+            <li>{t('integrations.guideDefaultStep3')}</li>
+          </ol>
+        </section>
+        <section className="min-w-0 space-y-4" aria-labelledby="settings-free-model-guide">
+          <h2 id="settings-free-model-guide" className="text-base font-semibold">{t('integrations.guideFreeTitle')}</h2>
+          <ol className="list-decimal space-y-3 pl-5 text-sm leading-6 text-muted-foreground">
+            <li>{t('integrations.guideFreeStep1')}</li>
+            <li className="break-words">{t('integrations.guideFreeStep2')}</li>
+            <li>{t('integrations.guideFreeStep3')}</li>
+            <li>{t('integrations.guideFreeStep4')}</li>
+          </ol>
+          <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm">
+            <GuideLink href="https://openrouter.ai/settings/keys" label={t('integrations.freeKeyLink')} />
+            <GuideLink href="https://openrouter.ai/collections/free-models" label={t('integrations.freeLimitsLink')} />
+          </div>
+        </section>
         <section className="min-w-0 space-y-5" aria-labelledby="settings-llm-guide">
           <h2 id="settings-llm-guide" className="text-base font-semibold">
-            {t('ui.settings.guide.llm.title')}
+            {t('integrations.guideLlmTitle')}
           </h2>
           <ol className="space-y-5">
             <GuideStep number={1} title={t('ui.settings.guide.llm.step1Title')}>
@@ -83,7 +104,7 @@ export default function SettingsGuide() {
 
         <section className="min-w-0 space-y-5" aria-labelledby="settings-data-guide">
           <h2 id="settings-data-guide" className="text-base font-semibold">
-            {t('ui.settings.guide.financial.title')}
+            {t('integrations.guideFinancialTitle')}
           </h2>
           <ol className="space-y-5">
             <GuideStep number={1} title={t('ui.settings.guide.financial.step1Title')}>

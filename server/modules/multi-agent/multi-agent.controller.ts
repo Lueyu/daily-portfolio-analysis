@@ -73,11 +73,13 @@ import type {
   AgentRunWithRating,
   AgentRunMode,
   DailyBatchResult,
+  AnalysisLanguage,
 } from '@shared/api.interface';
 
 /** Query-string shape for GET /runs. All values arrive as strings from HTTP;
  *  numeric fields are parsed to int in the handler. */
 interface ListRunsQuery {
+  activeOnly?: string;
   ticker?: string;
   status?: AgentRunStatus;
   runMode?: AgentRunMode;
@@ -126,6 +128,7 @@ export class MultiAgentController {
   ): Promise<{ items: AgentRunWithRating[]; total: number }> {
     const { userId } = req.userContext;
     return this.multiAgentService.listRunsWithRating(userId, {
+      activeOnly: query.activeOnly === 'true',
       ticker: query.ticker,
       status: query.status,
       runMode: query.runMode,
@@ -157,9 +160,9 @@ export class MultiAgentController {
    */
   @Post('daily-batch')
   @NeedLogin()
-  async createDailyBatch(@Req() req: Request): Promise<DailyBatchResult> {
+  async createDailyBatch(@Req() req: Request, @Body() dto?: { language?: AnalysisLanguage }): Promise<DailyBatchResult> {
     const { userId } = req.userContext;
-    return this.batchService.createDailyBatch(userId);
+    return this.batchService.createDailyBatch(userId, dto?.language);
   }
 
   /**
@@ -217,7 +220,9 @@ export class MultiAgentController {
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<AgentRun> {
     const { userId } = req.userContext;
-    return this.multiAgentService.cancelRun(userId, id);
+    const cancelled = await this.multiAgentService.cancelRun(userId, id);
+    this.batchService.cancelQueuedRun(id, userId);
+    return cancelled;
   }
 
   /** GET /runs/:id/evidence — list evidence rows collected for a run. */

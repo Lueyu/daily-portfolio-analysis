@@ -36,6 +36,7 @@ function loadService(name) {
   };
   const localRequire = (id) => {
     if (Object.hasOwn(dependencies, id)) return dependencies[id];
+    if (id === './analysis-report' || id === './evidence-language') return loadService(`${id.slice(2)}.ts`);
     throw new Error(`Unexpected import in test: ${id}`);
   };
   new Function('require', 'module', 'exports', compiled)(
@@ -295,7 +296,7 @@ test('debate stores only current saved evidence IDs and drops unsupported argume
   let call = 0;
   const llm = {
     chatSlowJSON: async (messages) => {
-      prompts.push(messages[0].content);
+      prompts.push(messages.map(message => message.content).join('\n'));
       const data = [
         { arguments: [
           { point: '有依据', evidence_refs: ['e-1', 'made-up-id'] },
@@ -350,8 +351,10 @@ test('pipeline passes IDs returned by evidence persistence into the debate', asy
   };
   let jsonCalls = 0;
   const llm = {
+    isConfigured: async () => true,
+    getExecutionInfo: async () => ({ provider: 'user', modelFast: 'fast', modelSlow: 'slow' }),
     chatSlowJSON: async (messages) => {
-      prompts.push(messages[0].content);
+      prompts.push(messages.map(message => message.content).join('\n'));
       const data = jsonCalls < 2
         ? { arguments: [{ point: '有证据', evidence_refs: ['saved-id'] }] }
         : jsonCalls < 4
@@ -375,6 +378,7 @@ test('pipeline passes IDs returned by evidence persistence into the debate', asy
     getStrategyRules: async () => [],
     saveRiskGateResults: async () => undefined,
     saveRating: async () => undefined,
+    savePipelineReport: async () => undefined,
     addAuditLog: async () => undefined,
   };
   const db = {
@@ -415,7 +419,7 @@ test('critic receives original evidence text and linked IDs', async () => {
   };
   const llm = {
     chatSlow: async (messages) => {
-      prompt = messages[0].content;
+      prompt = messages.map(message => message.content).join('\n');
       return { content: '批评', totalTokens: 1 };
     },
   };
@@ -425,6 +429,107 @@ test('critic receives original evidence text and linked IDs', async () => {
   assert.match(prompt, /e-1/);
   assert.match(prompt, /上涨论点/);
   assert.doesNotMatch(prompt, /无效引用论点/);
+});
+
+test('free basic pipeline creates a real report without making any model calls', async () => {
+  const states = [];
+  const savedEvidence = [evidenceRow({ title: 'Price quote', content: 'USD 100' })];
+  const detail = { ticker: 'AAPL', language: 'en', runMode: 'summary', evidence: savedEvidence,
+    arguments: [], debate: [], riskGate: [], rating: null };
+  let reportEngine;
+  let collectedLanguage;
+  const multi = {
+    getRun: async () => detail,
+    addEvidence: async () => savedEvidence,
+    getStrategyRules: async () => [],
+    saveRiskGateResults: async (_user, _run, values) => { detail.riskGate = values; },
+    saveRating: async (_user, _run, value) => { detail.rating = value; },
+    savePipelineReport: async (_user, _run, engine) => { reportEngine = engine; },
+    addAuditLog: async () => undefined,
+  };
+  const { PipelineService } = loadService('pipeline.service.ts');
+  const pipeline = new PipelineService({
+    select: () => ({ from: () => ({ where: async () => [{ status: 'fetching' }] }) }),
+    update: () => ({ set: value => ({ where: async () => { states.push(value.status); } }) }),
+  }, { isConfigured: async () => false,
+    chatSlowJSON: async () => { throw new Error('Basic mode must not call a model'); } },
+  { collectEvidence: async (_ticker, _user, _portfolio, language) => { collectedLanguage = language; return []; } },
+  { getPortfolioContext: async () => ({}), checkRiskRules: () => [] }, multi);
+  await pipeline.runPipeline('run-1', 'user-1');
+  assert.equal(reportEngine, 'basic');
+  assert.equal(collectedLanguage, 'en');
+  assert.equal(detail.rating.rating, 'Watch');
+  assert.equal(detail.rating.confidence, 'low');
+  assert.equal(detail.rating.targetPrice, undefined);
+  assert.match(detail.rating.aggregationLogic, /did not call an LLM/);
+  assert.ok(states.includes('awaiting_human'));
+  assert.ok(!states.includes('debating') && !states.includes('critiquing'));
+});
+
+test('an explicitly configured model failure remains failed and never falls back to basic', async () => {
+  const states = [];
+  let reports = 0;
+  const detail = { ticker: 'AAPL', language: 'en', runMode: 'full' };
+  const { PipelineService } = loadService('pipeline.service.ts');
+  const pipeline = new PipelineService({
+    select: () => ({ from: () => ({ where: async () => [{ status: 'fetching' }] }) }),
+    update: () => ({ set: value => ({ where: async () => { states.push(value.status); } }) }),
+  }, { isConfigured: async () => true,
+    getExecutionInfo: async () => ({ provider: 'user', modelFast: 'fast', modelSlow: 'slow' }),
+    chatSlowJSON: async () => { throw new Error('Provider rejected credentials'); } },
+  { collectEvidence: async () => [] }, { getPortfolioContext: async () => ({}) },
+  { getRun: async () => detail, addEvidence: async () => [], addAuditLog: async () => undefined,
+    savePipelineReport: async () => { reports++; } });
+  await pipeline.runPipeline('run-1', 'user-1');
+  assert.equal(reports, 0);
+  assert.equal(states.at(-1), 'failed');
+});
+
+test('English evidence localizes built-in price and missing-data statements', async () => {
+  const { EvidenceService } = loadService('evidence.service.ts');
+  const service = new EvidenceService(fakeDb(), { getQuote: async () => quote },
+    { getMetrics: async () => null, getNews: async () => null });
+  const items = await service.collectEvidence('AAPL', 'user-1', { totalValue: 1000 }, 'en');
+  assert.ok(items.some(item => item.title.includes('Financial statements unavailable')));
+  assert.doesNotMatch(items.map(item => `${item.title} ${item.content}`).join(' '), /\p{Script=Han}/u);
+});
+
+test('cancelling a queued run does not restart it and releases its completion slot once', async () => {
+  let started = false;
+  let callbacks = 0;
+  const { PipelineService } = loadService('pipeline.service.ts');
+  const pipeline = new PipelineService({
+    select: () => ({ from: () => ({ where: async () => [{ status: 'cancelled' }] }) }),
+    update: () => { started = true; throw new Error('Cancelled run must not be restarted'); },
+  }, {}, {}, {}, { getRun: async () => ({ runMode: 'summary', ticker: 'AAPL' }) });
+  pipeline.onRunComplete(() => { callbacks++; });
+  await pipeline.runPipeline('run-1', 'user-1');
+  assert.equal(started, false);
+  assert.equal(callbacks, 1);
+});
+
+test('an initial database read failure releases the reserved queue slot exactly once', async () => {
+  const { PipelineService } = loadService('pipeline.service.ts');
+  const callbacks = [];
+  const pipeline = new PipelineService({
+    update: () => { throw new Error('Database is unavailable'); },
+  }, {}, {}, {}, { getRun: async () => { throw new Error('Database is unavailable'); } });
+  pipeline.onRunComplete((...args) => { callbacks.push(args); });
+  await pipeline.runPipeline('run-1', 'user-1', 'summary');
+  assert.deepEqual(callbacks, [['run-1', 'user-1', 'summary']]);
+});
+
+test('Chinese basic conclusions localize displayed rating names without changing enums', async () => {
+  let saved;
+  const pipeline = pipelineWith({ multi: {
+    getRun: async () => ({ evidence: [], riskGate: [] }),
+    saveRating: async (_user, _run, rating) => { saved = rating; },
+  } });
+  await pipeline.runBasicRatingPhase('run-1', 'user-1', 'AAPL', 'zh-CN');
+  assert.equal(saved.rating, 'Watch');
+  assert.equal(saved.confidence, 'low');
+  assert.match(saved.aggregationLogic, /观望\/低置信度/);
+  assert.doesNotMatch(saved.aggregationLogic, /Watch|low/);
 });
 
 test('rating is Watch with low confidence and no target when key sources are missing', async () => {
@@ -451,8 +556,10 @@ test('rating is Watch with low confidence and no target when key sources are mis
     saveRating: async (_user, _run, rating) => { saved = rating; },
   };
   const llm = {
+    isConfigured: async () => true,
+    getExecutionInfo: async () => ({ provider: 'user', modelFast: 'fast', modelSlow: 'slow' }),
     chatSlowJSON: async (messages) => {
-      prompt = messages[0].content;
+      prompt = messages.map(message => message.content).join('\n');
       return { data: {
         rating: 'Strong Buy', confidence: 'high', target_price: 150,
         action: '立即买入', key_uncertainty: '无',
@@ -486,7 +593,7 @@ test('rating remains cautious if saved evidence has only a quote and no gap rows
   };
   const llm = {
     chatSlowJSON: async (messages) => {
-      prompt = messages[0].content;
+      prompt = messages.map(message => message.content).join('\n');
       return { data: {
         rating: 'Buy', confidence: 'high', target_price: 150,
         action: '买入',

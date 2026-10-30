@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
+import { Link } from 'react-router-dom';
 import { isAxiosError } from 'axios';
 import { toast } from 'sonner';
 import {
@@ -240,6 +241,11 @@ export default function SettingsPage() {
         ? 'ui.settings.reentryRequired' : 'ui.settings.llm.keyRequired'));
       return;
     }
+    if (!apiKey && llm?.source === 'user'
+      && baseUrl.replace(/\/+$/u, '') !== llm.baseUrl.replace(/\/+$/u, '')) {
+      setLlmError(t('integrations.providerChanged'));
+      return;
+    }
     const request: UpdateLlmIntegrationRequest = {
       baseUrl,
       fastModel,
@@ -270,7 +276,7 @@ export default function SettingsPage() {
             {t('ui.settings.title')}
           </h1>
           <p className="text-sm leading-6 text-muted-foreground">
-            {t('ui.settings.intro')}
+            {t('integrations.intro')}
           </p>
         </div>
         <div className="flex items-center gap-2 rounded-full border border-border bg-card px-3 py-2 text-xs text-muted-foreground">
@@ -280,6 +286,18 @@ export default function SettingsPage() {
       </div>
 
       <AppearanceSettingsCard />
+
+      {llm?.engine === 'basic' && (
+        <Card className="border-success/30 bg-success/5">
+          <CardContent className="flex flex-col items-start gap-4 pt-6 lg:flex-row lg:items-center lg:justify-between">
+            <div className="min-w-0 flex-1 space-y-1">
+              <h2 className="font-semibold">{t('integrations.readyTitle')}</h2>
+              <p className="max-w-3xl text-sm leading-6 text-muted-foreground">{t('integrations.readyBody')}</p>
+            </div>
+            <Button asChild><Link to="/analysis">{t('integrations.runAnalysis')}</Link></Button>
+          </CardContent>
+        </Card>
+      )}
 
       {settingsQuery.isLoading ? (
         <div className="flex min-h-56 items-center justify-center gap-2 text-muted-foreground" role="status">
@@ -309,13 +327,14 @@ export default function SettingsPage() {
                 <Badge variant={llm?.hasApiKey ? 'secondary' : 'outline'}>
                   {t(llm?.needsReentry
                     ? 'ui.settings.source.needsReentry'
+                    : llm?.source === 'builtin' ? 'integrations.basicBadge'
                     : `ui.settings.source.${llm?.source ?? 'none'}`)}
                 </Badge>
               </div>
             </CardHeader>
             <CardContent className="space-y-5">
               <p className="text-sm leading-6 text-muted-foreground">
-                {t('ui.settings.llm.scope')}
+                {t(llm?.engine === 'basic' ? 'integrations.basicScope' : 'integrations.llmScope')}
               </p>
               {llm?.needsReentry && (
                 <p role="alert" className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm leading-6 text-foreground">
@@ -332,6 +351,20 @@ export default function SettingsPage() {
                 </p>
                 <div className="flex flex-wrap gap-2 pt-1">
                   <Button size="sm" variant="outline" type="button"
+                    onClick={() => {
+                      setLlmDraft({
+                        baseUrl: 'https://openrouter.ai/api/v1',
+                        fastModel: 'openrouter/free',
+                        slowModel: 'openrouter/free',
+                        apiKey: '',
+                      });
+                      setLlmDirty(true);
+                      setLlmError(null);
+                      setLlmTestResult(null);
+                    }}>
+                    {t('integrations.openRouterPreset')}
+                  </Button>
+                  <Button size="sm" variant="outline" type="button"
                     onClick={() => updateLlm('baseUrl', 'https://api.openai.com/v1')}>
                     OpenAI
                   </Button>
@@ -344,6 +377,7 @@ export default function SettingsPage() {
                     {t('ui.settings.llm.doubao')}
                   </Button>
                 </div>
+                <p className="text-xs leading-5 text-muted-foreground">{t('integrations.presetHint')}</p>
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
@@ -398,9 +432,9 @@ export default function SettingsPage() {
                   {t('ui.settings.save')}
                 </Button>
                 <Button type="button" variant="outline" onClick={() => testLlm.mutate()}
-                  disabled={!llm?.hasApiKey || llmDirty || testLlm.isPending}>
+                  disabled={!llm?.available || llmDirty || testLlm.isPending}>
                   {testLlm.isPending ? <LoaderCircle className="animate-spin" /> : <RotateCw />}
-                  {t('ui.settings.test')}
+                  {t(llm?.engine === 'basic' ? 'integrations.checkBasic' : 'ui.settings.test')}
                 </Button>
                 {llm?.source === 'user' && (
                   <Button type="button" variant="ghost" className="text-destructive"
@@ -419,19 +453,20 @@ export default function SettingsPage() {
                   <div className="rounded-lg bg-primary/10 p-2 text-primary"><KeyRound size={19} /></div>
                   <div>
                     <CardTitle className="text-lg leading-snug">{t('ui.settings.financial.title')}</CardTitle>
-                    <CardDescription className="mt-1">Finnhub</CardDescription>
+                    <CardDescription className="mt-1">{t('integrations.financialSubtitle')}</CardDescription>
                   </div>
                 </div>
                 <Badge variant={financial?.hasApiKey ? 'secondary' : 'outline'}>
                   {t(financial?.needsReentry
                     ? 'ui.settings.source.needsReentry'
+                    : financial?.source === 'builtin' ? 'integrations.publicBadge'
                     : `ui.settings.source.${financial?.source ?? 'none'}`)}
                 </Badge>
               </div>
             </CardHeader>
             <CardContent className="space-y-5">
               <p className="text-sm leading-6 text-muted-foreground">
-                {t('ui.settings.financial.scope')}
+                {t('integrations.publicScope')}
               </p>
               {financial?.needsReentry && (
                 <p role="alert" className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm leading-6 text-foreground">
@@ -441,11 +476,11 @@ export default function SettingsPage() {
               <div className="rounded-lg border border-border bg-secondary/40 p-4 text-sm leading-6">
                 <p className="font-medium">{t('ui.settings.financial.currentCoverage')}</p>
                 <p className="mt-1 text-muted-foreground">
-                  {t('ui.settings.financial.coverageDetail')}
+                  {t('integrations.financialUpgrade')}
                 </p>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="financial-api-key">{t('ui.settings.apiKey')}</Label>
+                <Label htmlFor="financial-api-key">{t('integrations.finnhubOptional')}</Label>
                 <div className="flex gap-2">
                   <Input id="financial-api-key" type={showFinancialKey ? 'text' : 'password'}
                     value={financialKey}
@@ -489,10 +524,10 @@ export default function SettingsPage() {
                   {t('ui.settings.save')}
                 </Button>
                 <Button type="button" variant="outline" onClick={() => testFinancial.mutate()}
-                  disabled={!financial?.hasApiKey || financialDirty || testFinancial.isPending}>
+                  disabled={!financial?.available || financialDirty || testFinancial.isPending}>
                   {testFinancial.isPending
                     ? <LoaderCircle className="animate-spin" /> : <RotateCw />}
-                  {t('ui.settings.test')}
+                  {t(financial?.provider === 'public' ? 'integrations.testPublic' : 'ui.settings.test')}
                 </Button>
                 {financial?.source === 'user' && (
                   <Button type="button" variant="ghost" className="text-destructive"
@@ -520,8 +555,8 @@ export default function SettingsPage() {
             <AlertDialogTitle>{t('ui.settings.removeTitle')}</AlertDialogTitle>
             <AlertDialogDescription>
               {t(deleteTarget === 'llm'
-                ? 'ui.settings.llm.removeDescription'
-                : 'ui.settings.financial.removeDescription')}
+                ? 'integrations.removeLlm'
+                : 'integrations.removeFinancial')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -552,7 +587,7 @@ function TestResult({ result }: { result: IntegrationTestResult }) {
     }`}>
       <span className="font-medium">{t(result.ok
         ? 'ui.settings.testSucceeded' : 'ui.settings.testFailed')}</span>
-      {result.message ? ` · ${result.message}` : ''}
+      {result.code ? ` · ${t(`integrations.test.${result.code}`)}` : result.message ? ` · ${result.message}` : ''}
     </div>
   );
 }
