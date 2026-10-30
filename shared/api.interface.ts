@@ -962,6 +962,8 @@ export interface AuthTokens {
   user: AuthUser;
   accessToken: string;
   refreshToken: string;
+  /** Generated once during registration or account recovery; save it privately. */
+  recoveryCode?: string;
 }
 
 export interface LoginDto {

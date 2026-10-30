@@ -50,6 +50,7 @@ import {
 } from '@/api/settings';
 import SettingsGuide from './SettingsGuide';
 import { AppearanceSettingsCard } from '@/components/AppearancePicker';
+import { RecoveryCodeCard } from './RecoveryCodeCard';
 
 interface LlmDraft {
   baseUrl: string;
@@ -286,6 +287,7 @@ export default function SettingsPage() {
       </div>
 
       <AppearanceSettingsCard />
+      <RecoveryCodeCard />
 
       {llm?.engine === 'basic' && (
         <Card className="border-success/30 bg-success/5">

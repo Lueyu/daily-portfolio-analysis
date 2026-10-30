@@ -800,6 +800,16 @@ export async function apiRegister(dto: RegisterDto): Promise<AuthTokens> {
   return response.data;
 }
 
+export async function apiRecoverAccount(dto: { username: string; recoveryCode: string; newPassword: string }): Promise<AuthTokens> {
+  const response = await http({ url: '/api/auth/recover', method: 'POST', data: dto });
+  return response.data;
+}
+
+export async function apiRotateRecoveryCode(password: string): Promise<AuthTokens> {
+  const response = await http({ url: '/api/auth/recovery-code', method: 'POST', data: { password } });
+  return response.data;
+}
+
 /**
  * Profile of the caller (layout user menu).
  */

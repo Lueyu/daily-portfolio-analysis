@@ -18,9 +18,9 @@
  *  - createDailyBatch: convenience that runs all holdings + buy-signal watchlist
  *    items in tiered mode.
  */
-import { Injectable, Inject, Logger, OnModuleInit, BadRequestException } from '@nestjs/common';
+import { Injectable, Inject, Logger, OnApplicationBootstrap, OnModuleInit, BadRequestException } from '@nestjs/common';
 import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '../../common/platform';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, inArray, sql } from 'drizzle-orm';
 import { holdings, watchlist, agentRuns } from '@server/database/schema';
 import { MultiAgentService } from './multi-agent.service';
 import { PipelineService } from './pipeline.service';
@@ -44,7 +44,7 @@ interface QueueItem {
 }
 
 @Injectable()
-export class BatchService implements OnModuleInit {
+export class BatchService implements OnModuleInit, OnApplicationBootstrap {
   private readonly logger = new Logger(BatchService.name);
   /** Max concurrent full (expensive) runs. */
   private readonly MAX_FULL_CONCURRENT = 3;
@@ -80,6 +80,17 @@ export class BatchService implements OnModuleInit {
       this.releaseSlot(mode);
       this.processQueue();
     });
+  }
+
+  /** In-memory queues disappear on process restart. Make orphaned runs retryable. */
+  async onApplicationBootstrap(): Promise<void> {
+    const interrupted = ['pending', 'fetching', 'debating', 'critiquing', 'risk_check'] as AgentRunStatus[];
+    const rows = await this.db.update(agentRuns).set({
+      status: 'failed',
+      errorMessage: sql`CASE WHEN ${agentRuns.language} = 'en' THEN 'Server restarted before analysis finished. Please start a new analysis.' ELSE '服务重启前分析未完成，请重新启动分析。' END`,
+      completedAt: new Date(),
+    }).where(inArray(agentRuns.status, interrupted)).returning({ id: agentRuns.id });
+    if (rows.length) this.logger.warn(`Marked ${rows.length} interrupted analyses as retryable`);
   }
 
   /** Pending work has not acquired a slot; remove it immediately without reducing live counters. */

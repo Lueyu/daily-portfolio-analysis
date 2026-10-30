@@ -1,0 +1,52 @@
+services:
+  db:
+    image: ${DB_IMAGE:-postgres:16-alpine}
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: portfolio
+    volumes:
+      - ./../scripts/db/01_schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+      - ./../scripts/db/03_agent_builder.sql:/docker-entrypoint-initdb.d/03_agent_builder.sql:ro
+      - ./../scripts/db/04_user_api_settings.sql:/docker-entrypoint-initdb.d/04_user_api_settings.sql:ro
+      - ./../scripts/db/05_analysis_language.sql:/docker-entrypoint-initdb.d/05_analysis_language.sql:ro
+      - ./../scripts/db/06_account_recovery.sql:/docker-entrypoint-initdb.d/06_account_recovery.sql:ro
+      - dpa-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d portfolio"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  app:
+    build:
+      context: ..
+      args:
+        VITE_PUBLIC_DEPLOYMENT: "true"
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PUBLIC_DEPLOYMENT: "true"
+      SERVER_HOST: 0.0.0.0
+      SERVER_PORT: 3000
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@db:5432/portfolio
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      SETTINGS_ENCRYPTION_KEY: ${SETTINGS_ENCRYPTION_KEY:?Set SETTINGS_ENCRYPTION_KEY in .env}
+      REGISTER_ENABLED: ${REGISTER_ENABLED:-false}
+      TRUST_PROXY: "true"
+      AGENT_GATEWAY_ENABLED: "false"
+    ports:
+      - 127.0.0.1:${HOST_APP_PORT:-3000}:3000
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  dpa-data:

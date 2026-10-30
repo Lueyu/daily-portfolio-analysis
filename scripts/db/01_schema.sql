@@ -408,6 +408,8 @@ CREATE TABLE "users" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"username" varchar(32) NOT NULL,
 	"password_hash" text NOT NULL,
+	"recovery_code_hash" text,
+	"session_version" integer DEFAULT 0 NOT NULL,
 	"display_name" varchar(64),
 	"email_notify" varchar(255),
 	"created_at" timestamptz (3) DEFAULT CURRENT_TIMESTAMP NOT NULL,

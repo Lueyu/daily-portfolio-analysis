@@ -28,6 +28,7 @@ import AgentBuilderPage from './pages/AgentBuilder/AgentBuilderPage';
 import ImportPage from './pages/Import/ImportPage';
 import LoginPage from './pages/Auth/LoginPage';
 import RegisterPage from './pages/Auth/RegisterPage';
+import RecoverPage from './pages/Auth/RecoverPage';
 import NotFound from './pages/NotFound/NotFound';
 
 /**
@@ -50,6 +51,7 @@ const RoutesComponent = () => {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
+      <Route path="/recover" element={<RecoverPage />} />
       <Route element={<Layout />}>
         <Route index element={<DashboardPage />} />
         <Route path="holdings" element={<HoldingsPage />} />

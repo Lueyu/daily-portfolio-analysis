@@ -29,6 +29,7 @@ async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     abortOnError: process.env.NODE_ENV !== 'development',
   });
+  if (process.env.TRUST_PROXY === 'true') app.set('trust proxy', 1);
 
   // JSON bodies up to 1MB (deep reports can be large); urlencoded for parity.
   app.useBodyParser('json', { limit: '1mb' });

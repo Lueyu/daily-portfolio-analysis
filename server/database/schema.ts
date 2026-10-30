@@ -71,6 +71,8 @@ export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
   username: varchar("username", { length: 32 }).notNull().unique(),
   passwordHash: text("password_hash").notNull(),
+  recoveryCodeHash: text("recovery_code_hash"),
+  sessionVersion: integer("session_version").default(0).notNull(),
   displayName: varchar("display_name", { length: 64 }),
   emailNotify: varchar("email_notify", { length: 255 }),
   createdAt: customTimestamptz("created_at", { precision: 3 }).default(sql`CURRENT_TIMESTAMP`).notNull(),

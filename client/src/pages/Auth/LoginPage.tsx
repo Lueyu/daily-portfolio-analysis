@@ -20,7 +20,7 @@ function errorMessage(error: unknown): string {
   return e?.response?.data?.message ?? e?.message ?? '';
 }
 
-const IS_DEMO_HINT = import.meta.env.MODE === 'production';
+const IS_DEMO_HINT = import.meta.env.MODE === 'production' && import.meta.env.VITE_PUBLIC_DEPLOYMENT !== 'true';
 
 function LoginPage() {
   const { t } = useTranslation();
@@ -55,12 +55,13 @@ function LoginPage() {
       <form className="mt-8 space-y-4" onSubmit={handleSubmit}>
         <div className="space-y-2">
           <Label htmlFor="username">{t('auth.username')}</Label>
-          <Input id="username" autoComplete="username" placeholder="demo" value={username} onChange={(e) => setUsername(e.target.value)} />
+          <Input id="username" autoComplete="username" placeholder={t('auth.usernamePlaceholder')} value={username} onChange={(e) => setUsername(e.target.value)} />
         </div>
         <div className="space-y-2">
           <Label htmlFor="password">{t('auth.password')}</Label>
           <Input id="password" type="password" autoComplete="current-password" placeholder="••••••" value={password} onChange={(e) => setPassword(e.target.value)} />
         </div>
+        <div className="text-right text-sm"><Link to="/recover" className="text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">{t('auth.forgotPassword')}</Link></div>
         <Button type="submit" className="w-full" disabled={submitting}>
           {submitting ? t('auth.loggingIn') : t('auth.login')}
         </Button>
