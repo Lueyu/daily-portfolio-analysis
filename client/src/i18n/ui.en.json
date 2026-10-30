@@ -255,10 +255,10 @@
   },
   "journal": {
     "subtitle": "Daily reviews, trade notes, and investing lessons",
-    "editJournal": "Edit journal",
+    "editJournal": "Edit review",
     "dailySummary": "Daily investment summary",
-    "history": "Journal history",
-    "noHistory": "No journal history yet",
+    "history": "Review history",
+    "noHistory": "No review history yet",
     "recordSection": "Write about {{section}}…",
     "noRecord": "No entry yet",
     "chartTitle": "P&L and account value",

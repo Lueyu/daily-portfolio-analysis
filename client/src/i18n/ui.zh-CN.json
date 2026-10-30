@@ -255,9 +255,9 @@
   },
   "journal": {
     "subtitle": "每日复盘、操作记录与投资心得",
-    "editJournal": "编辑日志",
+    "editJournal": "编辑复盘",
     "dailySummary": "每日投资总结",
-    "history": "历史日志",
+    "history": "历史复盘",
     "noHistory": "暂无历史记录",
     "recordSection": "记录{{section}}…",
     "noRecord": "暂无记录",

@@ -1,14 +1,14 @@
 {
   "nav": {
     "dashboard": "仪表盘", "holdings": "持仓", "import": "持仓导入", "watchlist": "关注",
-    "analysis": "每日分析", "paper": "AI 模拟盘", "journal": "日志", "transactions": "交易记录",
+    "analysis": "每日分析", "paper": "AI 模拟盘", "journal": "交易复盘", "transactions": "交易记录",
     "rules": "策略规则", "notifications": "通知设置"
   },
   "layout": {
     "appName": "吵股", "darkMode": "浅色模式", "lightMode": "深色模式", "logout": "退出登录",
     "switchAccount": "切换账号", "trading": "交易中", "closed": "休市",
     "marketHours": "美股 21:30–04:00 · 港股 09:30–16:00 · A股 09:30–15:00（北京时间）；绿涨红跌",
-    "refreshQuotes": "刷新行情", "unknownUser": "未知用户"
+    "refreshQuotes": "刷新行情", "unknownUser": "未知用户", "demoUser": "演示用户"
   },
   "auth": {
     "login": "登录", "register": "注册一个", "username": "用户名", "password": "密码",
@@ -149,9 +149,9 @@
     "loadClosedFailed": "加载已平仓记录失败", "loadPlFailed": "加载已实现盈亏失败"
   },
   "journal": {
-    "title": "投资日志", "loadFailed": "加载投资日志失败", "loadNavFailed": "加载净值失败",
+    "title": "交易复盘", "loadFailed": "加载交易复盘失败", "loadNavFailed": "加载净值失败",
     "editFailed": "保存失败，请重试", "loading": "加载中...",
-    "saved": "日志已保存", "nav": "净值($)", "dailyPl": "每日盈亏",
+    "saved": "复盘已保存", "nav": "净值($)", "dailyPl": "每日盈亏",
     "plLabel": "盈亏($)", "accountNav": "账户净值",
     "marketSummary": "市场综述", "portfolioSummary": "持仓总结",
     "actions": "操作记录", "plan": "明日计划", "lessons": "心得体会"

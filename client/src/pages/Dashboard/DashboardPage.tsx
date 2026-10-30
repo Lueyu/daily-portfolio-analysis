@@ -47,6 +47,7 @@ import ConfidenceBadge from '@/components/MultiAgent/ConfidenceBadge';
 import { Mascot } from '@/components/Mascot';
 import { useMarketQuotes } from '@/hooks/use-market-quotes';
 import { MarketStatusBadges } from '@/components/MarketStatusBadges';
+import { displayCompanyName } from '@/utils/company-name';
 import {
   formatCurrencyWithCode,
   formatPercent,
@@ -89,23 +90,11 @@ import { Badge } from '@/components/ui/badge';
 import { useTranslation } from 'react-i18next';
 import './dashboard-design.css';
 
-/**
- * Pick a display company name, returning null when the name is effectively
- * the same as the ticker (case-insensitive, before any dot suffix).
- * @param company - Company name from the holding record.
- * @param ticker - Holding ticker.
- * @returns The display name, or null when it duplicates the ticker.
- */
-function displayCompany(
-  company: string | null | undefined,
-  ticker: string,
-): string | null {
-  const name = (company ?? '').trim();
-  if (!name) return null;
-  const base = (s: string): string => s.split('.')[0].toUpperCase();
-  if (base(name) === base(ticker)) return null;
-  return name;
-}
+const MARKET_LABEL_KEYS: Record<string, string> = {
+  US: 'common.usMarket',
+  HK: 'common.hkMarket',
+  CN: 'common.cnMarket',
+};
 
 /** Shape of a dashboard metric card config. */
 interface MetricCard {
@@ -174,7 +163,13 @@ function RealtimeBadge({ marketStatus, holdings }: RealtimeBadgeProps) {
  * currency, P/L window length, today's agent runs, and hard-rule failure count.
  */
 export default function DashboardPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const language = i18n.resolvedLanguage || i18n.language;
+  // The API supplies legacy Chinese group names; known markets use locale keys.
+  const marketName = (group: GroupSummary): string => {
+    const key = MARKET_LABEL_KEYS[group.groupId ?? ''];
+    return key ? t(key) : group.groupName || t('holdings.noGroup');
+  };
   const [dashboard, setDashboard] = useState<DashboardOverview | null>(null);
   const [holdings, setHoldings] = useState<Holding[]>([]);
   const [dailyPl, setDailyPl] = useState<
@@ -570,7 +565,7 @@ export default function DashboardPage() {
                         {latestCompletedRun.ticker}
                         {latestCompletedRun.tickerName && (
                           <span className="block text-xs font-normal text-muted-foreground">
-                            {latestCompletedRun.tickerName}
+                            {displayCompanyName(latestCompletedRun.tickerName, latestCompletedRun.ticker, language)}
                           </span>
                         )}
                       </div>
@@ -631,7 +626,7 @@ export default function DashboardPage() {
               <RealtimeBadge marketStatus={marketStatus} holdings={holdings} />
             </div>
             <Select value={String(plRange)} onValueChange={(v) => setPlRange(parseInt(v, 10))}>
-              <SelectTrigger className="w-[110px]">
+              <SelectTrigger className="w-auto min-w-[140px] shrink-0">
                 <SelectValue placeholder={t('ui.dashboard.timeRange')} />
               </SelectTrigger>
               <SelectContent>
@@ -758,7 +753,7 @@ export default function DashboardPage() {
                     {sortedMarkets.map((g) => (
                       <TableRow key={g.groupId || 'unknown'}>
                         <TableCell>
-                          <span className="font-medium">{g.groupName || t('holdings.noGroup')}</span>
+                          <span className="font-medium">{marketName(g)}</span>
                         </TableCell>
                         <TableCell className="text-right font-mono tabular-nums">
                           {formatNumber(g.count, 0)}
@@ -798,7 +793,7 @@ export default function DashboardPage() {
                   <div key={mkt} className="space-y-2">
                     <div className="flex items-center justify-between border-b border-border pb-2">
                       <div className="flex items-center gap-2">
-                        <span className="font-medium">{g.groupName}</span>
+                        <span className="font-medium">{marketName(g)}</span>
                         <span className="text-xs text-muted-foreground">
                           {formatNumber(g.count, 0)} {t('dash.holdingsUnit')}
                         </span>
@@ -824,7 +819,7 @@ export default function DashboardPage() {
                           const current = Number(h.currentPrice) || 0;
                           const buy = Number(h.buyPrice) || 0;
                           const pct = buy > 0 ? ((current - buy) / buy) * 100 : 0;
-                          const company = displayCompany(h.company, h.ticker);
+                          const company = displayCompanyName(h.company, h.ticker, language);
                           return (
                             <Card key={h.id} className="mb-2 p-3">
                               <div className="flex items-center justify-between">

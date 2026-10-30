@@ -47,23 +47,24 @@ export default function JournalPage() {
   const { t } = useTranslation();
   const [currentDate, setCurrentDate] = useState<Date>(() => new Date());
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
-  const [journal, setJournal] = useState<JournalEntry | null>(null);
   const [journalList, setJournalList] = useState<JournalEntry[]>([]);
   const [loadingSnap, setLoadingSnap] = useState(true);
   const [loadingJournal, setLoadingJournal] = useState(true);
+  const [journalLoaded, setJournalLoaded] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editValues, setEditValues] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
 
   const dateStr = formatDateInput(currentDate);
+  const journal = journalList.find((entry) => safeDateStr(entry.journalDate) === dateStr) ?? null;
 
-  /** Load the journal entries for a given date (takes the first one if several exist). */
-  const loadJournal = useCallback(async (date: string) => {
+  /** Load all owned entries so history also includes dates without snapshots. */
+  const loadJournal = useCallback(async () => {
     setLoadingJournal(true);
     try {
-      const items: JournalEntry[] = await fetchJournal(date);
+      const items: JournalEntry[] = await fetchJournal();
       setJournalList(items || []);
-      setJournal(items && items.length > 0 ? items[0] : null);
+      setJournalLoaded(true);
     } catch (error) {
       logger.error('加载日志失败', error);
       toast.error(t('journal.loadFailed'));
@@ -98,8 +99,8 @@ export default function JournalPage() {
   }, [t]);
 
   useEffect(() => {
-    loadJournal(dateStr);
-  }, [dateStr, loadJournal]);
+    loadJournal();
+  }, [loadJournal]);
 
   /** Find the snapshot matching the currently selected date. */
   const currentSnapshot = useMemo(() => {
@@ -135,6 +136,7 @@ export default function JournalPage() {
 
   /** Copy the current journal values into the edit form and enter edit mode. */
   const startEdit = () => {
+    if (!journalLoaded || loadingJournal || loadingSnap) return;
     setEditValues({
       marketSummary: journal?.marketSummary || '',
       portfolioSummary: journal?.portfolioSummary || '',
@@ -152,29 +154,30 @@ export default function JournalPage() {
   };
 
   /**
-   * POST the edited journal sections. Empty fields are sent as undefined so
-   * the backend clears them. Refetches the journal on success.
+   * POST every edited section, including empty strings to clear old content.
+   * Omitted fields are left unchanged by the backend. Refresh history on success.
    */
   const saveJournal = async () => {
     setSaving(true);
     try {
       const payload = {
         journalDate: dateStr,
-        marketSummary: editValues.marketSummary || undefined,
-        portfolioSummary: editValues.portfolioSummary || undefined,
-        actions: editValues.actions || undefined,
-        plan: editValues.plan || undefined,
-        lessons: editValues.lessons || undefined,
+        marketSummary: editValues.marketSummary ?? '',
+        portfolioSummary: editValues.portfolioSummary ?? '',
+        actions: editValues.actions ?? '',
+        plan: editValues.plan ?? '',
+        lessons: editValues.lessons ?? '',
       };
       const response = await http({
         url: '/api/portfolio/journal',
         method: 'POST',
         data: payload,
       });
-      setJournal(response.data);
+      const saved = response.data as JournalEntry;
+      setJournalList((entries) => [saved, ...entries.filter((entry) => entry.journalDate !== saved.journalDate)]);
       setEditing(false);
       toast.success(t('journal.saved'));
-      loadJournal(dateStr);
+      loadJournal();
     } catch (error) {
       logger.error('保存日志失败', error);
       toast.error(t('journal.editFailed'));
@@ -210,7 +213,7 @@ export default function JournalPage() {
         </div>
         <div className="flex items-center gap-2">
           {!editing ? (
-            <Button onClick={startEdit} size="sm" className="gap-1.5">
+            <Button onClick={startEdit} disabled={!journalLoaded || loadingJournal || loadingSnap} size="sm" className="gap-1.5">
               <Edit3 size={14} />
               {t('ui.journal.editJournal')}
             </Button>

@@ -284,7 +284,9 @@ function SidebarUserBlock() {
     retry: false,
   });
 
-  const name = profile?.displayName || profile?.username || '';
+  const name = profile?.username === 'demo' && profile.displayName === '演示用户'
+    ? t('layout.demoUser')
+    : profile?.displayName || profile?.username || '';
   const initial = name ? name.charAt(0).toUpperCase() : '?';
 
   return (
