@@ -18,6 +18,7 @@ test('Postgres budgets serialize workers, isolate owners, persist usage and reje
     for (const statement of readFileSync('scripts/db/07_llm_budget.sql', 'utf8').split(';').filter(s => s.trim())) {
       await client.unsafe(statement);
     }
+    await client.unsafe(readFileSync('scripts/db/13_budget_toggle.sql', 'utf8'));
     await client`insert into users (id, username, password_hash) values
       (${alice}, ${`ba-${alice.slice(0, 8)}`}, 'test'), (${bob}, ${`bb-${bob.slice(0, 8)}`}, 'test')`;
     const one = new LlmBudgetService(drizzle(client));
@@ -97,6 +98,48 @@ test('Postgres task, daily, monthly caps and optional cost estimates use persist
       assert.equal(used.dayTokens, 0);
       assert.equal(used.monthTokens, 650);
     });
+  } finally {
+    await client`delete from users where id = ${owner}`;
+    await client.end();
+  }
+});
+
+test('switching a user budget off removes limits while keeping usage, then restores the saved caps', {
+  skip: !process.env.BUDGET_TEST_DATABASE_URL,
+}, async () => {
+  const client = postgres(process.env.BUDGET_TEST_DATABASE_URL!, { max: 3 });
+  const owner = randomUUID();
+  try {
+    await client.unsafe(readFileSync('scripts/db/13_budget_toggle.sql', 'utf8'));
+    await client`insert into users (id, username, password_hash) values
+      (${owner}, ${`toggle-${owner.slice(0, 8)}`}, 'test')`;
+    const service = new LlmBudgetService(drizzle(client));
+    const limits = { ...DEFAULT_LLM_BUDGET, dailyTokenLimit: 300, monthlyTokenLimit: 300,
+      perTaskTokenLimit: 300, maxInputTokens: 100, maxOutputTokens: 100,
+      maxCallsPerTask: 1, dailyCallLimit: 1 };
+    await service.saveSettings(owner, limits);
+    const request = { taskId: 'same-task', purpose: 'test', model: 'fake',
+      messages: [{ role: 'user', content: 'x'.repeat(1000) }] };
+    await assert.rejects(() => service.reserve(owner, request),
+      (error: unknown) => error instanceof BudgetExceededException && error.reason === 'input_tokens');
+    await service.saveSettings(owner, { ...limits, enabled: false });
+    const first = await service.reserve(owner, request);
+    const second = await service.reserve(owner, request);
+    assert.equal(first.maxOutputTokens, 4096);
+    assert.equal(second.maxOutputTokens, 4096);
+    assert.equal(first.omitOutputLimit, true);
+    const explicitOutput = await service.reserve(owner, { ...request, maxOutputTokens: 900 });
+    assert.equal(explicitOutput.maxOutputTokens, 900);
+    assert.equal(explicitOutput.omitOutputLimit, false);
+    await service.settle(owner, first.id, { prompt_tokens: 1000, completion_tokens: 1000 });
+    const usage = await service.getUsage(owner);
+    assert.equal(usage.settings.enabled, false);
+    assert.equal(usage.dayCalls, 3);
+    assert.ok(usage.dayTokens > limits.dailyTokenLimit);
+    await service.saveSettings(owner, { ...usage.settings, enabled: true });
+    assert.equal((await service.getSettings(owner)).dailyTokenLimit, 300);
+    await assert.rejects(() => service.reserve(owner, { ...request, messages: [{ role: 'user', content: 'ok' }] }),
+      (error: unknown) => error instanceof BudgetExceededException && error.reason === 'daily_calls');
   } finally {
     await client`delete from users where id = ${owner}`;
     await client.end();

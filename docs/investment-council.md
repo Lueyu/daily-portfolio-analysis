@@ -14,7 +14,7 @@ Choose **2–6 members**, including exactly one moderator/manager. Seven templat
 | Challenger | Test the researcher's claims, cite contrary facts and ask questions. | Fast |
 | Portfolio manager | Summarize agreements, disagreements and next checks; assess an exact trade candidate only when one is attached. | Slow |
 
-Customize names, role titles, personality, research focus, speaking style and an additional prompt. Each member selects the default model connection or a separately saved connection and its fast/slow model. **API Settings → Team model connections** supports up to eight extra OpenAI-compatible public HTTPS connections. Credentials are encrypted server-side and never copied into room configuration. A missing connection stops that member instead of silently switching credentials.
+Customize names, role titles, personality, research focus, speaking style and an additional prompt. Each member selects the default model connection or a separately saved connection and its fast/slow model. **Settings → Team model connections** supports up to eight extra OpenAI-compatible public HTTPS connections. Credentials are encrypted server-side and never copied into room configuration. A missing connection stops that member instead of silently switching credentials.
 
 The default discussion has four sequential turns: research → challenge → response → summary. Larger teams add viewpoints before the response and summary. Members see previous contributions, user steering and cited facts, and can request bounded financial, valuation, news, price or optional web research. Permissions, trade direction/size and hard spending limits cannot be overridden by a prompt. Expand a message to read its **public rationale**, questions and sources; this is not the model's private chain of thought.
 
@@ -63,7 +63,7 @@ The review interval uses each market's local date. Changed profile/research/posi
 
 ## Budget and usage
 
-**Research budget** is available from Agent Builder and Settings. Limits are saved per account and checked before requests through the shared server LLM client, including provider retries and connection tests. All council members and revisions in a discussion share one task identifier.
+**Research budget** is in Settings. It is enabled by default. Turn it off to stop enforcing the app's input, token and call limits while retaining the usage ledger and saved limit values. Turning it back on restores those values, and already recorded usage still counts. Explicit per-request output parameters and provider limits and charges still apply. All council members and revisions in a discussion share one task identifier.
 
 | Setting | Default |
 |---|---:|

@@ -61,6 +61,32 @@ test('LLM calls use each authenticated user configuration', async () => {
   ]);
 });
 
+test('disabled budget sends no implicit output cap, but honors an explicit request cap', async () => {
+  const settings = { getLlmConfig: async () => ({ source: 'user',
+    baseUrl: 'https://api.openai.com/v1', fastModel: 'test-model',
+    slowModel: 'test-model', apiKey: 'fixture' }) };
+  const budget = budgetStub();
+  budget.reserve = async (_owner, input) => ({ id: 'test-reservation', taskId: 'test-task',
+    inputTokens: 100, maxOutputTokens: input.maxOutputTokens ?? 4096,
+    reservedTokens: 100 + (input.maxOutputTokens ?? 4096),
+    omitOutputLimit: input.maxOutputTokens === undefined });
+  const service = new LlmService(settings as SettingsService, budget);
+  const originalAdapter = axios.defaults.adapter;
+  const bodies: Array<Record<string, unknown>> = [];
+  axios.defaults.adapter = async (config) => {
+    bodies.push(JSON.parse(String(config.data)) as Record<string, unknown>);
+    return { data: { choices: [{ message: { content: 'OK' } }] },
+      status: 200, statusText: 'OK', headers: {}, config };
+  };
+  try {
+    await service.chatFast([{ role: 'user', content: 'hi' }], 'alice');
+    await service.chatFast([{ role: 'user', content: 'hi' }], 'alice', { maxOutputTokens: 900 });
+  } finally { axios.defaults.adapter = originalAdapter; }
+  assert.equal(Object.hasOwn(bodies[0], 'max_tokens'), false);
+  assert.equal(Object.hasOwn(bodies[0], 'max_completion_tokens'), false);
+  assert.equal(bodies[1].max_tokens, 900);
+});
+
 test('LLM provider errors do not return an echoed API key', async () => {
   const settings = {
     getLlmConfig: async () => ({

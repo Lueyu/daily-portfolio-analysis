@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, Navigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -32,9 +32,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import BuilderWizard from './BuilderWizard';
 import { errorMessage } from './errorMessage';
-import BudgetPanel from './BudgetPanel';
 import { DEFAULT_CADENCE } from '@/utils/council-state';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 function localDateTimeNow(): string {
   const now: Date = new Date();
@@ -193,6 +191,7 @@ export default function AgentBuilderPage() {
     } });
   };
 
+  if (params.get('tab') === 'budget') return <Navigate to="/settings#research-budget" replace />;
   return (
     <div className="mx-auto max-w-6xl space-y-8 pb-12">
       <section className="relative overflow-hidden rounded-2xl border border-primary/20 bg-card p-6 md:p-8">
@@ -231,12 +230,6 @@ export default function AgentBuilderPage() {
         </div>
       </section>
 
-      <Tabs value={params.get('tab') === 'budget' ? 'budget' : 'profiles'}
-        onValueChange={(value: string) => setParams(value === 'budget' ? { tab: 'budget' } : {}, { replace: true })}>
-        <TabsList className="mb-5 max-w-full"><TabsTrigger value="profiles">{t('ui.builder.yourAgents')}</TabsTrigger>
-          <TabsTrigger value="budget">{t('council.budget.title')}</TabsTrigger></TabsList>
-        <TabsContent value="budget"><BudgetPanel /></TabsContent>
-        <TabsContent value="profiles" className="space-y-8">
       {wizardOpen && (
         <BuilderWizard key={editing?.id ?? 'new'} editing={editing}
           onSaved={() => void refresh()} onClose={() => setWizardOpen(false)} />
@@ -412,8 +405,6 @@ export default function AgentBuilderPage() {
         )}
       </section>
 
-        </TabsContent>
-      </Tabs>
       <Dialog open={selected !== null} onOpenChange={(open: boolean) => {
         if (!open) setSelected(null);
       }}>

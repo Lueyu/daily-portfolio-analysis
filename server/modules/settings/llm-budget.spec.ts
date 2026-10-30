@@ -16,7 +16,7 @@ test('budget validation rejects malformed, unbounded, and contradictory settings
   for (const patch of [
     { dailyTokenLimit: '60000' }, { dailyCallLimit: 1.5 }, { maxOutputTokens: 0 },
     { monthlyTokenLimit: Infinity }, { inputUsdPerMillion: -1 }, { maxCallsPerTask: null },
-    { perTaskTokenLimit: 60001 }, { extra: true }, { inputUsdPerMillion: '1' },
+    { perTaskTokenLimit: 60001 }, { extra: true }, { inputUsdPerMillion: '1' }, { enabled: 'false' },
   ]) {
     assert.throws(() => normalizeBudgetSettings({ ...DEFAULT_LLM_BUDGET, ...patch }));
   }

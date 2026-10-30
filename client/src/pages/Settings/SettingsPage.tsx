@@ -52,6 +52,7 @@ import SettingsGuide from './SettingsGuide';
 import { AppearanceSettingsCard } from '@/components/AppearancePicker';
 import { RecoveryCodeCard } from './RecoveryCodeCard';
 import ModelConnectionsPanel from './ModelConnectionsPanel';
+import BudgetPanel from './BudgetPanel';
 
 interface LlmDraft {
   baseUrl: string;
@@ -278,7 +279,7 @@ export default function SettingsPage() {
             {t('ui.settings.title')}
           </h1>
           <p className="text-sm leading-6 text-muted-foreground">
-            {t('integrations.intro')}
+            {t('ui.settings.intro')}
           </p>
         </div>
         <div className="flex items-center gap-2 rounded-full border border-border bg-card px-3 py-2 text-xs text-muted-foreground">
@@ -290,11 +291,7 @@ export default function SettingsPage() {
       <AppearanceSettingsCard />
       <RecoveryCodeCard />
       <ModelConnectionsPanel />
-      <Card><CardContent className="flex flex-wrap items-center justify-between gap-4 pt-5">
-        <div><p className="font-semibold">{t('council.budget.title')}</p>
-          <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">{t('council.budget.intro')}</p></div>
-        <Button asChild variant="outline" size="sm"><Link to="/agent-builder?tab=budget">{t('council.budget.open')}</Link></Button>
-      </CardContent></Card>
+      <BudgetPanel />
 
       {llm?.engine === 'basic' && (
         <Card className="border-success/30 bg-success/5">

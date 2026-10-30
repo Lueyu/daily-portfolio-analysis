@@ -45,7 +45,7 @@
   "debate": "Published analyst perspectives",
   "round": "Round {{round}}",
   "missingSettings": "Could not check API settings. Refresh before starting analysis.",
-  "keyUnavailable": "The saved model key is unavailable. Re-enter it in API Settings before running AI analysis.",
+  "keyUnavailable": "The saved model key is unavailable. Re-enter it in Settings before running AI analysis.",
   "report": "Analysis report",
   "reportCount": "{{count}} reports"
 }

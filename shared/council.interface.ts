@@ -1,5 +1,6 @@
 /** Public contracts for bounded, user-owned investment research. */
 export interface LlmBudgetSettings {
+  enabled: boolean;
   dailyTokenLimit: number;
   monthlyTokenLimit: number;
   perTaskTokenLimit: number;

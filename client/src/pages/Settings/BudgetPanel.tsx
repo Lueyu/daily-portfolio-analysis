@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Coins, Loader2, Settings2 } from 'lucide-react';
@@ -12,8 +11,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
+import { Switch } from '@/components/ui/switch';
 import { budgetPercent, validateBudget } from '@/utils/council-state';
-import { errorMessage } from './errorMessage';
+import { errorMessage } from '@/pages/AgentBuilder/errorMessage';
 
 export default function BudgetPanel() {
   const { t, i18n } = useTranslation();
@@ -21,6 +21,11 @@ export default function BudgetPanel() {
   const query = useQuery({ queryKey: ['llm-budget', 'usage'], queryFn: fetchLlmBudgetUsage,
     refetchInterval: 30_000 });
   const usage = query.data;
+  const client = useQueryClient();
+  const toggle = useMutation({ mutationFn: (enabled: boolean) => saveLlmBudget({ ...usage!.settings, enabled }),
+    onSuccess: () => { setEditing(false); void client.invalidateQueries({ queryKey: ['llm-budget'] }); },
+    onError: (cause: Error) => toast.error(errorMessage(cause, t('council.saveFailed'))),
+  });
   const number = (value: number) => value.toLocaleString(i18n.language);
   return (
     <Card id="research-budget" className="min-w-0 scroll-mt-6">
@@ -32,13 +37,19 @@ export default function BudgetPanel() {
             </CardTitle>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">{t('council.budget.intro')}</p>
           </div>
-          <Button type="button" size="sm" variant="outline" disabled={!usage}
+          <Button type="button" size="sm" variant="outline" disabled={!usage || !usage.settings.enabled}
             onClick={() => setEditing(!editing)} aria-expanded={editing}>
             <Settings2 />{t(editing ? 'council.close' : 'council.budget.edit')}
           </Button>
         </div>
       </CardHeader>
       <CardContent className="space-y-5">
+        {usage && <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-border bg-muted/30 p-4">
+          <div className="min-w-0"><Label htmlFor="budget-enabled" className="font-semibold">{t('council.budget.enabled')}</Label>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">{t(usage.settings.enabled ? 'council.budget.enabledHint' : 'council.budget.disabledHint')}</p></div>
+          <Switch id="budget-enabled" checked={usage.settings.enabled} disabled={toggle.isPending}
+            onCheckedChange={(enabled: boolean) => toggle.mutate(enabled)} aria-label={t('council.budget.enabled')} />
+        </div>}
         {query.isLoading && <p className="text-sm text-muted-foreground">{t('council.loading')}</p>}
         {query.isError && <div role="alert" className="flex flex-wrap items-center gap-3 text-sm text-destructive">
           {errorMessage(query.error, t('council.loadFailed'))}
@@ -47,11 +58,11 @@ export default function BudgetPanel() {
         {usage && <>
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4" data-ai-section-type="card-stat">
             <BudgetMeter label={t('council.budget.today')} used={usage.dayTokens}
-              limit={usage.settings.dailyTokenLimit} number={number} />
+              limit={usage.settings.enabled ? usage.settings.dailyTokenLimit : null} number={number} />
             <BudgetMeter label={t('council.budget.month')} used={usage.monthTokens}
-              limit={usage.settings.monthlyTokenLimit} number={number} />
+              limit={usage.settings.enabled ? usage.settings.monthlyTokenLimit : null} number={number} />
             <BudgetMeter label={t('council.budget.calls')} used={usage.dayCalls}
-              limit={usage.settings.dailyCallLimit} number={number} />
+              limit={usage.settings.enabled ? usage.settings.dailyCallLimit : null} number={number} />
             <div className="space-y-2">
               <p className="text-xs text-muted-foreground">{t('council.budget.estimatedCost')}</p>
               <p className="font-mono text-xl font-semibold">{usage.estimatedCostUsd === null
@@ -64,10 +75,9 @@ export default function BudgetPanel() {
               <Badge variant="secondary">{t('council.budget.reserved', { count: usage.reservedTokens })}</Badge>
               <span className="self-center">{t('council.budget.utc')}</span>
             </div>
-            <Link to="/settings" className="font-medium text-primary hover:underline">{t('council.apiSettings')}</Link>
           </div>
           <p className="text-xs leading-5 text-muted-foreground">{t('council.budget.accountingHint')}</p>
-          {editing && <BudgetEditor key={JSON.stringify(usage.settings)} settings={usage.settings}
+          {editing && usage.settings.enabled && <BudgetEditor key={JSON.stringify(usage.settings)} settings={usage.settings}
             onSaved={() => setEditing(false)} />}
           {usage.recent.length > 0 && <details className="rounded-lg border border-border p-3">
             <summary className="cursor-pointer text-sm font-medium">{t('council.budget.recent')}</summary>
@@ -95,20 +105,21 @@ export default function BudgetPanel() {
 }
 
 function BudgetMeter({ label, used, limit, number }: {
-  label: string; used: number; limit: number; number: (value: number) => string;
+  label: string; used: number; limit: number | null; number: (value: number) => string;
 }) {
+  const { t } = useTranslation();
   return <div className="space-y-2">
     <p className="text-xs text-muted-foreground">{label}</p>
     <p className="font-mono text-xl font-semibold">{number(used)}
-      <span className="ml-1 text-xs font-normal text-muted-foreground">/ {number(limit)}</span></p>
-    <Progress value={budgetPercent(used, limit)} aria-label={label} />
+      <span className="ml-1 text-xs font-normal text-muted-foreground">/ {limit === null ? t('council.budget.unlimited') : number(limit)}</span></p>
+    {limit !== null && <Progress value={budgetPercent(used, limit)} aria-label={label} />}
   </div>;
 }
 
-const CAP_FIELDS: Array<keyof LlmBudgetSettings> = [
+const CAP_FIELDS = [
   'dailyTokenLimit', 'monthlyTokenLimit', 'perTaskTokenLimit', 'maxInputTokens',
   'maxOutputTokens', 'maxCallsPerTask', 'dailyCallLimit',
-];
+] as const;
 const PRICE_FIELDS: Array<'inputUsdPerMillion' | 'outputUsdPerMillion'> = [
   'inputUsdPerMillion', 'outputUsdPerMillion',
 ];

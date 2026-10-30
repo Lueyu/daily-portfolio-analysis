@@ -150,7 +150,7 @@ in the security group.
 Create your personal account with a 12–128-character password. This is an
 ordinary application account, not a special administrator role. **Save the
 one-time recovery code offline** before leaving the page. Existing accounts
-can generate one in API Settings using their current password; losing both
+can generate one in Settings using their current password; losing both
 password and recovery code prevents self-service recovery.
 
 For your own private instance, close further registration. **Server:**
@@ -169,7 +169,7 @@ sudo docker compose -p squabble-public --env-file .env.production -f deploy/comp
 `restart app` alone does not load changed environment values. Sign in again
 through the tunnel and confirm it works. You can stop here for private SSH
 access; reconnect the tunnel each time you need it. No LLM key is required for
-basic analysis. Add a personal model later through **API Settings**.
+basic analysis. Add a personal model later through **Settings**.
 
 If you deliberately want open registration, leave the value `true` and read
 the operating limits at the end before sharing the URL.
@@ -313,6 +313,6 @@ infrastructure that such operation requires.
 
 Only variables explicitly mapped by the public Compose file reach the app.
 For example, putting `DOUBAO_API_KEY` only in `.env.production` does not enable
-a host-wide model. Personal **API Settings** need no Compose changes. For
+a host-wide model. Personal **Settings** need no Compose changes. For
 advanced host-wide settings, add an explicit environment mapping through a
 separate override file and include that file consistently in every command.

@@ -48,7 +48,7 @@ class ModelResponseError extends Error {
   }
 }
 
-/** Every application call has a reserved output cap; keep final answers usable within it. */
+/** Use an explicit mode for models whose thinking behavior could exhaust a bounded response. */
 function boundedDeepSeekMode(baseUrl: string, model: string) {
   // These documented IDs support an explicit mode switch. Do not guess the
   // capabilities of legacy aliases, custom gateways or similarly named hosts.
@@ -162,7 +162,7 @@ export class LlmService {
       if (options.shouldContinue && !(await options.shouldContinue())) throw new Error('LLM request cancelled');
       // Deliberately outside the network catch: budget/DB failures must never retry or bypass accounting.
       const reservation = await this.budgets.reserve(userId, { ...options, taskId, model, messages });
-      const outputLimit = /^(?:o[1-9](?:-|$)|gpt-5(?:[.-]|$))/u.test(model)
+      const outputLimit = reservation.omitOutputLimit ? {} : /^(?:o[1-9](?:-|$)|gpt-5(?:[.-]|$))/u.test(model)
         ? { max_completion_tokens: reservation.maxOutputTokens }
         : { max_tokens: reservation.maxOutputTokens };
       const body = { model, messages, ...outputLimit, ...boundedDeepSeekMode(baseUrl, model) };

@@ -1,9 +1,10 @@
 import { sql } from 'drizzle-orm';
-import { check, index, integer, numeric, pgTable, timestamp, uuid, varchar } from 'drizzle-orm/pg-core';
+import { boolean, check, index, integer, numeric, pgTable, timestamp, uuid, varchar } from 'drizzle-orm/pg-core';
 import { users } from './schema';
 
 export const llmBudgetSettings = pgTable('llm_budget_settings', {
   owner: uuid('owner').primaryKey().references(() => users.id, { onDelete: 'cascade' }),
+  enabled: boolean('enabled').notNull().default(true),
   dailyTokenLimit: integer('daily_token_limit').notNull().default(60000),
   monthlyTokenLimit: integer('monthly_token_limit').notNull().default(600000),
   perTaskTokenLimit: integer('per_task_token_limit').notNull().default(24000),
