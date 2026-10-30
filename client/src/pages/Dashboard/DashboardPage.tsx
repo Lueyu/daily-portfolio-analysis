@@ -626,7 +626,7 @@ export default function DashboardPage() {
               <RealtimeBadge marketStatus={marketStatus} holdings={holdings} />
             </div>
             <Select value={String(plRange)} onValueChange={(v) => setPlRange(parseInt(v, 10))}>
-              <SelectTrigger className="w-[110px]">
+              <SelectTrigger className="w-auto min-w-[140px] shrink-0">
                 <SelectValue placeholder={t('ui.dashboard.timeRange')} />
               </SelectTrigger>
               <SelectContent>
