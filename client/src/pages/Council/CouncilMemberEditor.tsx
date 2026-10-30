@@ -12,25 +12,31 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import CouncilMemberAvatar from './CouncilMemberAvatar';
 import { councilModelValue, type CouncilModelOption } from './useCouncilModels';
+import type { LocalAgentConnection } from '@/api/local-agents';
 
 interface CouncilMemberEditorProps {
   member: CouncilMember;
   webResearch: boolean;
   modelOptions: CouncilModelOption[];
+  localAgents: LocalAgentConnection[];
   onSave: (member: CouncilMember) => string | null;
   onClose: () => void;
 }
 
 const selectClass = 'h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring';
 
-export default function CouncilMemberEditor({ member, webResearch, modelOptions, onSave, onClose }: CouncilMemberEditorProps) {
+export default function CouncilMemberEditor({ member, webResearch, modelOptions, localAgents, onSave, onClose }: CouncilMemberEditorProps) {
   const { t } = useTranslation();
   const [draft, setDraft] = useState<CouncilMember>({ ...member, researchFocus: [...(member.researchFocus ?? [])] });
   const [error, setError] = useState<string | null>(null);
   const update = (value: Partial<CouncilMember>) => { setDraft((current) => ({ ...current, ...value })); setError(null); };
   const currentModel = modelOptions.find((option: CouncilModelOption) => option.value === councilModelValue(draft));
   const save = () => {
-    if (draft.connectionId && (!currentModel || currentModel.disabled)) { setError(t('council.members.connectionMissing')); return; }
+    if (draft.executionMode === 'a2a') {
+      if (!localAgents.some(agent => agent.id === draft.agentId && agent.available)) {
+        setError(t('council.localAgents.unavailable')); return;
+      }
+    } else if (draft.connectionId && (!currentModel || currentModel.disabled)) { setError(t('council.members.connectionMissing')); return; }
     const problem = onSave({ ...draft, name: draft.name.trim(), roleTitle: draft.roleTitle?.trim(), personality: draft.personality?.trim() });
     if (problem) setError(problem); else onClose();
   };
@@ -73,13 +79,34 @@ export default function CouncilMemberEditor({ member, webResearch, modelOptions,
             <div className="flex flex-wrap gap-2" role="group" aria-label={t('council.members.focus')}>
               {COUNCIL_RESEARCH_KINDS.map((focus) => <Button key={focus} type="button" size="sm"
                 variant={draft.researchFocus?.includes(focus) ? 'secondary' : 'outline'} aria-pressed={draft.researchFocus?.includes(focus) ?? false}
-                disabled={focus === 'web' && !webResearch} onClick={() => toggleFocus(focus)}>
+                disabled={focus === 'web' && !webResearch && draft.executionMode !== 'a2a'} onClick={() => toggleFocus(focus)}>
                 {draft.researchFocus?.includes(focus) && <Check className="size-3" />}{t(`council.members.focuses.${focus}`)}
               </Button>)}
             </div>
-            {!webResearch && <p className="text-xs leading-5 text-muted-foreground">{t('council.members.webDisabled')}</p>}
+            {draft.executionMode === 'a2a' ? <p className="text-xs leading-5 text-muted-foreground">{t('council.localAgents.toolsHint')}</p>
+              : !webResearch && <p className="text-xs leading-5 text-muted-foreground">{t('council.members.webDisabled')}</p>}
           </div>
-          <div className="space-y-2"><Label htmlFor="member-editor-model">{t('council.model')}</Label>
+          <div className="space-y-2"><Label htmlFor="member-editor-execution">{t('council.localAgents.execution')}</Label>
+            <select id="member-editor-execution" className={selectClass} value={draft.executionMode ?? 'model'} onChange={(event) => {
+              const executionMode = event.target.value === 'a2a' ? 'a2a' : 'model';
+              update({ executionMode, ...(executionMode === 'a2a'
+                ? { agentId: draft.agentId ?? localAgents.find(agent => agent.available)?.id, connectionId: undefined }
+                : { agentId: undefined, researchFocus: draft.researchFocus?.filter(focus => focus !== 'web' || webResearch) }) });
+            }}>
+              <option value="a2a">{t('council.localAgents.routeAgent')}</option>
+              <option value="model">{t('council.localAgents.routeModel')}</option>
+            </select>
+          </div>
+          {draft.executionMode === 'a2a' ? <div className="space-y-2">
+            <Label htmlFor="member-editor-agent">{t('council.localAgents.choose')}</Label>
+            <select id="member-editor-agent" className={selectClass} value={draft.agentId ?? ''}
+              onChange={(event) => update({ agentId: event.target.value })}>
+              {!localAgents.some(agent => agent.id === draft.agentId) && <option value={draft.agentId ?? ''}>{t('council.localAgents.choose')}</option>}
+              {localAgents.map(agent => <option key={agent.id} value={agent.id} disabled={!agent.available}>{agent.name}</option>)}
+            </select>
+            <p className="text-xs leading-5 text-muted-foreground">{t('council.localAgents.budgetHint')}</p>
+            <Link to="/settings#local-agents" className="inline-block text-xs text-primary hover:underline">{t('council.localAgents.manage')}</Link>
+          </div> : <div className="space-y-2"><Label htmlFor="member-editor-model">{t('council.model')}</Label>
             <select id="member-editor-model" className={selectClass} value={councilModelValue(draft)} onChange={(event) => {
               const option = modelOptions.find((item: CouncilModelOption) => item.value === event.target.value);
               if (option) update({ connectionId: option.connectionId, model: option.model });
@@ -88,7 +115,7 @@ export default function CouncilMemberEditor({ member, webResearch, modelOptions,
               {modelOptions.map((option: CouncilModelOption) => <option key={option.value} value={option.value} disabled={option.disabled}>{option.label}</option>)}
             </select>
             <Link to="/settings" className="inline-block text-xs text-primary hover:underline">{t('council.members.manageModels')}</Link>
-          </div>
+          </div>}
           <Collapsible className="rounded-xl border border-border">
             <CollapsibleTrigger asChild><Button type="button" variant="ghost" className="h-auto min-h-9 w-full justify-between px-3 py-2 text-left text-sm">
               <span className="min-w-0 whitespace-normal">{t('council.members.advanced')}</span><ChevronDown className="size-4" /></Button></CollapsibleTrigger>

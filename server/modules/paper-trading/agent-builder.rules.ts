@@ -30,6 +30,9 @@ export function normalizeCouncil(input?: CouncilConfig): CouncilConfig {
     if (typeof member.name !== 'string' || !member.name.trim() || member.name.trim().length > 40) throw new Error('Member name must contain 1–40 characters');
     if (typeof member.instructions !== 'string' || member.instructions.length > 1000) throw new Error('Member instructions must be at most 1000 characters');
     if (member.model !== 'fast' && member.model !== 'slow') throw new Error('Invalid member model tier');
+    if (member.executionMode !== undefined && !['model', 'a2a'].includes(member.executionMode)) throw new Error('Invalid member execution mode');
+    if (member.executionMode === 'a2a' && (typeof member.agentId !== 'string'
+      || !/^[a-zA-Z0-9_-]{1,64}$/.test(member.agentId))) throw new Error('Select a registered local agent');
     if (member.connectionId !== undefined && (typeof member.connectionId !== 'string'
       || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(member.connectionId))) {
       throw new Error('Invalid model connection identifier');
@@ -40,6 +43,7 @@ export function normalizeCouncil(input?: CouncilConfig): CouncilConfig {
       || member.researchFocus.some((kind) => !['financials', 'valuation', 'news', 'price', 'web'].includes(kind)))) throw new Error('Invalid research focus');
     ids.add(member.id);
     return { id: member.id, role: member.role, name: member.name.trim(), instructions: member.instructions.trim(), model: member.model,
+      ...(member.executionMode === 'a2a' ? { executionMode: 'a2a' as const, agentId: member.agentId } : {}),
       ...(member.connectionId === undefined ? {} : { connectionId: member.connectionId }),
       ...(member.avatar === undefined ? {} : { avatar: member.avatar }),
       ...(member.roleTitle === undefined ? {} : { roleTitle: optionalText(member.roleTitle, 60) }),

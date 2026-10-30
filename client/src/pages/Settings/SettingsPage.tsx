@@ -53,6 +53,7 @@ import { AppearanceSettingsCard } from '@/components/AppearancePicker';
 import { RecoveryCodeCard } from './RecoveryCodeCard';
 import ModelConnectionsPanel from './ModelConnectionsPanel';
 import BudgetPanel from './BudgetPanel';
+import LocalAgentsPanel from './LocalAgentsPanel';
 
 interface LlmDraft {
   baseUrl: string;
@@ -292,6 +293,7 @@ export default function SettingsPage() {
       <RecoveryCodeCard />
       <ModelConnectionsPanel />
       <BudgetPanel />
+      <LocalAgentsPanel />
 
       {llm?.engine === 'basic' && (
         <Card className="border-success/30 bg-success/5">

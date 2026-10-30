@@ -12,6 +12,9 @@ import { Label } from '@/components/ui/label';
 import { validateCouncilSettings } from '@/utils/council-state';
 import { errorMessage } from '@/pages/AgentBuilder/errorMessage';
 import CouncilTeamEditor from './CouncilTeamEditor';
+import { useQuery } from '@tanstack/react-query';
+import { fetchLocalAgents } from '@/api/local-agents';
+import { assignLocalAgents } from './useCouncilModels';
 
 interface CouncilNewDialogProps {
   open: boolean;
@@ -35,16 +38,23 @@ export default function CouncilNewDialog({ open, onOpenChange, profiles, loading
     enabled: true, members: createCouncilPreset('balanced', i18n.language), webResearch: false,
   });
   const [formError, setFormError] = useState<string | null>(null);
+  const agents = useQuery({ queryKey: ['settings', 'local-agents'], queryFn: fetchLocalAgents });
+  const initializedAgents = useRef(Boolean(initialTeam) || Boolean(initialProfileId));
   const initializedProfile = useRef(Boolean(initialTeam) || !initialProfileId);
   useEffect(() => {
     if (initializedProfile.current) return;
     const profile = profiles.find((item: BuilderProfile) => item.id === initialProfileId);
     if (!profile) return;
     if (profile.config.council?.members.length) setTeam({ enabled: true, webResearch: false,
-      members: profile.config.council.members.map((member) => ({ ...member, researchFocus: member.researchFocus?.filter((focus) => focus !== 'web') })) });
+      members: profile.config.council.members.map((member) => ({ ...member, researchFocus: member.researchFocus?.filter((focus) => focus !== 'web' || member.executionMode === 'a2a') })) });
     initializedProfile.current = true;
   }, [profiles, initialProfileId]);
-  const changeTeam = (value: CouncilConfig) => { initializedProfile.current = true; setTeam(value); setFormError(null); };
+  useEffect(() => {
+    if (initializedAgents.current || !agents.isSuccess) return;
+    initializedAgents.current = true;
+    setTeam(current => ({ ...current, members: assignLocalAgents(current.members, agents.data) }));
+  }, [agents.isSuccess, agents.data]);
+  const changeTeam = (value: CouncilConfig) => { initializedProfile.current = true; initializedAgents.current = true; setTeam(value); setFormError(null); };
   const create = async () => {
     if (pending) return;
     const symbol = ticker.trim().toUpperCase();
@@ -81,7 +91,7 @@ export default function CouncilNewDialog({ open, onOpenChange, profiles, loading
                   setProfileId(event.target.value);
                   const profile = profiles.find((item: BuilderProfile) => item.id === event.target.value);
                   if (profile?.config.council?.members.length) changeTeam({ ...team, members: profile.config.council.members.map((member) => ({
-                    ...member, researchFocus: member.researchFocus?.filter((focus) => focus !== 'web' || team.webResearch),
+                    ...member, researchFocus: member.researchFocus?.filter((focus) => focus !== 'web' || team.webResearch || member.executionMode === 'a2a'),
                   })) });
                 }} className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring">
                 <option value="">{t('council.members.standalone')}</option>
@@ -94,7 +104,7 @@ export default function CouncilNewDialog({ open, onOpenChange, profiles, loading
         </div>
         <div className="shrink-0 space-y-3 border-t border-border p-4">
           {formError && <p role="alert" className="break-words text-sm text-destructive">{formError}</p>}
-          <Button type="submit" className="w-full" disabled={pending}>
+          <Button type="submit" className="w-full" disabled={pending || agents.isPending}>
           {pending ? <Loader2 className="size-4 animate-spin" /> : <MessageCircle className="size-4" />}{t('council.startChat')}</Button></div>
       </form>
     </DialogContent>

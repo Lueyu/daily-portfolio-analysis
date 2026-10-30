@@ -1,6 +1,6 @@
 import { useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pencil, Plus, Trash2, X } from 'lucide-react';
+import { Bot, Pencil, Plus, Trash2, X } from 'lucide-react';
 import type { CouncilConfig, CouncilMember } from '@shared/council.interface';
 import {
   COUNCIL_MEMBER_TEMPLATES, COUNCIL_TEAM_PRESETS, councilLanguage, createCouncilMember, createCouncilPreset,
@@ -13,7 +13,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { validateCouncilSettings } from '@/utils/council-state';
 import CouncilMemberAvatar from './CouncilMemberAvatar';
 import CouncilMemberEditor from './CouncilMemberEditor';
-import { councilModelValue, useCouncilModels } from './useCouncilModels';
+import { assignLocalAgents, useCouncilModels } from './useCouncilModels';
+import { Link } from 'react-router-dom';
 
 interface CouncilTeamEditorProps {
   value: CouncilConfig;
@@ -29,7 +30,7 @@ export default function CouncilTeamEditor({ value, onChange }: CouncilTeamEditor
   const models = useCouncilModels();
   const selectTemplate = (templateId: CouncilTemplateId, custom = false) => {
     if (value.members.length >= 6) return;
-    const member = createCouncilMember(templateId, i18n.language, `${templateId}-${crypto.randomUUID().replace(/-/gu, '').slice(0, 16)}`);
+    const [member] = assignLocalAgents([createCouncilMember(templateId, i18n.language, `${templateId}-${crypto.randomUUID().replace(/-/gu, '').slice(0, 16)}`)], models.localAgents);
     setEditing(custom ? { ...member, name: '', roleTitle: '', personality: '', instructions: '', researchFocus: [] } : member);
     setAdding(false);
   };
@@ -45,10 +46,15 @@ export default function CouncilTeamEditor({ value, onChange }: CouncilTeamEditor
   };
 
   return <div className="space-y-4">
+    {models.localAgents.some(agent => agent.available) && value.members.some(member => member.executionMode !== 'a2a')
+      && <Button type="button" variant="secondary" size="sm" className="h-auto min-h-9 whitespace-normal"
+        onClick={() => onChange({ ...value, members: assignLocalAgents(value.members, models.localAgents) })}>
+        <Bot className="size-4" />{t('council.localAgents.useForTeam')}
+      </Button>}
     <div className="flex flex-wrap gap-2" role="group" aria-label={t('council.members.presets')}>
       {COUNCIL_TEAM_PRESETS.map((preset) => <Tooltip key={preset.id}><TooltipTrigger asChild>
         <Button type="button" variant="outline" size="sm" onClick={() => {
-          onChange({ ...value, members: createCouncilPreset(preset.id, i18n.language) }); setAdding(false);
+          onChange({ ...value, members: assignLocalAgents(createCouncilPreset(preset.id, i18n.language), models.localAgents) }); setAdding(false);
         }}>{preset.name[language]}</Button>
       </TooltipTrigger><TooltipContent>{preset.description[language]}</TooltipContent></Tooltip>)}
     </div>
@@ -63,8 +69,8 @@ export default function CouncilTeamEditor({ value, onChange }: CouncilTeamEditor
           <p className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm font-medium"><span className="min-w-0 max-w-full [overflow-wrap:anywhere]">{member.name}</span>
             {member.role === 'manager' && <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary">{t('council.members.moderator')}</span>}</p>
           <p className="mt-0.5 truncate text-xs text-muted-foreground">{member.roleTitle || t(`council.roles.${member.role}`)}</p>
-          <p className="mt-1 truncate text-[10px] text-muted-foreground" title={models.options.find((option) => option.value === councilModelValue(member))?.label}>
-            {models.options.find((option) => option.value === councilModelValue(member))?.label ?? t('council.members.connectionMissing')}
+          <p className="mt-1 truncate text-[10px] text-muted-foreground" title={models.memberLabel(member)}>
+            {models.memberLabel(member)}
           </p>
         </div>
         <Button type="button" variant="ghost" size="icon" className="size-8 shrink-0" aria-label={t('council.members.editMember', { name: member.name })}
@@ -95,13 +101,19 @@ export default function CouncilTeamEditor({ value, onChange }: CouncilTeamEditor
     </div> : <Button type="button" variant="outline" className="w-full border-dashed" disabled={value.members.length >= 6} onClick={() => setAdding(true)}>
       <Plus className="size-4" />{t(value.members.length >= 6 ? 'council.members.full' : 'council.members.add')}
     </Button>}
-    <div className="rounded-xl bg-muted/40 p-3">
+    {value.members.some(member => member.executionMode === 'a2a') && <div className="rounded-xl bg-muted/40 p-3 text-xs leading-5 text-muted-foreground">
+      <p>{t('council.localAgents.toolsHint')}</p>
+      <p className="mt-2">{t('council.localAgents.budgetHint')}{' '}
+        <Link to="/settings#research-budget" className="text-primary hover:underline">{t('council.budget.open')}</Link></p>
+    </div>}
+    {value.members.some(member => member.executionMode !== 'a2a') && <div className="rounded-xl bg-muted/40 p-3">
       <div className="flex items-center justify-between gap-3"><Label htmlFor={webId} className="text-sm">{t('council.members.webResearch')}</Label>
         <Switch id={webId} checked={Boolean(value.webResearch)} onCheckedChange={(enabled: boolean) => onChange({ ...value, webResearch: enabled,
-          members: enabled ? value.members : value.members.map((member: CouncilMember) => ({ ...member, researchFocus: member.researchFocus?.filter((focus) => focus !== 'web') })) })} /></div>
+          members: enabled ? value.members : value.members.map((member: CouncilMember) => member.executionMode === 'a2a' ? member
+            : ({ ...member, researchFocus: member.researchFocus?.filter((focus) => focus !== 'web') })) })} /></div>
       <p className="mt-2 text-xs leading-5 text-muted-foreground">{t('council.members.webResearchHint')}</p>
-    </div>
+    </div>}
     {editing && <CouncilMemberEditor key={editing.id} member={editing} webResearch={Boolean(value.webResearch)}
-      modelOptions={models.options} onSave={saveMember} onClose={() => setEditing(null)} />}
+      modelOptions={models.options} localAgents={models.localAgents} onSave={saveMember} onClose={() => setEditing(null)} />}
   </div>;
 }

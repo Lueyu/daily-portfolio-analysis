@@ -14,6 +14,7 @@ or a model key to try the web application.
 For using the product / 功能使用：
 
 - [Investment council](investment-council.md) / [投委会与研究室](investment-council.zh-CN.md): customizable 2–6 member teams, model connections, discussion, reports and budgets.
+- [Local agent teams / 本地 Agent 团队](local-agents.md): connect Codex or another A2A 1.0 agent, grant account access, and delegate research from the chat room.
 - [Research data and tools / 研究数据与工具](research-data.md): Finnhub, SEC financial fallback, optional web search and source boundaries.
 - [Import a portfolio / 持仓导入](import.md): CSV mapping, Robinhood exports and optional screenshot extraction.
 - [Appearance / 外观](appearance.md): four themes, light/dark mode and browser preferences.

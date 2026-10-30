@@ -4,6 +4,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { and, desc, eq, ne } from 'drizzle-orm';
 import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '../../common/platform';
@@ -20,6 +21,9 @@ import type {
   PaperSide,
 } from '@shared/api.interface';
 import { normalizeBuilderConfig, validateManualFill } from './agent-builder.rules';
+import { LocalAgentsService } from '../a2a/local-agents.service';
+import { LlmBudgetService } from '../llm-budget/llm-budget.service';
+import { agentErrorMessage } from '../council/council.a2a';
 
 @Injectable()
 export class AgentBuilderService {
@@ -28,6 +32,8 @@ export class AgentBuilderService {
   constructor(
     @Inject(DRIZZLE_DATABASE) private readonly db: PostgresJsDatabase,
     private readonly llm: LlmService,
+    @Optional() private readonly localAgents?: LocalAgentsService,
+    @Optional() private readonly budgets?: LlmBudgetService,
   ) {}
 
   async listProfiles(userId: string): Promise<BuilderProfile[]> {
@@ -98,8 +104,15 @@ export class AgentBuilderService {
   async assertCanActivate(userId: string, config: BuilderConfig): Promise<void> {
     if (config.council?.enabled) {
       const members = config.council.members;
-      await this.llm.validateConnectionIds(userId, members.flatMap((member) => member.connectionId ? [member.connectionId] : []));
-      const configured = await Promise.all(members.map((member) => this.llm.isConfigured(userId, member.connectionId)));
+      for (const member of members.filter((item) => item.executionMode === 'a2a')) {
+        if (!this.localAgents || !member.agentId) throw new BadRequestException('Local agent unavailable');
+        await this.localAgents.validate(userId, member.agentId);
+        if ((await this.budgets?.getSettings(userId))?.enabled !== false) {
+          throw new BadRequestException(agentErrorMessage('A2A_BUDGET_UNSUPPORTED', config.language));
+        }
+      }
+      await this.llm.validateConnectionIds(userId, members.flatMap((member) => member.executionMode !== 'a2a' && member.connectionId ? [member.connectionId] : []));
+      const configured = await Promise.all(members.map((member) => member.executionMode === 'a2a' ? true : this.llm.isConfigured(userId, member.connectionId)));
       if (configured.some((value) => !value)) throw new BadRequestException('Configure a model connection for every council member');
     } else if (config.customPrompt && !(await this.llm.isConfigured(userId))) {
       throw new BadRequestException('Configure a model for the council, or select basic rules mode');

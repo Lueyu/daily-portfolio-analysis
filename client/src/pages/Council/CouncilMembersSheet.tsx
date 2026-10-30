@@ -4,7 +4,7 @@ import type { CouncilMember, CouncilSession } from '@shared/council.interface';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import CouncilMemberAvatar from './CouncilMemberAvatar';
-import { councilModelValue, useCouncilModels } from './useCouncilModels';
+import { useCouncilModels } from './useCouncilModels';
 
 export default function CouncilMembersSheet({ session, onClose, onUseTeam }: {
   session: CouncilSession; onClose: () => void; onUseTeam: () => void;
@@ -31,11 +31,12 @@ export default function CouncilMembersSheet({ session, onClose, onUseTeam }: {
             {(member.researchFocus ?? []).map((focus) => <span key={focus} className="rounded-md bg-muted px-2 py-1">{t(`council.members.focuses.${focus}`)}</span>)}
             {member.speakingStyle && <span className="rounded-md bg-muted px-2 py-1">{t(`council.members.styles.${member.speakingStyle}`)}</span>}
           </div>
-          <p className="mt-3 break-words text-xs text-muted-foreground">{models.options.find((option) => option.value === councilModelValue(member))?.label ?? t('council.members.connectionMissing')}</p>
+          <p className="mt-3 break-words text-xs text-muted-foreground">{models.memberLabel(member)}</p>
           {member.instructions && <details className="mt-3 text-xs"><summary className="cursor-pointer text-muted-foreground">{t('council.members.prompt')}</summary>
             <p className="mt-2 whitespace-pre-wrap break-words leading-6">{member.instructions}</p></details>}
         </article>)}
-        <p className="text-xs leading-5 text-muted-foreground">{t(session.webResearch ? 'council.members.webEnabledSnapshot' : 'council.members.webDisabledSnapshot')}</p>
+        <p className="text-xs leading-5 text-muted-foreground">{t(members.every(member => member.executionMode === 'a2a')
+          ? 'council.localAgents.toolsHint' : session.webResearch ? 'council.members.webEnabledSnapshot' : 'council.members.webDisabledSnapshot')}</p>
       </div>
       <div className="shrink-0 border-t border-border p-4"><Button type="button" className="h-auto min-h-9 w-full whitespace-normal" onClick={onUseTeam}>
         <ArrowUpRight className="size-4" />{t('council.members.useTeam')}</Button></div>

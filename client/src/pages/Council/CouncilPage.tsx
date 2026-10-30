@@ -10,6 +10,7 @@ import { createCouncilPreset } from '@shared/council-templates';
 import { fetchBuilderProfiles } from '@/api/builder';
 import { fetchIntegrationSettings } from '@/api/settings';
 import { fetchModelConnections } from '@/api/model-connections';
+import { fetchLocalAgents } from '@/api/local-agents';
 import { useCouncilActions, useCouncilSession, useCouncilSessions } from '@/hooks/use-council';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
@@ -31,6 +32,7 @@ export default function CouncilPage() {
   const profilesQuery = useQuery({ queryKey: ['builder', 'profiles'], queryFn: fetchBuilderProfiles });
   const integrations = useQuery({ queryKey: ['settings', 'integrations'], queryFn: fetchIntegrationSettings });
   const connections = useQuery({ queryKey: ['settings', 'model-connections'], queryFn: fetchModelConnections });
+  const localAgents = useQuery({ queryKey: ['settings', 'local-agents'], queryFn: fetchLocalAgents });
   const sessionsQuery = useCouncilSessions();
   const selectedId = params.get('session') ?? sessionsQuery.data?.[0]?.id ?? null;
   const sessionQuery = useCouncilSession(selectedId);
@@ -40,9 +42,10 @@ export default function CouncilPage() {
   const selectedProfile = profiles.find((item: BuilderProfile) => item.id === session?.profileId);
   const defaultAvailable = integrations.data?.llm.available && integrations.data.llm.engine !== 'basic';
   const noModel = integrations.isSuccess && connections.isSuccess && (session?.members?.length
-    ? session.members.every((member) => member.connectionId
+    ? session.members.every((member) => member.executionMode === 'a2a' ? false : member.connectionId
       ? !connections.data.some((connection) => connection.id === member.connectionId && connection.available) : !defaultAvailable)
-    : !defaultAvailable && !connections.data.some((connection) => connection.available));
+    : localAgents.isSuccess && !localAgents.data.some(agent => agent.available)
+      && !defaultAvailable && !connections.data.some((connection) => connection.available));
   const showError = (cause: unknown) => toast.error(errorMessage(cause, t('council.actionFailed')));
 
   const create = async (request: CreateCouncilSession) => {

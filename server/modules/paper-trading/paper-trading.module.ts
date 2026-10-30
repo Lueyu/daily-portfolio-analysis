@@ -10,6 +10,7 @@ import { NotificationModule } from '../notifications/notification.module';
 import { QuoteModule } from '../quote/quote.module';
 import { MultiAgentModule } from '../multi-agent/multi-agent.module';
 import { CouncilModule } from '../council/council.module';
+import { LocalAgentsModule } from '../a2a/local-agents.module';
 import { BuilderCadenceService } from './builder-cadence.service';
 import { AgentBuilderController } from './agent-builder.controller';
 import { AgentBuilderService } from './agent-builder.service';
@@ -18,7 +19,7 @@ import { PaperTradingController } from './paper-trading.controller';
 import { PaperTradingService } from './paper-trading.service';
 
 @Module({
-  imports: [QuoteModule, FxModule, NotificationModule, MultiAgentModule, CouncilModule],
+  imports: [QuoteModule, FxModule, NotificationModule, MultiAgentModule, CouncilModule, LocalAgentsModule],
   controllers: [PaperTradingController, AgentBuilderController],
   providers: [PaperTradingService, AgentBuilderService, BuilderCadenceService, BotScheduler],
   exports: [PaperTradingService],
