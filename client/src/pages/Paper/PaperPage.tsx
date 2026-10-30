@@ -84,6 +84,7 @@ import {
 } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
+import { useTranslation } from 'react-i18next';
 import {
   Select,
   SelectContent,
@@ -130,6 +131,7 @@ const eventLabel: Record<string, string> = {
 };
 
 function PaperPage() {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [orderOpen, setOrderOpen] = useState(false);
   const [guardrailsOpen, setGuardrailsOpen] = useState(false);
@@ -387,7 +389,7 @@ function PaperPage() {
                     </td>
                     <td className="px-4 py-2.5 font-medium">{o.ticker}</td>
                     <td className={cn('px-4 py-2.5 font-medium', o.side === 'buy' ? 'text-success' : 'text-destructive')}>
-                      {o.side === 'buy' ? '买入' : '卖出'}
+                      {o.side === 'buy' ? t('paper.buy') : t('paper.sell')}
                     </td>
                     <td className="px-4 py-2.5 font-mono-nums">{Number(o.quantity)}</td>
                     <td className="px-4 py-2.5 font-mono-nums">{o.filledPrice ?? '—'}</td>
@@ -435,7 +437,7 @@ function PaperPage() {
                   <div className="min-w-0 flex-1">
                     <div className="font-medium">
                       🤖 {o.reason?.includes('AI 代理') ? o.reason.split('AI 代理 ')[1]?.split(' ')[0] : 'AI'}{' '}
-                      请求{o.side === 'buy' ? '买入' : '卖出'} {o.ticker} × {Number(o.quantity)}
+                      请求{o.side === 'buy' ? t('paper.buy') : t('paper.sell')} {o.ticker} × {Number(o.quantity)}
                     </div>
                     <div className="mt-0.5 text-xs text-muted-foreground">{o.reason}</div>
                   </div>
@@ -498,6 +500,7 @@ function PaperPage() {
 
 /** Equity line chart for the paper account. */
 function PaperEquityChart({ data }: { data: Array<{ date: string; equity: string; dailyPl: string }> }) {
+  const { t } = useTranslation();
   const option = useMemo(() => {
     if (data.length === 0) return {};
     return {
@@ -572,6 +575,7 @@ function summarizeEvent(type: string, detail: Record<string, unknown> | null): s
 
 /** Manual market-order dialog. */
 function ManualOrderDialog({ open, onOpenChange, onDone }: { open: boolean; onOpenChange: (v: boolean) => void; onDone: () => void }) {
+  const { t } = useTranslation();
   const [ticker, setTicker] = useState('');
   const [side, setSide] = useState<'buy' | 'sell'>('buy');
   const [quantity, setQuantity] = useState('10');
@@ -588,7 +592,7 @@ function ManualOrderDialog({ open, onOpenChange, onDone }: { open: boolean; onOp
       setSubmitting(true);
       const order = await placePaperOrder(dto);
       if (order.status === 'filled') {
-        toast.success(`${order.ticker} ${side === 'buy' ? '买入' : '卖出'}成交 @ ${order.filledPrice}`);
+        toast.success(`${order.ticker} ${side === 'buy' ? t('paper.buy') : t('paper.sell')}成交 @ ${order.filledPrice}`);
       } else {
         toast.warning(`订单被拦截：${order.reason ?? '风控未通过'}`);
       }
@@ -632,7 +636,7 @@ function ManualOrderDialog({ open, onOpenChange, onDone }: { open: boolean; onOp
         <DialogFooter>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>取消</Button>
           <Button onClick={submit} disabled={submitting || !ticker.trim()}>
-            {submitting ? '下单中…' : '下单'}
+            {submitting ? t('paper.placingOrder') : t('paper.placeOrder')}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -642,6 +646,7 @@ function ManualOrderDialog({ open, onOpenChange, onDone }: { open: boolean; onOp
 
 /** Guardrail thresholds dialog. */
 function GuardrailsDialog({ open, onOpenChange, overview, onDone }: { open: boolean; onOpenChange: (v: boolean) => void; overview: PaperOverview | undefined; onDone: () => void }) {
+  const { t } = useTranslation();
   const g = overview?.account.guardrails;
   const [loss, setLoss] = useState(String(g?.dailyLossLimitPct ?? 3));
   const [orderPct, setOrderPct] = useState(String(g?.maxOrderPct ?? 5));
@@ -690,7 +695,7 @@ function GuardrailsDialog({ open, onOpenChange, overview, onDone }: { open: bool
         </div>
         <DialogFooter>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>取消</Button>
-          <Button onClick={submit} disabled={submitting}>{submitting ? '保存中…' : '保存'}</Button>
+          <Button onClick={submit} disabled={submitting}>{submitting ? '保存中…' : t('common.save')}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -740,6 +745,7 @@ const CHANNEL_META: Record<NotificationChannelType, { name: string; hint: string
 
 /** Notification channel manager card. */
 function NotificationChannelsCard() {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [addOpen, setAddOpen] = useState(false);
   const [channelType, setChannelType] = useState<NotificationChannelType>('webhook');
@@ -869,6 +875,7 @@ function NotificationChannelsCard() {
 
 /** AI agent sessions management card (MCP connections). */
 function AgentSessionsCard() {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [addOpen, setAddOpen] = useState(false);
   const [name, setName] = useState('');

@@ -13,6 +13,7 @@
  */
 import { Check, X } from 'lucide-react';
 import type { AgentRunStatus } from '@shared/api.interface';
+import { useTranslation } from 'react-i18next';
 
 interface RunProgressBarProps {
   /** Current pipeline status of the agent run being visualized */

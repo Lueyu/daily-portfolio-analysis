@@ -27,6 +27,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
+import { useTranslation } from 'react-i18next';
 import type {
   DeepReport,
   AgentRating,
@@ -146,6 +147,7 @@ const SubHeading: React.FC<{ children: React.ReactNode }> = ({ children }) => (
 const ParagraphBlock: React.FC<{ content: string | null | undefined }> = ({
   content,
 }) => {
+  const { t } = useTranslation();
   if (!content) return null;
   const paragraphs = content.split('\n').filter((p: string) => p.trim());
   return (
@@ -172,6 +174,7 @@ const DarkTable: React.FC<{ children: React.ReactNode }> = ({ children }) => (
 const ExecutiveSummarySection: React.FC<{ report: DeepReport }> = ({
   report,
 }) => {
+  const { t } = useTranslation();
   const hasContent =
     report.rating ||
     report.confidence ||
@@ -182,7 +185,7 @@ const ExecutiveSummarySection: React.FC<{ report: DeepReport }> = ({
 
   return (
     <section className="mb-16">
-      <SectionTitle id="executive-summary">① 结论摘要</SectionTitle>
+      <SectionTitle id="executive-summary">{t('report.coreThesis')}</SectionTitle>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         <Card className="bg-slate-900/60 border-slate-700/60">
           <CardHeader className="pb-2">
@@ -231,13 +234,13 @@ const ExecutiveSummarySection: React.FC<{ report: DeepReport }> = ({
 
       {report.coreThesis && (
         <div className="mb-5">
-          <SubHeading>核心论点</SubHeading>
+          <SubHeading>{t('report.coreThesis')}</SubHeading>
           <ParagraphBlock content={report.coreThesis} />
         </div>
       )}
       {report.viewChange && (
         <div>
-          <SubHeading>与上一期变化</SubHeading>
+          <SubHeading>{t('report.viewChange')}</SubHeading>
           <ParagraphBlock content={report.viewChange} />
         </div>
       )}
@@ -250,6 +253,7 @@ const ExecutiveSummarySection: React.FC<{ report: DeepReport }> = ({
 const CompanyBusinessSection: React.FC<{ report: DeepReport }> = ({
   report,
 }) => {
+  const { t } = useTranslation();
   const hasContent =
     report.companyOverview ||
     report.businessModel ||
@@ -259,29 +263,29 @@ const CompanyBusinessSection: React.FC<{ report: DeepReport }> = ({
 
   return (
     <section className="mb-16">
-      <SectionTitle id="company-business">② 公司与商业模式</SectionTitle>
+      <SectionTitle id="company-business">{t('report.companyOverview')}</SectionTitle>
 
       {report.companyOverview && (
         <div className="mb-5">
-          <SubHeading>公司概述</SubHeading>
+          <SubHeading>{t('report.companyOverview')}</SubHeading>
           <ParagraphBlock content={report.companyOverview} />
         </div>
       )}
       {report.businessModel && (
         <div className="mb-5">
-          <SubHeading>商业模式</SubHeading>
+          <SubHeading>{t('report.businessModel')}</SubHeading>
           <ParagraphBlock content={report.businessModel} />
         </div>
       )}
       {report.moat && (
         <div className="mb-5">
-          <SubHeading>护城河</SubHeading>
+          <SubHeading>{t('report.moat')}</SubHeading>
           <ParagraphBlock content={report.moat} />
         </div>
       )}
       {report.revenueStructure && report.revenueStructure.length > 0 && (
         <div>
-          <SubHeading>收入结构</SubHeading>
+          <SubHeading>{t('report.revenueStructure')}</SubHeading>
           <DarkTable>
             <TableHeader>
               <TableRow className="border-slate-700/60 hover:bg-transparent">
@@ -337,6 +341,7 @@ const CompanyBusinessSection: React.FC<{ report: DeepReport }> = ({
 // ③ Financial Depth
 /** Annual/quarterly financials, profitability metrics, cash flow, and qualitative financial quality */
 const FinancialSection: React.FC<{ report: DeepReport }> = ({ report }) => {
+  const { t } = useTranslation();
   const hasContent =
     (report.financialAnnual && report.financialAnnual.length > 0) ||
     (report.financialQuarterly && report.financialQuarterly.length > 0) ||
@@ -416,14 +421,14 @@ const FinancialSection: React.FC<{ report: DeepReport }> = ({ report }) => {
 
   return (
     <section className="mb-16">
-      <SectionTitle id="financial">③ 财务深度分析</SectionTitle>
+      <SectionTitle id="financial">{t('report.financials')}</SectionTitle>
 
       {renderPeriodTable(report.financialAnnual, '年度财务')}
       {renderPeriodTable(report.financialQuarterly, '季度财务')}
 
       {report.profitability && report.profitability.length > 0 && (
         <div className="mb-6">
-          <SubHeading>盈利能力指标</SubHeading>
+          <SubHeading>{t('report.profitability')}</SubHeading>
           <DarkTable>
             <TableHeader>
               <TableRow className="border-slate-700/60 hover:bg-transparent">
@@ -466,7 +471,7 @@ const FinancialSection: React.FC<{ report: DeepReport }> = ({ report }) => {
 
       {report.cashFlow && report.cashFlow.length > 0 && (
         <div className="mb-6">
-          <SubHeading>现金流</SubHeading>
+          <SubHeading>{t('report.cashFlow')}</SubHeading>
           <DarkTable>
             <TableHeader>
               <TableRow className="border-slate-700/60 hover:bg-transparent">
@@ -499,7 +504,7 @@ const FinancialSection: React.FC<{ report: DeepReport }> = ({ report }) => {
 
       {report.financialQuality && (
         <div>
-          <SubHeading>财务质量</SubHeading>
+          <SubHeading>{t('report.financialQuality')}</SubHeading>
           <ParagraphBlock content={report.financialQuality} />
         </div>
       )}
@@ -567,6 +572,7 @@ const SegmentsSection: React.FC<{ report: DeepReport }> = ({ report }) => {
 // ⑤ Valuation
 /** Relative valuation table, SOTP sum-of-parts table, and methodology narrative */
 const ValuationSection: React.FC<{ report: DeepReport }> = ({ report }) => {
+  const { t } = useTranslation();
   const hasContent =
     (report.valuationRelative && report.valuationRelative.length > 0) ||
     (report.valuationSotp && report.valuationSotp.length > 0) ||
@@ -575,11 +581,11 @@ const ValuationSection: React.FC<{ report: DeepReport }> = ({ report }) => {
 
   return (
     <section className="mb-16">
-      <SectionTitle id="valuation">⑤ 估值分析</SectionTitle>
+      <SectionTitle id="valuation">{t('report.valuation')}</SectionTitle>
 
       {report.valuationRelative && report.valuationRelative.length > 0 && (
         <div className="mb-6">
-          <SubHeading>相对估值</SubHeading>
+          <SubHeading>{t('report.valuationRelative')}</SubHeading>
           <DarkTable>
             <TableHeader>
               <TableRow className="border-slate-700/60 hover:bg-transparent">
@@ -630,7 +636,7 @@ const ValuationSection: React.FC<{ report: DeepReport }> = ({ report }) => {
 
       {report.valuationSotp && report.valuationSotp.length > 0 && (
         <div className="mb-6">
-          <SubHeading>SOTP 分部估值</SubHeading>
+          <SubHeading>{t('report.valuationSotp')}</SubHeading>
           <DarkTable>
             <TableHeader>
               <TableRow className="border-slate-700/60 hover:bg-transparent">
@@ -676,6 +682,7 @@ const ValuationSection: React.FC<{ report: DeepReport }> = ({ report }) => {
 // ⑥ Industry & Competition
 /** Industry overview, market size, competitive position, and trends as narrative blocks */
 const IndustrySection: React.FC<{ report: DeepReport }> = ({ report }) => {
+  const { t } = useTranslation();
   const hasContent =
     report.industryOverview ||
     report.marketSize ||
@@ -685,29 +692,29 @@ const IndustrySection: React.FC<{ report: DeepReport }> = ({ report }) => {
 
   return (
     <section className="mb-16">
-      <SectionTitle id="industry">⑥ 行业与竞争</SectionTitle>
+      <SectionTitle id="industry">{t('report.industryOverview')}</SectionTitle>
 
       {report.industryOverview && (
         <div className="mb-5">
-          <SubHeading>行业概述</SubHeading>
+          <SubHeading>{t('report.industryOverview')}</SubHeading>
           <ParagraphBlock content={report.industryOverview} />
         </div>
       )}
       {report.marketSize && (
         <div className="mb-5">
-          <SubHeading>市场规模</SubHeading>
+          <SubHeading>{t('report.marketSize')}</SubHeading>
           <ParagraphBlock content={report.marketSize} />
         </div>
       )}
       {report.competitivePosition && (
         <div className="mb-5">
-          <SubHeading>竞争地位</SubHeading>
+          <SubHeading>{t('report.competitivePosition')}</SubHeading>
           <ParagraphBlock content={report.competitivePosition} />
         </div>
       )}
       {report.industryTrends && (
         <div>
-          <SubHeading>行业趋势</SubHeading>
+          <SubHeading>{t('report.industryTrends')}</SubHeading>
           <ParagraphBlock content={report.industryTrends} />
         </div>
       )}
@@ -949,6 +956,7 @@ const CatalystsSection: React.FC<{ report: DeepReport }> = ({ report }) => {
 // ⑪ Risks
 /** Quantified risk table: probability/impact badges (high=rose, medium=amber, low=emerald) and mitigations */
 const RisksSection: React.FC<{ report: DeepReport }> = ({ report }) => {
+  const { t } = useTranslation();
   if (!report.riskItems || report.riskItems.length === 0) return null;
 
   const levelBadge = (level: 'high' | 'medium' | 'low') => {
@@ -971,7 +979,7 @@ const RisksSection: React.FC<{ report: DeepReport }> = ({ report }) => {
         <TableHeader>
           <TableRow className="border-slate-700/60 hover:bg-transparent">
             <TableHead className="text-slate-400 w-[30%]">风险项</TableHead>
-            <TableHead className="text-slate-400 text-center">概率</TableHead>
+            <TableHead className="text-slate-400 text-center">{t('report.probability')}</TableHead>
             <TableHead className="text-slate-400 text-center">影响</TableHead>
             <TableHead className="text-slate-400">缓释措施</TableHead>
           </TableRow>
@@ -1152,6 +1160,7 @@ const PmActionSection: React.FC<{ report: DeepReport }> = ({ report }) => {
 // ⑭ Tracking
 /** Watch-list metrics (threshold/direction/frequency) and explicit view-change triggers */
 const TrackingSection: React.FC<{ report: DeepReport }> = ({ report }) => {
+  const { t } = useTranslation();
   const hasContent =
     (report.trackingMetrics && report.trackingMetrics.length > 0) ||
     report.viewChangeTriggers;
@@ -1176,7 +1185,7 @@ const TrackingSection: React.FC<{ report: DeepReport }> = ({ report }) => {
 
       {report.trackingMetrics && report.trackingMetrics.length > 0 && (
         <div className="mb-6">
-          <SubHeading>跟踪指标</SubHeading>
+          <SubHeading>{t('report.trackingMetrics')}</SubHeading>
           <DarkTable>
             <TableHeader>
               <TableRow className="border-slate-700/60 hover:bg-transparent">
@@ -1234,6 +1243,7 @@ const DeepReportView: React.FC<DeepReportViewProps> = ({
   runId,
   onBack,
 }) => {
+  const { t } = useTranslation();
   const [activeSection, setActiveSection] = useState<string>('');
   const contentRef = useRef<HTMLDivElement>(null);
 
@@ -1295,7 +1305,7 @@ const DeepReportView: React.FC<DeepReportViewProps> = ({
     },
     {
       id: 'bull-bear',
-      label: '多空论点',
+      label: t('report.bullPoints'),
       visible:
         (!!report.bullPoints && report.bullPoints.length > 0) ||
         (!!report.bearPoints && report.bearPoints.length > 0),
@@ -1308,7 +1318,7 @@ const DeepReportView: React.FC<DeepReportViewProps> = ({
     },
     {
       id: 'catalysts',
-      label: '催化剂时间线',
+      label: t('report.catalystsTimeline'),
       visible:
         !!report.catalystsTimeline &&
         report.catalystsTimeline.length > 0,
@@ -1337,7 +1347,7 @@ const DeepReportView: React.FC<DeepReportViewProps> = ({
     },
     {
       id: 'tracking',
-      label: '跟踪指标',
+      label: t('report.trackingMetrics'),
       visible:
         (!!report.trackingMetrics &&
           report.trackingMetrics.length > 0) ||

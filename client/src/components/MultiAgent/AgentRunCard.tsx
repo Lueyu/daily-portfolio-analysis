@@ -20,6 +20,7 @@ import RatingBadge from './RatingBadge';
 import ConfidenceBadge from './ConfidenceBadge';
 import RunProgressBar from './RunProgressBar';
 import RiskAlertBadge from './RiskAlertBadge';
+import { useTranslation } from 'react-i18next';
 import type {
   AgentRunWithRating,
   AgentRunStatus,
@@ -68,7 +69,7 @@ const statusStyles: Record<AgentRunStatus, string> = {
 /** Chinese display labels for each pipeline status (shown verbatim in the badge) */
 const statusLabels: Record<AgentRunStatus, string> = {
   pending: '等待中',
-  fetching: '取证中',
+  fetching: '取数中',
   debating: '辩论中',
   critiquing: 'Critic 审核中',
   risk_check: '风控检查中',
@@ -272,6 +273,7 @@ function formatDate(dateStr: string): string {
 
 /** Loading placeholder that mirrors AgentRunCard's layout while runs are being fetched */
 export function AgentRunCardSkeleton() {
+  const { t } = useTranslation();
   return (
     <Card className="p-4 space-y-3">
       <div className="flex items-start justify-between">

@@ -8,6 +8,7 @@
  */
 import { Badge } from '@/components/ui/badge';
 import type { AgentConfidence } from '@shared/api.interface';
+import { useTranslation } from 'react-i18next';
 
 interface ConfidenceBadgeProps {
   /** Confidence level assigned by the multi-agent rating */
