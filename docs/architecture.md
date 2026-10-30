@@ -93,12 +93,14 @@ The pipeline performs these steps:
    reaches `awaiting_human`; the user can review the result and choose the
    supported synchronization actions.
 
-**Current data limit:** the built-in collector does not fetch verified full
-financial statements or historical technical series. It explicitly records
-those gaps. The financial-statement gap currently keeps automatically
-generated model reports at `Watch/low`, including when Finnhub metrics/news
-are configured. The seeded demo's Buy ratings and scenario targets are
-fictional examples, not evidence of live forecast generation.
+**Current data limit:** a configured Finnhub key enables reported financial
+statement fields, valuation metrics and recent news for supported US stocks.
+Statement evidence keeps report periods, currencies and SEC filing references;
+missing fields, stale reports and provider errors remain explicit gaps.
+Historical technical series are not collected. Critical gaps still force
+`Watch/low`; a successful API connection alone does not establish complete
+coverage. The seeded demo's Buy ratings and scenario targets are fictional
+examples, not evidence of live forecast generation.
 
 The report UI supports a richer 14-section structure, but hides sections
 without data. `analysis-report.ts` builds live reports from persisted outputs;

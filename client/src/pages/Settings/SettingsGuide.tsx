@@ -84,10 +84,12 @@ export default function SettingsGuide() {
                 <p className="break-all">DeepSeek · https://api.deepseek.com</p>
                 <p className="break-all">Doubao · https://ark.cn-beijing.volces.com/api/v3</p>
               </div>
+              <p>{t('integrations.deepSeekModelHint')}</p>
+              <p>{t('integrations.deepSeekModeHint')}</p>
               <div className="flex flex-wrap gap-x-4 gap-y-1 pt-1">
                 <GuideLink href="https://developers.openai.com/api/docs/models/all"
                   label={t('ui.settings.guide.llm.openAiModels')} />
-                <GuideLink href="https://api-docs.deepseek.com/en/"
+                <GuideLink href="https://api-docs.deepseek.com/quick_start/pricing/"
                   label={t('ui.settings.guide.llm.deepSeekDocs')} />
                 <GuideLink href="https://docs.volcengine.com/docs/ark/quick-start-beginner?lang=zh"
                   label={t('ui.settings.guide.llm.doubaoDocs')} />

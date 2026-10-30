@@ -21,16 +21,16 @@ For a free starting point, turn off the council and leave custom AI review instr
 ## Discuss and keep the report
 
 1. Save a Builder profile, then open **Research room** and create a discussion for that profile and ticker.
-2. Start research. Completed member responses appear when saved; the page polls for updates rather than streaming individual tokens.
-3. Add your own view or a condition. Each note changes the input revision and invalidates the previous conclusion. During a run, the service can restart against the new revision within its existing task budget; after a finished run, use **Continue research**.
+2. Creating a discussion starts one research round. The central chat shows member replies; the composer stays at the bottom. The page polls for completed messages rather than streaming individual tokens.
+3. Add your own view at any time. Sending a note after a completed round starts another bounded round, with the previous conclusions as context. During research, your note steers the current discussion within its existing budget. Enter sends, Shift+Enter adds a new line, and selecting Chinese input does not send accidentally. Paused or failed rooms require an explicit resume.
 4. Pause when needed. A provider request already in flight may finish and incur usage, but a paused or obsolete revision cannot become current approval.
-5. Read the versioned decision brief, dissent, next review condition, evidence snapshot and any original research-report link. Older versions stay visible. Each discussion freezes the profile configuration and version; after editing the profile, start a new discussion to use that version.
+5. Reports are organized in the right sidebar (the Reports button on small screens). Open a version to read its conclusions, dissent, evidence and related report or paper-order links. Each discussion freezes the profile configuration and version; after editing the profile, start a new discussion to use that version.
 
 A note can contain up to 2,000 characters; a discussion accepts up to 30 user notes. Automatic work makes at most three revision attempts. Continuing or pausing does not reset that discussion's task budget. Short evidence excerpts go to the model, while the full collected snapshot and complete user notes remain in the instance database. Long user instructions can reach the input cap and produce a wait result.
 
-The built-in collector still lacks verified financial statements. Research-driven approval is withheld when critical evidence is missing. An existing, explicitly configured price-rule candidate can be assessed as **rule-only**, with those research gaps disclosed; this is not an AI price forecast. Invalid responses, unavailable models and budget limits produce a wait or failure record instead of an approval.
+For supported US stocks, a saved Finnhub key enables valuation metrics, recent company news and reported financial statements with filing dates and SEC references. Access and completeness depend on the endpoint and subscription; a successful connection test does not guarantee every field. Missing balance-sheet items, stale filings, unsupported markets, provider permissions and network errors are identified separately. Available facts remain in the report. Research-driven approval is withheld when critical evidence is missing. An explicitly configured price-rule candidate can be assessed as **rule-only**, with gaps disclosed; this is not an AI price forecast.
 
-Continuing a discussion also reuses its frozen evidence. Start a new discussion to collect fresh quotes and research; asking an old room to “check again” does not refresh its sources.
+Starting or explicitly resuming a discussion collects fresh data using the current API settings. Each published report retains its original evidence snapshot. An unrelated portfolio or FX failure no longer prevents stock research, although portfolio sizing remains unavailable. Continuing does **not** reset token usage: a task limit, daily limit, provider rate limit and provider account balance are distinct errors with separate remedies.
 
 ## How a conclusion can affect paper trading
 

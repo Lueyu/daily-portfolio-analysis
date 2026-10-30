@@ -151,6 +151,7 @@ export function councilPrompt(role: CouncilRole, language: 'zh-CN' | 'en'): stri
     'Research-based approval requires complete critical evidence. Missing critical evidence forces wait.',
     'An explicit investor-authored price rule may be reviewed only as rule-only: acknowledge gaps and make no research forecast.',
     'Human discussion has no execution capability. Cite only the supplied factual evidence IDs; never cite data gaps as facts.',
+    'Put machine evidence IDs only in evidenceIds; use readable prose without IDs in summary, dissent and nextReviewCondition.',
     'Return only JSON: {"decision":"approve|wait|reject","summary":"concise public rationale",',
     '"dissent":["material uncertainty or objection"],"nextReviewCondition":"specific condition","evidenceIds":["snapshot-id"]}.',
     language === 'en' ? 'Write all reader-facing text in English.' : '所有面向用户的文字使用简体中文。',

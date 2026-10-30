@@ -6,8 +6,8 @@ import { BudgetExceededException, estimateInputTokens, settleTokenUsage } from '
 import type { BudgetReservation, LlmBudgetService, ReserveBudgetRequest } from '../llm-budget/llm-budget.service';
 import type { SettingsService } from './settings.service';
 
-const settings = (model = 'test') => ({ getLlmConfig: async () => ({
-  source: 'server', baseUrl: 'https://provider.invalid/v1', fastModel: model, slowModel: model, apiKey: 'private',
+const settings = (model = 'test', baseUrl = 'https://provider.invalid/v1') => ({ getLlmConfig: async () => ({
+  source: 'server', baseUrl, fastModel: model, slowModel: model, apiKey: 'private',
 }) }) as SettingsService;
 
 test('pausing a council stops retry reservations after an in-flight provider failure', async () => {
@@ -26,6 +26,69 @@ test('pausing a council stops retry reservations after an in-flight provider fai
     assert.equal(calls, 1);
     assert.equal(harness.reservations.length, 1);
     assert.equal(harness.settlements[0].failed, true);
+  } finally { axios.defaults.adapter = original; }
+});
+
+test('bounded DeepSeek council and connection calls disable thinking without raising output limits or switching models', async () => {
+  const original = axios.defaults.adapter;
+  const cases = [
+    { url: 'https://api.deepseek.com', model: 'deepseek-flash', purpose: 'council:manager', disabled: true },
+    { url: 'https://api.deepseek.com/v1', model: 'deepseek-v4-pro', purpose: 'connection-test', disabled: true },
+    { url: 'https://api.deepseek.com', model: 'deepseek-v4-flash', purpose: 'council:researcher', disabled: true },
+    { url: 'https://provider.invalid/v1', model: 'deepseek-flash', purpose: 'council:manager', disabled: false },
+    { url: 'https://api.deepseek.com.other.invalid/v1', model: 'deepseek-flash', purpose: 'council:manager', disabled: false },
+    { url: 'https://api.deepseek.com', model: 'deepseek-flash', purpose: 'analysis-rating', disabled: false },
+  ];
+  try {
+    for (const item of cases) {
+      const harness = budgetHarness();
+      let calls = 0;
+      axios.defaults.adapter = async config => {
+        calls++;
+        const body = JSON.parse(String(config.data));
+        assert.equal(body.model, item.model);
+        assert.equal(body.max_tokens, 16);
+        assert.deepEqual(body.thinking, item.disabled ? { type: 'disabled' } : undefined);
+        return { status: 200, statusText: '', headers: {}, config,
+          data: { choices: [{ message: { content: 'OK' }, finish_reason: 'stop' }],
+            usage: { prompt_tokens: 10, completion_tokens: 1, total_tokens: 11 } } };
+      };
+      const response = await new LlmService(settings(item.model, item.url), harness.service)
+        .chatFast([{ role: 'user', content: 'OK only' }], 'alice', { purpose: item.purpose, maxOutputTokens: 16 });
+      assert.equal(response.content, 'OK');
+      assert.equal(calls, 1);
+      assert.equal(harness.reservations.length, 1);
+    }
+  } finally { axios.defaults.adapter = original; }
+});
+
+test('truncated, empty and malformed responses remain charged and fail distinctly without a paid fallback', async () => {
+  const original = axios.defaults.adapter;
+  const cases = [
+    { content: '{"decision":"approve"}', finish_reason: 'length', code: 'LLM_OUTPUT_LIMIT' },
+    { content: '', finish_reason: 'stop', code: 'LLM_EMPTY_RESPONSE' },
+    { content: 'private reply and credential secret', finish_reason: 'stop', code: 'LLM_INVALID_JSON' },
+  ];
+  try {
+    for (const item of cases) {
+      const harness = budgetHarness();
+      let calls = 0;
+      axios.defaults.adapter = async config => {
+        calls++;
+        return { status: 200, statusText: '', headers: {}, config,
+          data: { choices: [{ message: { content: item.content, reasoning_content: 'private hidden trace' }, finish_reason: item.finish_reason }],
+            usage: { prompt_tokens: 10, completion_tokens: 900, total_tokens: 910 } } };
+      };
+      await assert.rejects(new LlmService(settings(), harness.service).chatFastJSON(
+        [{ role: 'user', content: 'Return JSON' }], 'alice', { maxOutputTokens: 900 }), error => {
+        assert.equal((error as { code?: string }).code, item.code);
+        assert.doesNotMatch(String(error), /private|credential|secret|trace/);
+        return true;
+      });
+      assert.equal(calls, 1);
+      assert.equal(harness.reservations.length, 1);
+      assert.equal(harness.settlements[0].charged, 910);
+    }
   } finally { axios.defaults.adapter = original; }
 });
 

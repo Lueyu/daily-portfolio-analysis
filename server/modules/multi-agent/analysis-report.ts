@@ -6,18 +6,93 @@ export function normalizeAnalysisLanguage(value: unknown): AnalysisLanguage {
   throw new Error('Analysis language must be zh-CN or en');
 }
 
-/** Only known provider status codes cross the boundary; SQL, payloads and credentials never do. */
+type SafeErrorText = readonly [en: string, zh: string];
+const BUDGET_ERRORS: Record<string, SafeErrorText> = {
+  task_tokens: [
+    "This task's token budget is exhausted. Continuing does not reset it. Review Research budget or start a new discussion; daily and monthly limits still apply.",
+    '本次讨论的 Token 额度不足，继续不会重置。可在研究预算中调整或新建讨论，日／月总额度仍然生效。',
+  ],
+  task_calls: [
+    "This task's model-call budget is exhausted. Continuing does not reset it. Review Research budget or start a new discussion; daily and monthly limits still apply.",
+    '本次讨论的模型调用次数已达上限，继续不会重置。可在研究预算中调整或新建讨论，日／月总额度仍然生效。',
+  ],
+  daily_tokens: [
+    'The daily token budget is insufficient for this request. Review Research budget or wait for the next UTC day. Existing task limits still apply.',
+    '当日 Token 预算不足以执行本次请求。请检查研究预算，或等待下一个 UTC 日；已有任务额度仍然生效。',
+  ],
+  monthly_tokens: [
+    'The monthly token budget is insufficient for this request. Review Research budget or wait for the next UTC month. Existing task limits still apply.',
+    '当月 Token 预算不足以执行本次请求。请检查研究预算，或等待下一个 UTC 月；已有任务额度仍然生效。',
+  ],
+  daily_calls: [
+    'The daily model-call limit has been reached. Review Research budget or wait for the next UTC day. Existing task limits still apply.',
+    '当日模型调用次数已达上限。请检查研究预算，或等待下一个 UTC 日；已有任务额度仍然生效。',
+  ],
+  input_tokens: [
+    'The prompt exceeds the per-call input budget. Shorten the instructions or start a shorter discussion, or review the input limit in Research budget.',
+    '本次提示内容超过单次输入额度。请缩短指令或新建较短的讨论，或在研究预算中检查输入上限。',
+  ],
+  unknown: [
+    'Analysis stopped at an LLM budget limit. Review token and call limits in API Settings before retrying.',
+    '分析已达到模型预算上限，请在 API 设置中检查 Token 和调用次数额度后再重试。',
+  ],
+};
+const MODEL_ERRORS: Record<string, SafeErrorText> = {
+  LLM_OUTPUT_LIMIT: [
+    'The model reply reached its output limit and was truncated. No incomplete decision was accepted. Choose a model that can return a final answer within the limit, or review the output cap in Research budget; no automatic retry was made.',
+    '模型回复达到输出上限而被截断，未采纳不完整决策。请选择能在限额内返回最终答案的模型，或在研究预算中检查输出上限；系统未自动重试。',
+  ],
+  LLM_EMPTY_RESPONSE: [
+    'The model returned an empty final answer. Check the model ID and reasoning mode; for DeepSeek, use a current API model ID such as deepseek-flash. Usage remains counted and no automatic retry was made.',
+    '模型未返回最终答案。请检查模型 ID 与推理模式；DeepSeek 可使用当前 API 模型 ID，例如 deepseek-flash。已有用量仍计入预算，系统未自动重试。',
+  ],
+  LLM_INVALID_JSON: [
+    'The model returned invalid JSON, so no decision was accepted. Use a model that supports structured JSON responses. Usage remains counted and no automatic retry was made.',
+    '模型返回的 JSON 格式无效，未采纳任何决策。请使用支持 JSON 结构化输出的模型。已有用量仍计入预算，系统未自动重试。',
+  ],
+};
+const PROVIDER_ERRORS: Record<string, SafeErrorText> = {
+  '400': ['Model request rejected (HTTP 400). Check the exact API model ID and request parameters; a display name is not a model ID.',
+    '模型请求被拒绝（HTTP 400）。请检查准确的 API 模型 ID 和请求参数，产品展示名称不能当作模型 ID。'],
+  '401': ['Model authentication failed (HTTP 401). Check the API key in API Settings.',
+    '模型鉴权失败（HTTP 401）。请在 API 设置中检查 API Key。'],
+  '402': ['Model provider payment required (HTTP 402). Check the provider account balance or credits; this is separate from the app token budget.',
+    '模型服务要求付费（HTTP 402）。请检查供应商账户余额或额度，这与应用内 Token 预算不同。'],
+  '403': ['Model access denied (HTTP 403). Check that the API key has access to the selected model.',
+    '模型访问被拒绝（HTTP 403）。请检查 API Key 是否拥有所选模型的访问权限。'],
+  '404': ['Model or endpoint not found (HTTP 404). Check the base URL and exact API model ID in API Settings.',
+    '模型或接口不存在（HTTP 404）。请在 API 设置中检查接口地址和准确的 API 模型 ID。'],
+  '422': ['Model parameters rejected (HTTP 422). Check the model ID and supported request parameters.',
+    '模型参数被拒绝（HTTP 422）。请检查模型 ID 及其支持的请求参数。'],
+  '429': ['Model provider rate or quota limit reached (HTTP 429). Wait before retrying and check the provider quota; app budget limits are separate.',
+    '模型供应商限流或额度已用完（HTTP 429）。请稍后重试并检查供应商额度；应用内预算是另一项限制。'],
+  '500': ['Model provider is unavailable (HTTP 500). Retry later after checking its service status.',
+    '模型供应商暂时不可用（HTTP 500）。请检查服务状态后稍后重试。'],
+  '503': ['Model provider is busy or unavailable (HTTP 503). Retry later after checking its service status.',
+    '模型供应商繁忙或暂时不可用（HTTP 503）。请检查服务状态后稍后重试。'],
+};
+
+/** Only allowlisted classifications cross the boundary; never provider payloads or secrets. */
 export function safeAnalysisError(error: unknown, language: AnalysisLanguage): string {
   const message = error instanceof Error ? error.message : typeof error === 'string' ? error : '';
-  const budgetEn = 'Analysis stopped at an LLM budget limit. Review token and call limits in API Settings before retrying.';
-  const budgetZh = '分析已达到模型预算上限，请在 API 设置中检查 Token 和调用次数额度后再重试。';
-  if (analysisErrorCode(error) === 'LLM_BUDGET_EXCEEDED' || message === budgetEn || message === budgetZh) {
-    return language === 'en' ? budgetEn : budgetZh;
+  const localized = (text: SafeErrorText) => text[language === 'en' ? 0 : 1];
+  // Reports persist sanitized text. Re-reading one must preserve its cause,
+  // including when the reader switches interface language.
+  const saved = [...Object.values(BUDGET_ERRORS), ...Object.values(MODEL_ERRORS), ...Object.values(PROVIDER_ERRORS)]
+    .find((text) => text.includes(message));
+  if (saved) return localized(saved);
+  const code = analysisErrorCode(error);
+  if (code === 'LLM_BUDGET_EXCEEDED') {
+    const reason = error && typeof error === 'object' && 'reason' in error ? error.reason : undefined;
+    return localized(BUDGET_ERRORS[typeof reason === 'string' ? reason : 'unknown'] ?? BUDGET_ERRORS.unknown);
   }
+  const modelError = MODEL_ERRORS[code] ?? MODEL_ERRORS[message]
+    ?? (message === 'Failed to parse LLM JSON response' ? MODEL_ERRORS.LLM_INVALID_JSON : undefined);
+  if (modelError) return localized(modelError);
   const status = message.match(/^LLM provider returned HTTP (\d{3})$/u)?.[1];
-  if (status) return language === 'en'
-    ? `Model provider request failed (HTTP ${status}). Check API Settings and retry.`
-    : `模型服务请求失败（HTTP ${status}），请检查 API 设置后重试。`;
+  if (status) return PROVIDER_ERRORS[status] ? localized(PROVIDER_ERRORS[status]) : language === 'en'
+      ? `Model provider request failed (HTTP ${status}). Check API Settings and retry.`
+      : `模型服务请求失败（HTTP ${status}），请检查 API 设置后重试。`;
   if (/^(?:Model provider request failed \(HTTP \d{3}\)\. Check API Settings and retry\.|模型服务请求失败（HTTP \d{3}），请检查 API 设置后重试。)$/u.test(message)) {
     return message;
   }
