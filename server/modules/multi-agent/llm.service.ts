@@ -44,9 +44,8 @@ class ModelResponseError extends Error {
   }
 }
 
-/** Keep short council replies usable without silently increasing a user's spend cap. */
-function boundedDeepSeekMode(baseUrl: string, model: string, purpose?: string) {
-  if (purpose !== 'connection-test' && !purpose?.startsWith('council:')) return {};
+/** Every application call has a reserved output cap; keep final answers usable within it. */
+function boundedDeepSeekMode(baseUrl: string, model: string) {
   // These documented IDs support an explicit mode switch. Do not guess the
   // capabilities of legacy aliases, custom gateways or similarly named hosts.
   if (!['deepseek-flash', 'deepseek-v4-pro', 'deepseek-v4-flash', 'deepseek-v4-flash-vision-exp'].includes(model)) return {};
@@ -154,7 +153,7 @@ export class LlmService {
       const outputLimit = /^(?:o[1-9](?:-|$)|gpt-5(?:[.-]|$))/u.test(model)
         ? { max_completion_tokens: reservation.maxOutputTokens }
         : { max_tokens: reservation.maxOutputTokens };
-      const body = { model, messages, ...outputLimit, ...boundedDeepSeekMode(baseUrl, model, options.purpose) };
+      const body = { model, messages, ...outputLimit, ...boundedDeepSeekMode(baseUrl, model) };
       let result: ProviderChatPayload;
       try {
         const response = await axios.post<ProviderChatPayload>(
