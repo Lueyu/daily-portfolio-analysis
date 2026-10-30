@@ -13,6 +13,8 @@ services:
       # start (postgres entrypoint initdb).
       - ./scripts/db/01_schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
       - ./scripts/db/02_demo_seed.sql:/docker-entrypoint-initdb.d/02_demo_seed.sql:ro
+      - ./scripts/db/03_agent_builder.sql:/docker-entrypoint-initdb.d/03_agent_builder.sql:ro
+      - ./scripts/db/04_user_api_settings.sql:/docker-entrypoint-initdb.d/04_user_api_settings.sql:ro
       - dpa-data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d portfolio"]
@@ -31,7 +33,10 @@ services:
       DATABASE_URL: "postgres://postgres:postgres@db:5432/portfolio"
       # JWT signing secret for the first-party auth system. CHANGE THIS for
       # any deployment beyond a local demo.
-      JWT_SECRET: "change-me-in-production-0123456789abcdef"
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production-0123456789abcdef}
+      # Optional separate key for encrypted provider credentials. Keep it
+      # stable; changing it requires users to re-enter their API keys.
+      SETTINGS_ENCRYPTION_KEY: ${SETTINGS_ENCRYPTION_KEY:-}
       # Registration toggle; set to "false" for private deployments.
       REGISTER_ENABLED: "true"
       # Optional: enable the /openapi/agent-gateway for the Python agent.
@@ -41,9 +46,12 @@ services:
       # DOUBAO_API_KEY: ""
     ports:
       - "3000:3000"
+    volumes:
+      - settings-secrets:/app/.secrets
     depends_on:
       db:
         condition: service_healthy
 
 volumes:
   dpa-data:
+  settings-secrets:

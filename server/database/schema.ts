@@ -837,3 +837,54 @@ export const agentSessions = pgTable("agent_sessions", {
   updatedAt: customTimestamptz("updated_at", { precision: 3 }).default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 export const agentSessionsTable = agentSessions;
+
+/** User-configured beginner agent; one active profile per owner. */
+export const builderProfiles = pgTable("builder_profiles", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  owner: userProfile("owner").notNull(),
+  config: jsonb("config").notNull(),
+  status: varchar("status", { length: 12 }).default("draft").notNull(),
+  version: integer("version").default(1).notNull(),
+  createdAt: customTimestamptz("created_at", { precision: 3 }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+  updatedAt: customTimestamptz("updated_at", { precision: 3 }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+}, (table) => [index("idx_builder_profiles_owner").on(table.owner)]);
+
+/** A paper signal plus the investor's independently recorded real outcome. */
+export const builderProposals = pgTable("builder_proposals", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  owner: userProfile("owner").notNull(),
+  profileId: uuid("profile_id").notNull(),
+  profileVersion: integer("profile_version").notNull(),
+  signalDate: date("signal_date").notNull(),
+  ticker: varchar("ticker", { length: 20 }).notNull(),
+  market: varchar("market", { length: 10 }).notNull(),
+  currency: varchar("currency", { length: 10 }).notNull(),
+  side: varchar("side", { length: 10 }).notNull(),
+  quantity: numeric("quantity").notNull(),
+  referencePrice: numeric("reference_price").notNull(),
+  reason: text("reason").notNull(),
+  status: varchar("status", { length: 12 }).default("pending").notNull(),
+  paperOrderId: uuid("paper_order_id"),
+  executedAt: customTimestamptz("executed_at", { precision: 3 }),
+  executedQuantity: numeric("executed_quantity"),
+  executedPrice: numeric("executed_price"),
+  executedFees: numeric("executed_fees"),
+  notes: text("notes"),
+  expiresAt: customTimestamptz("expires_at", { precision: 3 }).notNull(),
+  createdAt: customTimestamptz("created_at", { precision: 3 }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+}, (table) => [
+  uniqueIndex("idx_builder_proposal_daily").on(table.profileId, table.signalDate, table.ticker, table.side),
+  index("idx_builder_proposals_owner_created").on(table.owner, table.createdAt),
+]);
+
+/** Encrypted user-owned integration keys; never selected by public endpoints. */
+export const userApiSettings = pgTable("user_api_settings", {
+  owner: userProfile("owner").primaryKey(),
+  llmBaseUrl: text("llm_base_url"),
+  llmFastModel: varchar("llm_fast_model", { length: 120 }),
+  llmSlowModel: varchar("llm_slow_model", { length: 120 }),
+  llmApiKeyEnc: text("llm_api_key_enc"),
+  finnhubApiKeyEnc: text("finnhub_api_key_enc"),
+  createdAt: customTimestamptz("created_at", { precision: 3 }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+  updatedAt: customTimestamptz("updated_at", { precision: 3 }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+});

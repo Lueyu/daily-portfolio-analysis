@@ -25,6 +25,9 @@ jobs:
       - name: Lint (eslint + stylelint + typecheck)
         run: npm run lint
 
+      - name: Run server tests
+        run: npm run test:server
+
   agent:
     name: Agent tests
     runs-on: ubuntu-latest

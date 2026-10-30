@@ -17,6 +17,7 @@ import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '../../common/platform
 import { eq, and } from 'drizzle-orm';
 import { holdings, cashAccounts, agentRuns, agentRatings } from '@server/database/schema';
 import type { PortfolioContext, StrategyRule } from '@shared/api.interface';
+import { FxService } from '@server/modules/fx/fx.service';
 
 /**
  * Tickers of well-known leveraged/inverse ETFs that get a stricter exposure
@@ -48,12 +49,15 @@ function getCompanyGroup(ticker: string): string {
 export class PortfolioContextService {
   private readonly logger = new Logger(PortfolioContextService.name);
 
-  constructor(@Inject(DRIZZLE_DATABASE) private readonly db: PostgresJsDatabase) {}
+  constructor(
+    @Inject(DRIZZLE_DATABASE) private readonly db: PostgresJsDatabase,
+    private readonly fxService: FxService,
+  ) {}
 
   /**
-   * Build the per-user portfolio snapshot: total value, cash, weights, and
-   * per-company-group exposure. All money values are summed in whatever
-   * currency the rows store (no FX conversion today).
+   * Build the per-user portfolio snapshot in USD: total value, cash, weights,
+   * per-holding market value, and per-company-group exposure. Holding prices
+   * remain in their native currencies.
    */
   async getPortfolioContext(userId: string): Promise<PortfolioContext> {
     const [holdingRows, cashRows] = await Promise.all([
@@ -61,22 +65,66 @@ export class PortfolioContextService {
       this.db.select().from(cashAccounts).where(eq(cashAccounts.owner, userId)),
     ]);
 
-    let totalMv = 0;
-    let cash = 0;
+    const rateCache = new Map<string, number>([['USD', 1]]);
+    const getUsdRate = async (currency: string): Promise<number> => {
+      const source = currency.toUpperCase();
+      const cached = rateCache.get(source);
+      if (cached !== undefined) return cached;
 
+      let rate: number;
+      try {
+        rate = await this.fxService.convert(1, source, 'USD');
+      } catch (error) {
+        throw new Error(`无法计算组合风控：缺少 ${source} -> USD 汇率，请先更新汇率`, {
+          cause: error,
+        });
+      }
+      if (!Number.isFinite(rate) || rate <= 0) {
+        throw new Error(`无法计算组合风控：${source} -> USD 汇率无效`);
+      }
+      rateCache.set(source, rate);
+      return rate;
+    };
+
+    let cash = 0;
     for (const row of cashRows) {
-      cash += Number(row.balance ?? 0);
+      const balance = Number(row.balance ?? 0);
+      if (!Number.isFinite(balance)) {
+        throw new Error(`无法计算组合风控：${row.currency} 现金余额无效`);
+      }
+      if (balance !== 0) {
+        cash += balance * await getUsdRate(row.currency);
+      }
     }
 
-    const holdingDetails = holdingRows.map((h) => {
+    let totalMv = 0;
+    const holdingDetails: PortfolioContext['holdings'] = [];
+    for (const h of holdingRows) {
       const shares = Number(h.shares ?? 0);
       const currentPrice = Number(h.currentPrice ?? 0);
       const buyPrice = h.buyPrice ? Number(h.buyPrice) : null;
-      const marketValue = shares * currentPrice;
+      if (!Number.isFinite(shares)) {
+        throw new Error(`无法计算组合风控：${h.ticker} 持仓数量无效`);
+      }
+      if (shares !== 0 && h.currentPrice === null) {
+        throw new Error(`无法计算组合风控：${h.ticker} 缺少现价`);
+      }
+      if (!Number.isFinite(currentPrice) || currentPrice < 0 || (shares !== 0 && currentPrice === 0)) {
+        throw new Error(`无法计算组合风控：${h.ticker} 现价无效`);
+      }
+      if (buyPrice !== null && !Number.isFinite(buyPrice)) {
+        throw new Error(`无法计算组合风控：${h.ticker} 成本价无效`);
+      }
+      const nativeMarketValue = shares * currentPrice;
+      const marketValue = nativeMarketValue === 0
+        ? 0
+        : nativeMarketValue * await getUsdRate(h.currency ?? 'USD');
       totalMv += marketValue;
-      const pnlPct = buyPrice && buyPrice > 0 ? ((currentPrice - buyPrice) / buyPrice) * 100 : null;
+      const pnlPct = h.currentPrice !== null && buyPrice && buyPrice > 0
+        ? ((currentPrice - buyPrice) / buyPrice) * 100
+        : null;
 
-      return {
+      holdingDetails.push({
         ticker: h.ticker,
         company: h.company,
         sector: h.sector,
@@ -89,8 +137,8 @@ export class PortfolioContextService {
         weightPct: 0, // filled in after totalValue is known
         pnlPct,
         companyGroup: getCompanyGroup(h.ticker),
-      };
-    });
+      });
+    }
 
     const totalValue = totalMv + cash;
 
@@ -117,8 +165,8 @@ export class PortfolioContextService {
 
   /**
    * Evaluate the user's enabled strategy rules for a given ticker against the
-   * current portfolio. Only a subset of ruleKeys are implemented (see switch);
-   * unrecognized rules are skipped.
+   * current portfolio. Rules that cannot be verified are returned as failures
+   * rather than silently treated as passes.
    *
    * Hard rules (ruleType='hard') that fail cap the final rating at Hold.
    * Soft rules are advisory and surfaced to the LLM / user but do not cap the
@@ -127,7 +175,7 @@ export class PortfolioContextService {
    * @param ticker the ticker being analyzed.
    * @param portfolio the snapshot from getPortfolioContext.
    * @param rules the user's strategy rules (already filtered to owner).
-   * @returns one entry per implemented+enabled rule.
+   * @returns one entry per enabled rule.
    */
   checkRiskRules(
     ticker: string,
@@ -154,13 +202,32 @@ export class PortfolioContextService {
       suggestedAction: string;
     }> = [];
 
-    const ruleMap = new Map(rules.map((r) => [r.ruleKey, r]));
     const companyGroup = getCompanyGroup(ticker);
     const holding = portfolio.holdings.find((h) => h.ticker.toUpperCase() === ticker.toUpperCase());
+    const addUnverified = (
+      rule: StrategyRule,
+      thresholdValue: number | null,
+      detail: string,
+    ): void => {
+      results.push({
+        ruleKey: rule.ruleKey,
+        ruleName: rule.ruleName,
+        ruleType: rule.ruleType,
+        passed: false,
+        currentValue: null,
+        thresholdValue,
+        detail,
+        suggestedAction: '补齐验证数据或停用该规则后重新运行风控',
+      });
+    };
 
     for (const rule of rules) {
       if (!rule.enabled) continue;
-      const threshold = rule.threshold ? Number(rule.threshold) : null;
+      const threshold = rule.threshold?.trim() ? Number(rule.threshold) : null;
+      if (threshold === null || !Number.isFinite(threshold) || threshold < 0) {
+        addUnverified(rule, null, `${rule.ruleName} 的阈值缺失或无效，无法核实风控规则`);
+        continue;
+      }
 
       switch (rule.ruleKey) {
         // Combined exposure across all tickers belonging to the same company
@@ -197,84 +264,37 @@ export class PortfolioContextService {
           break;
         }
 
-        // Small-cap heuristic: price < $5 counts as "small cap" (proxy; real
-        // market-cap data not yet wired in).
         case 'small_cap_weight': {
-          const price = holding?.currentPrice ?? 0;
-          const weight = holding?.weightPct ?? 0;
-          const isSmallCap = price > 0 && price < 5;
-          if (isSmallCap && holding) {
-            const passed = threshold === null ? true : weight <= threshold;
-            results.push({
-              ruleKey: rule.ruleKey,
-              ruleName: rule.ruleName,
-              ruleType: rule.ruleType,
-              passed,
-              currentValue: Number(weight.toFixed(2)),
-              thresholdValue: threshold,
-              detail: `${ticker} 为低价股($${price})，权重 ${weight.toFixed(2)}%，阈值 ${threshold}%`,
-              suggestedAction: passed ? '小盘股权重在允许范围内' : `需减持小盘股 ${ticker} 至 ${threshold}% 以下`,
-            });
-          } else if (holding) {
-            results.push({
-              ruleKey: rule.ruleKey,
-              ruleName: rule.ruleName,
-              ruleType: rule.ruleType,
-              passed: true,
-              currentValue: Number(weight.toFixed(2)),
-              thresholdValue: threshold,
-              detail: `${ticker} 价格 $${price}，不属于小盘股范围`,
-              suggestedAction: '不适用小盘股规则',
-            });
-          } else {
-            results.push({
-              ruleKey: rule.ruleKey,
-              ruleName: rule.ruleName,
-              ruleType: rule.ruleType,
-              passed: true,
-              currentValue: 0,
-              thresholdValue: threshold,
-              detail: `${ticker} 不在持仓中，无小盘股敞口`,
-              suggestedAction: '不适用',
-            });
-          }
+          addUnverified(
+            rule,
+            threshold,
+            '持仓数据没有公司市值，无法核实市值小于50亿的股票合计仓位；股价不能代替市值',
+          );
           break;
         }
 
         case 'leverage_etf': {
-          const isLeverageEtf = LEVERAGE_ETF_TICKERS.has(ticker.toUpperCase());
-          const weight = holding?.weightPct ?? 0;
-          if (isLeverageEtf && holding) {
-            const passed = threshold === null ? true : weight <= threshold;
-            results.push({
-              ruleKey: rule.ruleKey,
-              ruleName: rule.ruleName,
-              ruleType: rule.ruleType,
-              passed,
-              currentValue: Number(weight.toFixed(2)),
-              thresholdValue: threshold,
-              detail: `${ticker} 为杠杆ETF，权重 ${weight.toFixed(2)}%，阈值 ${threshold}%`,
-              suggestedAction: passed ? '杠杆ETF敞口在允许范围内' : `需减持杠杆ETF ${ticker} 至 ${threshold}% 以下`,
-            });
-          } else {
-            results.push({
-              ruleKey: rule.ruleKey,
-              ruleName: rule.ruleName,
-              ruleType: rule.ruleType,
-              passed: true,
-              currentValue: isLeverageEtf ? 0 : null,
-              thresholdValue: threshold,
-              detail: isLeverageEtf ? `${ticker} 为杠杆ETF但未持仓` : `${ticker} 不是杠杆ETF`,
-              suggestedAction: '不适用',
-            });
-          }
+          const exposure = portfolio.holdings.reduce(
+            (total: number, item: PortfolioContext['holdings'][number]): number =>
+              total + (LEVERAGE_ETF_TICKERS.has(item.ticker.toUpperCase()) ? item.weightPct : 0),
+            0,
+          );
+          const passed = exposure <= threshold;
+          results.push({
+            ruleKey: rule.ruleKey,
+            ruleName: rule.ruleName,
+            ruleType: rule.ruleType,
+            passed,
+            currentValue: Number(exposure.toFixed(2)),
+            thresholdValue: threshold,
+            detail: `已识别杠杆/反向ETF合计仓位 ${exposure.toFixed(2)}%，阈值 ${threshold}%`,
+            suggestedAction: passed ? '已识别杠杆ETF敞口在范围内' : `需降低杠杆ETF合计仓位至 ${threshold}% 以下`,
+          });
           break;
         }
 
-        // Cash ratio target band is hard-coded to 5–10%; the configured
-        // threshold is informational only.
         case 'cash_ratio': {
-          const passed = threshold === null ? true : (portfolio.cashRatio >= 5 && portfolio.cashRatio <= 10);
+          const passed = portfolio.cashRatio >= threshold;
           results.push({
             ruleKey: rule.ruleKey,
             ruleName: rule.ruleName,
@@ -282,8 +302,8 @@ export class PortfolioContextService {
             passed,
             currentValue: Number(portfolio.cashRatio.toFixed(2)),
             thresholdValue: threshold,
-            detail: `现金比例 ${portfolio.cashRatio.toFixed(2)}%，建议范围 5-10%（参考值 ${threshold}%）`,
-            suggestedAction: passed ? '现金比例合理' : portfolio.cashRatio < 5 ? '现金过低，建议增加现金储备' : '现金过高，考虑增加投资',
+            detail: `现金比例 ${portfolio.cashRatio.toFixed(2)}%，配置下限 ${threshold}%`,
+            suggestedAction: passed ? '现金比例达到配置下限' : `现金比例低于 ${threshold}%，建议增加现金储备`,
           });
           break;
         }
@@ -291,9 +311,11 @@ export class PortfolioContextService {
         // Drawdown check: only fires when the position is at a loss.
         case 'drawdown_check': {
           const pnlPct = holding?.pnlPct;
-          if (holding && pnlPct !== null && pnlPct < 0) {
+          if (holding && pnlPct === null) {
+            addUnverified(rule, threshold, `${ticker} 缺少有效成本价或现价，无法核实回撤`);
+          } else if (holding && pnlPct !== null && pnlPct < 0) {
             const drawdown = Math.abs(pnlPct);
-            const passed = threshold === null ? true : drawdown < threshold;
+            const passed = drawdown <= threshold;
             results.push({
               ruleKey: rule.ruleKey,
               ruleName: rule.ruleName,
@@ -330,8 +352,87 @@ export class PortfolioContextService {
           break;
         }
 
+        case 'stop_loss_pct':
+        case 'take_profit_pct': {
+          if (!holding) {
+            results.push({
+              ruleKey: rule.ruleKey,
+              ruleName: rule.ruleName,
+              ruleType: rule.ruleType,
+              passed: true,
+              currentValue: null,
+              thresholdValue: threshold,
+              detail: `${ticker} 不在持仓中，该规则暂不适用`,
+              suggestedAction: '不适用',
+            });
+          } else if (holding.pnlPct === null) {
+            addUnverified(rule, threshold, `${ticker} 缺少有效成本价或现价，无法核实浮盈亏`);
+          } else {
+            const isStopLoss = rule.ruleKey === 'stop_loss_pct';
+            const currentValue = isStopLoss
+              ? Math.max(0, -holding.pnlPct)
+              : Math.max(0, holding.pnlPct);
+            const passed = currentValue <= threshold;
+            results.push({
+              ruleKey: rule.ruleKey,
+              ruleName: rule.ruleName,
+              ruleType: rule.ruleType,
+              passed,
+              currentValue: Number(currentValue.toFixed(2)),
+              thresholdValue: threshold,
+              detail: `${ticker} ${isStopLoss ? '浮亏' : '浮盈'} ${currentValue.toFixed(2)}%，阈值 ${threshold}%`,
+              suggestedAction: passed
+                ? '未触发阈值'
+                : isStopLoss ? '触发止损评估' : '触发止盈评估或分批减仓',
+            });
+          }
+          break;
+        }
+
+        case 'sector_exposure': {
+          if (!holding?.sector) {
+            addUnverified(rule, threshold, `${ticker} 缺少行业分类，无法核实行业敞口`);
+            break;
+          }
+          if (portfolio.holdings.some((item: PortfolioContext['holdings'][number]) =>
+            item.weightPct > 0 && !item.sector)) {
+            addUnverified(rule, threshold, '部分持仓缺少行业分类，无法核实行业合计敞口');
+            break;
+          }
+          const sector = holding.sector.trim().toUpperCase();
+          const exposure = portfolio.holdings.reduce(
+            (total: number, item: PortfolioContext['holdings'][number]): number =>
+              total + (item.sector?.trim().toUpperCase() === sector ? item.weightPct : 0),
+            0,
+          );
+          const passed = exposure <= threshold;
+          results.push({
+            ruleKey: rule.ruleKey,
+            ruleName: rule.ruleName,
+            ruleType: rule.ruleType,
+            passed,
+            currentValue: Number(exposure.toFixed(2)),
+            thresholdValue: threshold,
+            detail: `${holding.sector} 行业合计仓位 ${exposure.toFixed(2)}%，阈值 ${threshold}%`,
+            suggestedAction: passed ? '行业敞口在配置范围内' : `需降低该行业仓位至 ${threshold}% 以下`,
+          });
+          break;
+        }
+
+        case 'loss_maker_weight':
+          addUnverified(rule, threshold, '持仓数据没有最近一期净利润，无法核实亏损股合计仓位');
+          break;
+
+        case 'new_buy_checklist':
+          addUnverified(rule, threshold, '未收到建仓清单完成状态及拟买入动作，无法核实建仓前条件');
+          break;
+
+        case 'position_building_days':
+          addUnverified(rule, threshold, '组合上下文没有分批交易次数和时间跨度，无法核实建仓节奏');
+          break;
+
         default:
-          // Unimplemented rule keys are silently skipped.
+          addUnverified(rule, threshold, `规则 ${rule.ruleKey} 未实现，无法核实是否通过`);
           break;
       }
     }

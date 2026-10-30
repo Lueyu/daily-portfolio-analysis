@@ -12,6 +12,8 @@
 import { Global, Module } from '@nestjs/common';
 import { drizzle, type PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import * as schema from '../../database/schema';
 
 /** DI token used by every business service to receive the Drizzle handle. */
@@ -35,8 +37,8 @@ function normalizeConnectionString(raw: string): string {
   }
 }
 
-/** Open the postgres.js pool and wrap it in Drizzle. Exposed for tests. */
-export function createDatabase(connectionString?: string): SquabbleDatabase {
+/** Open the postgres.js pool, apply additive DDL, and wrap it in Drizzle. */
+export async function createDatabase(connectionString?: string): Promise<SquabbleDatabase> {
   const raw = connectionString ?? process.env.DATABASE_URL;
   if (!raw) {
     throw new Error(
@@ -46,6 +48,18 @@ export function createDatabase(connectionString?: string): SquabbleDatabase {
   const client = postgres(normalizeConnectionString(raw), {
     max: Number(process.env.DB_POOL_MAX ?? 10),
   });
+  try {
+    for (const name of ['03_agent_builder.sql', '04_user_api_settings.sql']) {
+      const migrationPath = resolve(process.cwd(), 'scripts/db', name);
+      const migration = readFileSync(migrationPath, 'utf8');
+      for (const statement of migration.split(';').map((item) => item.trim()).filter(Boolean)) {
+        await client.unsafe(statement);
+      }
+    }
+  } catch (error) {
+    await client.end();
+    throw error;
+  }
   return drizzle(client, { schema });
 }
 

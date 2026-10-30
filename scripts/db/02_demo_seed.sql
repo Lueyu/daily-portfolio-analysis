@@ -194,14 +194,14 @@ INSERT INTO strategy_rules (rule_key, rule_name, rule_type, threshold, unit, ena
   ('single_company_exposure', '单一公司合并敞口上限', 'hard', 25, '%', true, '单一公司所有相关标的（正股+转债+关联ETF等）合计仓位不超过25%', '00000000-0000-4000-8000-0000000000aa', 'position_concentration', 'hard_block', 10),
   ('single_stock_limit', '单只股票权重上限', 'soft', 10, '%', true, '单只股票建议仓位不超过10%，超过需特别理由', '00000000-0000-4000-8000-0000000000aa', 'position_concentration', 'warning', 20),
   ('sector_exposure', '单一行业敞口上限', 'soft', 30, '%', true, '单一行业/板块合计仓位建议不超过30%', '00000000-0000-4000-8000-0000000000aa', 'position_concentration', 'warning', 25),
-  ('small_cap_weight', '小盘股合计上限', 'hard', 5, '%', true, '市值小于50亿的小盘股总仓位不超过5%', '00000000-0000-4000-8000-0000000000aa', 'position_concentration', 'hard_block', 30),
-  ('loss_maker_weight', '亏损股合计上限', 'hard', 10, '%', true, '最近一期净利润为负的标的合计仓位不超过10%', '00000000-0000-4000-8000-0000000000aa', 'position_concentration', 'warning', 40),
+  ('small_cap_weight', '小盘股合计上限', 'hard', 5, '%', false, '市值小于50亿的小盘股总仓位不超过5%', '00000000-0000-4000-8000-0000000000aa', 'position_concentration', 'hard_block', 30),
+  ('loss_maker_weight', '亏损股合计上限', 'hard', 10, '%', false, '最近一期净利润为负的标的合计仓位不超过10%', '00000000-0000-4000-8000-0000000000aa', 'position_concentration', 'warning', 40),
   ('leverage_etf', '杠杆ETF敞口上限', 'hard', 3, '%', true, '2x/3x 杠杆/反向 ETF 合计仓位不超过3%', '00000000-0000-4000-8000-0000000000aa', 'position_concentration', 'hard_block', 50),
   ('cash_ratio', '现金比例下限', 'soft', 7.5, '%', true, '现金占总资产比例建议保持5-10%，极端行情保留加仓能力', '00000000-0000-4000-8000-0000000000aa', 'cash_management', 'warning', 60),
   ('drawdown_check', '个股回撤强制重检', 'hard', 20, '%', true, '单只股票较成本价下跌超过阈值，必须强制重检基本面', '00000000-0000-4000-8000-0000000000aa', 'stop_loss_take_profit', 'hard_block', 70),
   ('stop_loss_pct', '个股止损线', 'soft', 25, '%', true, '单只股票较成本价下跌超过该比例触发止损评估', '00000000-0000-4000-8000-0000000000aa', 'stop_loss_take_profit', 'warning', 80),
   ('take_profit_pct', '个股止盈线', 'soft', 50, '%', true, '单只股票浮盈超过该比例触发止盈评估/分批减仓', '00000000-0000-4000-8000-0000000000aa', 'stop_loss_take_profit', 'warning', 90),
-  ('new_buy_checklist', '建仓前必过清单', 'hard', 1, '项', true, '新建仓必须完成：基本面评分、行业地位、估值分位、催化剂、风险点 5 项检查', '00000000-0000-4000-8000-0000000000aa', 'buy_conditions', 'hard_block', 100),
+  ('new_buy_checklist', '建仓前必过清单', 'hard', 1, '项', false, '新建仓必须完成：基本面评分、行业地位、估值分位、催化剂、风险点 5 项检查', '00000000-0000-4000-8000-0000000000aa', 'buy_conditions', 'hard_block', 100),
   ('position_building_days', '建仓节奏', 'soft', 3, '次', true, '单只股票建仓建议分至少3次买入，时间跨度不少于2周', '00000000-0000-4000-8000-0000000000aa', 'buy_conditions', 'warning', 110);
 
 -- ============================================================

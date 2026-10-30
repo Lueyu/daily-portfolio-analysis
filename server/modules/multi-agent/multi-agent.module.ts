@@ -30,18 +30,21 @@ import { MultiAgentController } from './multi-agent.controller';
 import { MultiAgentService } from './multi-agent.service';
 import { LlmService } from './llm.service';
 import { EvidenceService } from './evidence.service';
+import { FinnhubEvidenceService } from './finnhub-evidence.service';
 import { PipelineService } from './pipeline.service';
 import { PortfolioContextService } from './portfolio-context.service';
 import { BatchService } from './batch.service';
 import { QuoteModule } from '@server/modules/quote/quote.module';
+import { FxModule } from '@server/modules/fx/fx.module';
 
 @Module({
-  imports: [QuoteModule],
+  imports: [QuoteModule, FxModule],
   controllers: [MultiAgentController],
   providers: [
     MultiAgentService,
     LlmService,
     EvidenceService,
+    FinnhubEvidenceService,
     PipelineService,
     PortfolioContextService,
     BatchService,

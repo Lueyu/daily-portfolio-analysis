@@ -1,0 +1,264 @@
+import { BadRequestException, Injectable } from '@nestjs/common';
+import { Inject } from '@nestjs/common';
+import { eq } from 'drizzle-orm';
+import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '../../common/platform';
+import { userApiSettings } from '../../database/schema';
+import type {
+  IntegrationSettings,
+  IntegrationTestResult,
+  UpdateFinancialIntegrationRequest,
+  UpdateLlmIntegrationRequest,
+} from '@shared/api.interface';
+import {
+  decryptSecret,
+  encryptSecret,
+  normalizePublicLlmBaseUrl,
+} from './settings-security';
+
+export interface ResolvedLlmConfig {
+  source: 'user' | 'server';
+  baseUrl: string;
+  fastModel: string;
+  slowModel: string;
+  apiKey: string;
+}
+
+type SettingsRow = typeof userApiSettings.$inferSelect;
+
+const DEFAULT_LLM_BASE_URL = 'https://ark.cn-beijing.volces.com/api/v3';
+const DEFAULT_FAST_MODEL = 'doubao-lite-4k';
+const DEFAULT_SLOW_MODEL = 'doubao-pro-32k';
+const FINNHUB_PROFILE_URL = 'https://finnhub.io/api/v1/stock/profile2';
+const KNOWN_DEMO_JWT_SECRET = 'change-me-in-production-0123456789abcdef';
+
+function maskedKey(key: string): string {
+  return `••••${key.slice(-4)}`;
+}
+
+function cleanApiKey(value: unknown, required: boolean): string | null {
+  if (value === undefined || value === null || value === '') {
+    if (required) throw new BadRequestException('Enter an API key');
+    return null;
+  }
+  if (typeof value !== 'string') throw new BadRequestException('API key must be text');
+  const key = value.trim();
+  if (!key) {
+    if (required) throw new BadRequestException('Enter an API key');
+    return null;
+  }
+  if (key.length > 4096 || /[\r\n\u0000-\u001f]/u.test(key)) {
+    throw new BadRequestException('Invalid API key');
+  }
+  return key;
+}
+
+function cleanModel(value: unknown): string {
+  if (
+    typeof value !== 'string' || value.trim().length < 1
+    || value.trim().length > 120 || /[\r\n\u0000-\u001f]/u.test(value)
+  ) {
+    throw new BadRequestException('Enter a valid model identifier');
+  }
+  return value.trim();
+}
+
+@Injectable()
+export class SettingsService {
+  constructor(@Inject(DRIZZLE_DATABASE) private readonly db: PostgresJsDatabase) {}
+
+  private encryptionSecret(): string {
+    const dedicated = process.env.SETTINGS_ENCRYPTION_KEY;
+    const secret = dedicated || process.env.JWT_SECRET;
+    if (!secret || secret.length < 16 || secret === KNOWN_DEMO_JWT_SECRET) {
+      throw new BadRequestException(
+        'Set a private SETTINGS_ENCRYPTION_KEY (at least 16 characters) before saving API keys',
+      );
+    }
+    return secret;
+  }
+
+  private async rowFor(userId: string): Promise<SettingsRow | null> {
+    const [row] = await this.db.select().from(userApiSettings)
+      .where(eq(userApiSettings.owner, userId));
+    return row ?? null;
+  }
+
+  private tryDecrypt(stored: string | null | undefined): string | null {
+    if (!stored) return null;
+    try {
+      return decryptSecret(stored, this.encryptionSecret());
+    } catch {
+      return null;
+    }
+  }
+
+  async getSettings(userId: string): Promise<IntegrationSettings> {
+    const row = await this.rowFor(userId);
+    const userLlmKey = this.tryDecrypt(row?.llmApiKeyEnc);
+    const serverLlmKey = process.env.DOUBAO_API_KEY || null;
+    const finnhubKey = this.tryDecrypt(row?.finnhubApiKeyEnc);
+    return {
+      llm: userLlmKey ? {
+        source: 'user',
+        baseUrl: row?.llmBaseUrl || DEFAULT_LLM_BASE_URL,
+        fastModel: row?.llmFastModel || DEFAULT_FAST_MODEL,
+        slowModel: row?.llmSlowModel || DEFAULT_SLOW_MODEL,
+        hasApiKey: true,
+        maskedApiKey: maskedKey(userLlmKey),
+      } : row?.llmApiKeyEnc ? {
+        source: 'user',
+        baseUrl: row.llmBaseUrl || DEFAULT_LLM_BASE_URL,
+        fastModel: row.llmFastModel || DEFAULT_FAST_MODEL,
+        slowModel: row.llmSlowModel || DEFAULT_SLOW_MODEL,
+        hasApiKey: false,
+        needsReentry: true,
+      } : {
+        source: serverLlmKey ? 'server' : 'none',
+        baseUrl: process.env.DOUBAO_BASE_URL || DEFAULT_LLM_BASE_URL,
+        fastModel: process.env.DOUBAO_MODEL_FAST || DEFAULT_FAST_MODEL,
+        slowModel: process.env.DOUBAO_MODEL_SLOW || DEFAULT_SLOW_MODEL,
+        hasApiKey: Boolean(serverLlmKey),
+      },
+      financial: {
+        source: row?.finnhubApiKeyEnc ? 'user' : 'none',
+        provider: 'finnhub',
+        hasApiKey: Boolean(finnhubKey),
+        ...(finnhubKey ? { maskedApiKey: maskedKey(finnhubKey) } : {}),
+        ...(row?.finnhubApiKeyEnc && !finnhubKey ? { needsReentry: true } : {}),
+      },
+    };
+  }
+
+  async getLlmConfig(userId: string): Promise<ResolvedLlmConfig | null> {
+    const row = await this.rowFor(userId);
+    if (row?.llmApiKeyEnc) {
+      const userKey = this.tryDecrypt(row.llmApiKeyEnc);
+      if (!userKey) return null;
+      return {
+        source: 'user',
+        baseUrl: row.llmBaseUrl || DEFAULT_LLM_BASE_URL,
+        fastModel: row.llmFastModel || DEFAULT_FAST_MODEL,
+        slowModel: row.llmSlowModel || DEFAULT_SLOW_MODEL,
+        apiKey: userKey,
+      };
+    }
+    const apiKey = process.env.DOUBAO_API_KEY;
+    if (!apiKey) return null;
+    return {
+      source: 'server',
+      baseUrl: process.env.DOUBAO_BASE_URL || DEFAULT_LLM_BASE_URL,
+      fastModel: process.env.DOUBAO_MODEL_FAST || DEFAULT_FAST_MODEL,
+      slowModel: process.env.DOUBAO_MODEL_SLOW || DEFAULT_SLOW_MODEL,
+      apiKey,
+    };
+  }
+
+  async getFinnhubKey(userId: string): Promise<string | null> {
+    const row = await this.rowFor(userId);
+    return this.tryDecrypt(row?.finnhubApiKeyEnc);
+  }
+
+  async saveLlm(userId: string, input: UpdateLlmIntegrationRequest): Promise<IntegrationSettings> {
+    if (!input || typeof input !== 'object') {
+      throw new BadRequestException('Enter the LLM connection settings');
+    }
+    let baseUrl: string;
+    try {
+      baseUrl = await normalizePublicLlmBaseUrl(input.baseUrl);
+    } catch (error) {
+      throw new BadRequestException(error instanceof Error ? error.message : 'Invalid base URL');
+    }
+    const fastModel = cleanModel(input.fastModel);
+    const slowModel = cleanModel(input.slowModel);
+    const row = await this.rowFor(userId);
+    const retainedKey = this.tryDecrypt(row?.llmApiKeyEnc);
+    const apiKey = cleanApiKey(input.apiKey, !retainedKey);
+    const encrypted = apiKey ? encryptSecret(apiKey, this.encryptionSecret()) : row?.llmApiKeyEnc;
+    if (!encrypted) throw new BadRequestException('Enter an API key');
+    await this.db.insert(userApiSettings)
+      .values({
+        owner: userId,
+        llmBaseUrl: baseUrl,
+        llmFastModel: fastModel,
+        llmSlowModel: slowModel,
+        llmApiKeyEnc: encrypted,
+      })
+      .onConflictDoUpdate({
+        target: userApiSettings.owner,
+        set: {
+          llmBaseUrl: baseUrl,
+          llmFastModel: fastModel,
+          llmSlowModel: slowModel,
+          llmApiKeyEnc: encrypted,
+          updatedAt: new Date(),
+        },
+      });
+    return this.getSettings(userId);
+  }
+
+  async clearLlm(userId: string): Promise<IntegrationSettings> {
+    await this.db.update(userApiSettings)
+      .set({
+        llmBaseUrl: null,
+        llmFastModel: null,
+        llmSlowModel: null,
+        llmApiKeyEnc: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(userApiSettings.owner, userId));
+    return this.getSettings(userId);
+  }
+
+  async saveFinancial(
+    userId: string,
+    input: UpdateFinancialIntegrationRequest,
+  ): Promise<IntegrationSettings> {
+    if (!input || input.provider !== 'finnhub') {
+      throw new BadRequestException('Select a supported financial data provider');
+    }
+    const row = await this.rowFor(userId);
+    const retainedKey = this.tryDecrypt(row?.finnhubApiKeyEnc);
+    const apiKey = cleanApiKey(input.apiKey, !retainedKey);
+    const encrypted = apiKey ? encryptSecret(apiKey, this.encryptionSecret()) : row?.finnhubApiKeyEnc;
+    if (!encrypted) throw new BadRequestException('Enter an API key');
+    await this.db.insert(userApiSettings)
+      .values({ owner: userId, finnhubApiKeyEnc: encrypted })
+      .onConflictDoUpdate({
+        target: userApiSettings.owner,
+        set: { finnhubApiKeyEnc: encrypted, updatedAt: new Date() },
+      });
+    return this.getSettings(userId);
+  }
+
+  async clearFinancial(userId: string): Promise<IntegrationSettings> {
+    await this.db.update(userApiSettings)
+      .set({ finnhubApiKeyEnc: null, updatedAt: new Date() })
+      .where(eq(userApiSettings.owner, userId));
+    return this.getSettings(userId);
+  }
+
+  async testFinancial(userId: string): Promise<IntegrationTestResult> {
+    const key = await this.getFinnhubKey(userId);
+    if (!key) return { ok: false, message: 'Save a Finnhub API key first.' };
+    const url = new URL(FINNHUB_PROFILE_URL);
+    url.searchParams.set('symbol', 'AAPL');
+    url.searchParams.set('token', key);
+    try {
+      const response = await fetch(url, {
+        signal: AbortSignal.timeout(10_000),
+        redirect: 'error',
+      });
+      if (!response.ok) {
+        return { ok: false, message: `Finnhub rejected the request (HTTP ${response.status}).` };
+      }
+      const profile: unknown = await response.json();
+      if (!profile || typeof profile !== 'object' || Array.isArray(profile)
+        || typeof (profile as Record<string, unknown>).ticker !== 'string') {
+        return { ok: false, message: 'Finnhub returned no AAPL profile. Check key access.' };
+      }
+      return { ok: true, message: 'Finnhub returned the AAPL company profile.' };
+    } catch {
+      return { ok: false, message: 'Could not reach Finnhub. Check the server network.' };
+    }
+  }
+}

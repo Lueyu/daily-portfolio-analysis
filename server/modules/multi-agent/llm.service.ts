@@ -1,14 +1,12 @@
 /**
- * LlmService — thin wrapper around the Doubao (Volcengine Ark) chat-completions
- * HTTP API.
+ * LlmService — per-user OpenAI-compatible chat-completions client.
  *
  * Responsibilities:
- *  - Read model/baseURL/API key from environment variables (DOUBAO_API_KEY,
- *    DOUBAO_BASE_URL, DOUBAO_MODEL_FAST, DOUBAO_MODEL_SLOW).
+ *  - Read each user's encrypted Settings credential, falling back to the
+ *    server's legacy Doubao environment variables.
  *  - Expose four entry points: chatFast / chatSlow (free text) and
  *    chatFastJSON / chatSlowJSON (JSON output).
- *  - Apply exponential-backoff retries (max 2 retries, delays 1s, 2s) on any
- *    network/HTTP error.
+ *  - Apply exponential-backoff retries on network and transient HTTP errors.
  *  - Time out each call after 60s via AbortController.
  *  - For JSON calls, strip markdown code fences and attempt a regex brace-scan
  *    fallback when the first JSON.parse fails (LLMs occasionally wrap JSON in
@@ -20,6 +18,15 @@
  *    debate, critique, and rating aggregation.
  */
 import { Injectable, Logger } from '@nestjs/common';
+import axios from 'axios';
+import { SettingsService } from '../settings/settings.service';
+import { normalizePublicLlmBaseUrl, publicHttpsAgent } from '../settings/settings-security';
+
+class ProviderHttpError extends Error {
+  constructor(readonly status: number) {
+    super(`LLM provider returned HTTP ${status}`);
+  }
+}
 
 /** A single chat-completion message in OpenAI-compatible format. */
 interface ChatMessage {
@@ -35,63 +42,61 @@ interface ChatResponse {
   totalTokens: number;
 }
 
+interface ProviderChatPayload {
+  choices?: Array<{ message?: { content?: string } }>;
+  usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
+}
+
 @Injectable()
 export class LlmService {
   private readonly logger = new Logger(LlmService.name);
-  private readonly apiKey: string;
-  private readonly baseUrl: string;
-  private readonly modelFast: string;
-  private readonly modelSlow: string;
   private readonly timeoutMs = 60_000;
   /** Number of retries after the initial attempt (so max total = 1 + 2 = 3). */
   private readonly maxRetries = 2;
 
-  constructor() {
-    this.apiKey = process.env.DOUBAO_API_KEY ?? '';
-    this.baseUrl = process.env.DOUBAO_BASE_URL ?? 'https://ark.cn-beijing.volces.com/api/v3';
-    this.modelFast = process.env.DOUBAO_MODEL_FAST ?? 'doubao-lite-4k';
-    this.modelSlow = process.env.DOUBAO_MODEL_SLOW ?? 'doubao-pro-32k';
-  }
+  constructor(private readonly settings: SettingsService) {}
 
   /** @returns true if an API key is configured; false otherwise. */
-  isConfigured(): boolean {
-    return this.apiKey.length > 0;
-  }
-
-  /** Throw if the API key is missing; called before every outgoing request. */
-  private ensureConfigured(): void {
-    if (!this.apiKey) {
-      throw new Error('DOUBAO_API_KEY not configured');
-    }
+  async isConfigured(userId: string): Promise<boolean> {
+    return (await this.settings.getLlmConfig(userId)) !== null;
   }
 
   /** Free-text chat on the fast (cheap) model. */
-  async chatFast(messages: ChatMessage[]): Promise<ChatResponse> {
-    return this.chat(messages, this.modelFast);
+  async chatFast(messages: ChatMessage[], userId: string): Promise<ChatResponse> {
+    return this.chat(messages, 'fast', userId);
   }
 
   /** Free-text chat on the slow (pro) model. */
-  async chatSlow(messages: ChatMessage[]): Promise<ChatResponse> {
-    return this.chat(messages, this.modelSlow);
+  async chatSlow(messages: ChatMessage[], userId: string): Promise<ChatResponse> {
+    return this.chat(messages, 'slow', userId);
   }
 
   /** JSON-mode chat on the fast model; returns parsed object + token count. */
-  async chatFastJSON(messages: ChatMessage[]): Promise<{ data: unknown; tokens: number }> {
-    return this.chatJSON(messages, this.modelFast);
+  async chatFastJSON(messages: ChatMessage[], userId: string): Promise<{ data: unknown; tokens: number }> {
+    return this.chatJSON(messages, 'fast', userId);
   }
 
   /** JSON-mode chat on the slow model; returns parsed object + token count. */
-  async chatSlowJSON(messages: ChatMessage[]): Promise<{ data: unknown; tokens: number }> {
-    return this.chatJSON(messages, this.modelSlow);
+  async chatSlowJSON(messages: ChatMessage[], userId: string): Promise<{ data: unknown; tokens: number }> {
+    return this.chatJSON(messages, 'slow', userId);
   }
 
   /**
-   * Core HTTP call with retry + timeout. Retries on any thrown error (network,
-   * non-2xx, abort) up to maxRetries, with exponential backoff (1s, 2s, 4s…).
+   * Core HTTP call with retry + timeout. Authentication and malformed-request
+   * errors return immediately; transient failures retry with backoff.
    * Throws the last error if all attempts fail.
    */
-  private async chat(messages: ChatMessage[], model: string): Promise<ChatResponse> {
-    this.ensureConfigured();
+  private async chat(
+    messages: ChatMessage[],
+    tier: 'fast' | 'slow',
+    userId: string,
+  ): Promise<ChatResponse> {
+    const config = await this.settings.getLlmConfig(userId);
+    if (!config) throw new Error('No LLM API key configured');
+    const baseUrl = config.source === 'user'
+      ? await normalizePublicLlmBaseUrl(config.baseUrl)
+      : config.baseUrl.replace(/\/+$/u, '');
+    const model = tier === 'fast' ? config.fastModel : config.slowModel;
 
     const body = {
       model,
@@ -100,30 +105,26 @@ export class LlmService {
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt += 1) {
       try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), this.timeoutMs);
-
-        const response = await fetch(`${this.baseUrl}/chat/completions`, {
-          method: 'POST',
+        const response = await axios.post<ProviderChatPayload>(
+          `${baseUrl}/chat/completions`,
+          body,
+          {
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${this.apiKey}`,
+            Authorization: `Bearer ${config.apiKey}`,
           },
-          body: JSON.stringify(body),
-          signal: controller.signal,
-        });
-
-        clearTimeout(timeoutId);
-
-        if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(`HTTP ${response.status}: ${errorText.slice(0, 500)}`);
+          timeout: this.timeoutMs,
+          maxRedirects: 0,
+          proxy: false,
+          httpsAgent: config.source === 'user' ? publicHttpsAgent() : undefined,
+          validateStatus: () => true,
+          },
+        );
+        if (response.status < 200 || response.status >= 300) {
+          throw new ProviderHttpError(response.status);
         }
 
-        const result = (await response.json()) as {
-          choices?: Array<{ message?: { content?: string } }>;
-          usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
-        };
+        const result = response.data;
 
         const content = result?.choices?.[0]?.message?.content ?? '';
         const usage = result?.usage ?? {};
@@ -135,12 +136,18 @@ export class LlmService {
           totalTokens: usage.total_tokens ?? 0,
         };
       } catch (error) {
-        if (attempt === this.maxRetries) {
-          throw error;
+        const safeError = error instanceof ProviderHttpError
+          ? error
+          : new Error('LLM request failed. Check provider URL and server network.');
+        if (
+          attempt === this.maxRetries
+          || (error instanceof ProviderHttpError && error.status < 500 && error.status !== 429)
+        ) {
+          throw safeError;
         }
         // Exponential backoff: 1s, 2s, 4s… (capped implicitly by retry count).
         const delayMs = 1000 * Math.pow(2, attempt);
-        this.logger.warn(`LLM call attempt ${attempt + 1} failed, retrying in ${delayMs}ms: ${error instanceof Error ? error.message : String(error)}`);
+        this.logger.warn(`LLM call attempt ${attempt + 1} failed; retrying in ${delayMs}ms`);
         await new Promise((resolve) => setTimeout(resolve, delayMs));
       }
     }
@@ -158,7 +165,11 @@ export class LlmService {
    *      (handles LLM prose around the JSON).
    *   4. Still failing → throw with the first 200 chars of the response for debugging.
    */
-  private async chatJSON(messages: ChatMessage[], model: string): Promise<{ data: unknown; tokens: number }> {
+  private async chatJSON(
+    messages: ChatMessage[],
+    tier: 'fast' | 'slow',
+    userId: string,
+  ): Promise<{ data: unknown; tokens: number }> {
     const systemMsg: ChatMessage = {
       role: 'system',
       content: '你必须严格按照用户要求的 JSON 格式输出，不要添加任何解释、说明或 markdown 格式。只输出合法的 JSON 字符串。',
@@ -171,7 +182,7 @@ export class LlmService {
 
     const allMessages: ChatMessage[] = [...systemMsgs, systemMsg, ...userMsgs];
 
-    const result = await this.chat(allMessages, model);
+    const result = await this.chat(allMessages, tier, userId);
 
     let cleaned = result.content.trim();
     // Strip markdown code fences (```json … ```) if the LLM wrapped the output.

@@ -1073,6 +1073,118 @@ export interface CreatePaperOrderDto {
   reason?: string;
 }
 
+/** One owner may activate one beginner-built paper agent at a time. */
+export type BuilderTemplate = 'guard' | 'scout' | 'balanced';
+export type BuilderStatus = 'draft' | 'active' | 'paused';
+export type BuilderProposalStatus = 'pending' | 'skipped' | 'recorded';
+
+export interface BuilderConfig {
+  name: string;
+  template: BuilderTemplate;
+  /** Empty means all of the user's holdings and watchlist. */
+  tickers: string[];
+  /** Optional investor-authored triggers; no AI rating is implied. */
+  priceRules?: Array<{
+    ticker: string;
+    buyAtOrBelow?: number;
+    sellAtOrAbove?: number;
+  }>;
+  minimumRating: 'Buy' | 'Strong Buy';
+  /** Optional extra instructions for model review; never a hard risk rule. */
+  customPrompt: string;
+  maxOrderPct: number;
+  dailyLossLimitPct: number;
+  maxOrdersPerDay: number;
+  notifyOnProposal: boolean;
+}
+
+export interface BuilderProfile {
+  id: string;
+  config: BuilderConfig;
+  status: BuilderStatus;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BuilderProposal {
+  id: string;
+  profileId: string;
+  profileVersion: number;
+  ticker: string;
+  market: Market;
+  currency: Currency;
+  side: PaperSide;
+  quantity: string;
+  referencePrice: string;
+  reason: string;
+  status: BuilderProposalStatus;
+  paperOrderId: string | null;
+  executedAt: string | null;
+  executedQuantity: string | null;
+  executedPrice: string | null;
+  executedFees: string | null;
+  notes: string | null;
+  expiresAt: string;
+  createdAt: string;
+}
+
+export interface BuilderPreview {
+  scenarios: Array<{
+    key: string;
+    result: 'paper' | 'wait' | 'block';
+    explanation: string;
+  }>;
+}
+
+export interface RecordBuilderFillDto {
+  executedAt: string;
+  quantity: number;
+  price: number;
+  fees: number;
+  notes?: string;
+}
+
+/** User-owned provider credentials are never returned by the API. */
+export interface IntegrationSettings {
+  llm: {
+    source: 'user' | 'server' | 'none';
+    baseUrl: string;
+    fastModel: string;
+    slowModel: string;
+    hasApiKey: boolean;
+    maskedApiKey?: string;
+    /** Saved credential is unreadable after a host encryption-key change. */
+    needsReentry?: boolean;
+  };
+  financial: {
+    source: 'user' | 'none';
+    provider: 'finnhub';
+    hasApiKey: boolean;
+    maskedApiKey?: string;
+    needsReentry?: boolean;
+  };
+}
+
+export interface UpdateLlmIntegrationRequest {
+  baseUrl: string;
+  fastModel: string;
+  slowModel: string;
+  /** Omit or send an empty string to retain a previously saved key. */
+  apiKey?: string;
+}
+
+export interface UpdateFinancialIntegrationRequest {
+  provider: 'finnhub';
+  /** Omit or send an empty string to retain a previously saved key. */
+  apiKey?: string;
+}
+
+export interface IntegrationTestResult {
+  ok: boolean;
+  message: string;
+}
+
 /**
  * Notification channels (self-hosted push routing).
  */

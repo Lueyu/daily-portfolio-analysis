@@ -26,6 +26,7 @@ coupling has been fully removed, so there is no mirror/sync workflow anymore.
 ```bash
 npm install          # lifecycle scripts are safe on any OS; no platform CLI needed
 npm run lint         # eslint + typecheck + stylelint
+npm run test:server  # offline server tests
 ```
 
 Both must pass. For Python agent changes also run:

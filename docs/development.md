@@ -8,7 +8,8 @@ this page is about running and extending the codebase.
 
 - Node.js >= 22, npm >= 10
 - Python 3.12 + [uv](https://docs.astral.sh/uv/) for the agent service
-- On Windows, shell-based scripts run through Git Bash
+- Windows PowerShell is supported for the npm scripts (the environment-setting
+  commands use `cross-env`).
 
 ## Run modes
 
@@ -28,6 +29,7 @@ platform gateway entirely.
 
 ```bash
 npm run lint          # eslint + stylelint + full typecheck (also runs in CI)
+npm run test:server   # offline Nest service and Agent Builder rule tests
 npm run type:check    # typecheck only
 ```
 
