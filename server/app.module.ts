@@ -36,6 +36,7 @@ import { NotificationModule } from './modules/notifications/notification.module'
 import { PaperTradingModule } from './modules/paper-trading/paper-trading.module';
 import { ImportModule } from './modules/import/import.module';
 import { McpModule } from './modules/mcp/mcp.module';
+import { SettingsModule } from './modules/settings/settings.module';
 
 /**
  * Root Nest module. Aggregates feature modules and installs the global
@@ -46,6 +47,7 @@ import { McpModule } from './modules/mcp/mcp.module';
     // First-party platform layer: Drizzle database + JWT auth guard.
     DatabaseModule,
     AuthModule,
+    SettingsModule,
 
     // ====== @route-section: business-modules START ======
     HoldingsModule,

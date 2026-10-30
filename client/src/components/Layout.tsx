@@ -19,6 +19,7 @@ import { hasSession, tokenStore } from '@/api/http';
 import { setLanguage } from '@/i18n';
 import {
   FlaskConical,
+  Bot,
   Upload,
   Languages,
   LayoutDashboard,
@@ -28,6 +29,7 @@ import {
   BookOpen,
   Receipt,
   Settings,
+  ShieldCheck,
   Sun,
   Moon,
   RefreshCw,
@@ -52,9 +54,11 @@ const navItems = [
   { path: '/watchlist', label: 'nav.watchlist', icon: Eye },
   { path: '/analysis', label: 'nav.analysis', icon: BarChart3 },
   { path: '/paper', label: 'nav.paper', icon: FlaskConical },
+  { path: '/agent-builder', label: 'ui.builder.nav', icon: Bot },
   { path: '/journal', label: 'nav.journal', icon: BookOpen },
   { path: '/transactions', label: 'nav.transactions', icon: Receipt },
-  { path: '/settings/rules', label: 'nav.rules', icon: Settings },
+  { path: '/settings', label: 'ui.settings.nav', icon: Settings, end: true },
+  { path: '/settings/rules', label: 'nav.rules', icon: ShieldCheck },
 ];
 
 /** Profile shape used by the sidebar user block. */
@@ -115,7 +119,7 @@ function Layout() {
             </button>
           </div>
 
-          <nav className="flex-1 space-y-1 px-2 py-3">
+          <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto px-2 py-3">
             {navItems.map((item) => (
               <NavLink
                 key={item.path}

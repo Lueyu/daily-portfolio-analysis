@@ -251,6 +251,25 @@ export class MultiAgentService {
   async addArgument(userId: string, runId: string, dto: CreateArgumentDto): Promise<BullBearArgument> {
     await this.ensureRunOwner(userId, runId);
 
+    const evidenceIds = dto.evidenceIds;
+    if (!Array.isArray(evidenceIds) || evidenceIds.length === 0
+      || evidenceIds.some((id) => typeof id !== 'string')
+      || new Set(evidenceIds).size !== evidenceIds.length) {
+      throw new BadRequestException('Argument requires distinct evidence IDs from this run');
+    }
+    const validEvidence = await this.db
+      .select({ id: agentEvidence.id, sourceName: agentEvidence.sourceName, relevanceScore: agentEvidence.relevanceScore })
+      .from(agentEvidence)
+      .where(and(
+        eq(agentEvidence.runId, runId),
+        eq(agentEvidence.owner, userId),
+        inArray(agentEvidence.id, evidenceIds),
+      ));
+    if (validEvidence.length !== evidenceIds.length || validEvidence.some((row) =>
+      row.sourceName === 'Data Unavailable' || Number(row.relevanceScore ?? 0) <= 0)) {
+      throw new BadRequestException('Argument cites missing or unavailable evidence');
+    }
+
     const [row] = await this.db
       .insert(bullBearArguments)
       .values({
@@ -258,7 +277,7 @@ export class MultiAgentService {
         side: dto.side,
         round: dto.round ?? 1,
         argument: dto.argument,
-        evidenceIds: dto.evidenceIds ?? [],
+        evidenceIds,
         counteredBy: dto.counteredBy ?? null,
         owner: userId,
       })
@@ -1121,14 +1140,14 @@ export class MultiAgentService {
     const defaults = [
       { ruleKey: 'single_company_exposure', ruleName: '单一公司合并敞口上限', ruleType: 'hard', threshold: 25, unit: '%', description: '单一公司所有相关标的（正股+转债+关联ETF等）合计仓位不超过25%', category: 'position_concentration', severity: 'hard_block', sort: 10 },
       { ruleKey: 'single_stock_limit', ruleName: '单只股票权重上限', ruleType: 'soft', threshold: 10, unit: '%', description: '单只股票建议仓位不超过10%，超过需特别理由', category: 'position_concentration', severity: 'warning', sort: 20 },
-      { ruleKey: 'small_cap_weight', ruleName: '小盘股合计上限', ruleType: 'hard', threshold: 5, unit: '%', description: '市值小于50亿的小盘股总仓位不超过5%', category: 'position_concentration', severity: 'hard_block', sort: 30 },
-      { ruleKey: 'loss_maker_weight', ruleName: '亏损股合计上限', ruleType: 'hard', threshold: 10, unit: '%', description: '最近一期净利润为负的标的合计仓位不超过10%', category: 'position_concentration', severity: 'warning', sort: 40 },
+      { ruleKey: 'small_cap_weight', ruleName: '小盘股合计上限', ruleType: 'hard', threshold: 5, unit: '%', description: '市值小于50亿的小盘股总仓位不超过5%', category: 'position_concentration', severity: 'hard_block', sort: 30, enabled: false },
+      { ruleKey: 'loss_maker_weight', ruleName: '亏损股合计上限', ruleType: 'hard', threshold: 10, unit: '%', description: '最近一期净利润为负的标的合计仓位不超过10%', category: 'position_concentration', severity: 'warning', sort: 40, enabled: false },
       { ruleKey: 'leverage_etf', ruleName: '杠杆ETF敞口上限', ruleType: 'hard', threshold: 3, unit: '%', description: '2x/3x 杠杆/反向 ETF 合计仓位不超过3%', category: 'position_concentration', severity: 'hard_block', sort: 50 },
       { ruleKey: 'cash_ratio', ruleName: '现金比例下限', ruleType: 'soft', threshold: 7.5, unit: '%', description: '现金占总资产比例建议保持5-10%，极端行情保留加仓能力', category: 'cash_management', severity: 'warning', sort: 60 },
       { ruleKey: 'drawdown_check', ruleName: '个股回撤强制重检', ruleType: 'hard', threshold: 20, unit: '%', description: '单只股票较成本价下跌超过阈值，必须强制重检基本面', category: 'stop_loss_take_profit', severity: 'hard_block', sort: 70 },
       { ruleKey: 'stop_loss_pct', ruleName: '个股止损线', ruleType: 'soft', threshold: 25, unit: '%', description: '单只股票较成本价下跌超过该比例触发止损评估', category: 'stop_loss_take_profit', severity: 'warning', sort: 80 },
       { ruleKey: 'take_profit_pct', ruleName: '个股止盈线', ruleType: 'soft', threshold: 50, unit: '%', description: '单只股票浮盈超过该比例触发止盈评估/分批减仓', category: 'stop_loss_take_profit', severity: 'warning', sort: 90 },
-      { ruleKey: 'new_buy_checklist', ruleName: '建仓前必过清单', ruleType: 'hard', threshold: 1, unit: '项', description: '新建仓必须完成：基本面评分、行业地位、估值分位、催化剂、风险点 5 项检查', category: 'buy_conditions', severity: 'hard_block', sort: 100 },
+      { ruleKey: 'new_buy_checklist', ruleName: '建仓前必过清单', ruleType: 'hard', threshold: 1, unit: '项', description: '新建仓必须完成：基本面评分、行业地位、估值分位、催化剂、风险点 5 项检查', category: 'buy_conditions', severity: 'hard_block', sort: 100, enabled: false },
       { ruleKey: 'position_building_days', ruleName: '建仓节奏', ruleType: 'soft', threshold: 3, unit: '次', description: '单只股票建仓建议分至少3次买入，时间跨度不少于2周', category: 'buy_conditions', severity: 'warning', sort: 110 },
       { ruleKey: 'sector_exposure', ruleName: '单一行业敞口上限', ruleType: 'soft', threshold: 30, unit: '%', description: '单一行业/板块合计仓位建议不超过30%', category: 'position_concentration', severity: 'warning', sort: 25 },
     ];
@@ -1143,7 +1162,7 @@ export class MultiAgentService {
       category: d.category,
       severity: d.severity,
       sort: d.sort,
-      enabled: true,
+      enabled: d.enabled ?? true,
       owner: userId,
     }));
 

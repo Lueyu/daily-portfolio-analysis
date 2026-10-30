@@ -22,6 +22,8 @@ module.exports = tseslint.config(
       'client/src/api/gen',
       '**/*.d.ts',
       '**/*.js.map',
+      '**/*.spec.ts',
+      '**/*.e2e-spec.ts',
     ],
   },
   // Client configuration

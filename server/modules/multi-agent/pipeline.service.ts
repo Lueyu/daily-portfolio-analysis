@@ -38,9 +38,17 @@ import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '../../common/platform
 import { eq, and } from 'drizzle-orm';
 import { agentRuns } from '@server/database/schema';
 import { LlmService } from './llm.service';
-import { EvidenceService, type EvidenceInput } from './evidence.service';
+import { EvidenceService } from './evidence.service';
 import { PortfolioContextService } from './portfolio-context.service';
-import type { AgentRunDetail, AgentRunStatus, StrategyRule, AgentRating, AgentConfidence, AgentRunMode } from '@shared/api.interface';
+import type {
+  AgentEvidence,
+  BullBearArgument,
+  AgentRunStatus,
+  StrategyRule,
+  AgentRating,
+  AgentConfidence,
+  AgentRunMode,
+} from '@shared/api.interface';
 import { MultiAgentService } from './multi-agent.service';
 
 @Injectable()
@@ -119,13 +127,13 @@ export class PipelineService {
       const portfolio = await this.portfolioContextService.getPortfolioContext(userId);
       const evidence = await this.evidenceService.collectEvidence(ticker, userId, portfolio);
 
-      // Persist all collected evidence rows (cast to the union type used by the DB).
-      await this.multiAgentService.addEvidence(
+      // Persist facts and explicit gaps. Debate citations use only returned IDs.
+      const savedEvidence = await this.multiAgentService.addEvidence(
         userId,
         runId,
         evidence.map((e) => ({
           role: e.role,
-          evidenceType: e.evidenceType as 'financial' | 'news' | 'price' | 'indicator' | 'rating' | 'other',
+          evidenceType: e.evidenceType,
           title: e.title,
           content: e.content,
           sourceUrl: e.sourceUrl,
@@ -140,7 +148,7 @@ export class PipelineService {
       // Phase 2: Bull/Bear debate
       this.logger.log(`Phase 2: Bull/Bear debate for ${ticker}`);
       await this.setStatus(runId, userId, 'debating');
-      const debateTokens = await this.runDebatePhase(runId, userId, ticker, evidence);
+      const debateTokens = await this.runDebatePhase(runId, userId, ticker, savedEvidence);
       addTokens(debateTokens);
 
       if (await this.isCancelled(runId, userId)) return;
@@ -265,53 +273,67 @@ export class PipelineService {
     runId: string,
     userId: string,
     ticker: string,
-    evidence: EvidenceInput[],
+    evidence: AgentEvidence[],
   ): Promise<number> {
-    const evidenceText = this.formatEvidence(evidence);
+    const facts = evidence.filter((item) => !this.isDataGap(item));
+    const missing = evidence.filter((item) => this.isDataGap(item));
+    const evidenceText = this.formatEvidence(facts);
+    const missingText = missing.map((item) => `- ${item.title}: ${item.content}`).join('\n');
+    const validIds = new Set(facts.map((item) => item.id));
     let totalTokens = 0;
 
     // Prompts are written in Chinese because the LLM model (Doubao) is
     // tuned for Chinese financial reasoning; the JSON keys are English.
-    const bullPrompt = `你是一位看多的股票研究员（Bull Analyst）。请仔细阅读以下关于 ${ticker} 的证据，列出 3-4 条看多理由。每条理由必须引用具体的证据数据，要有数字支撑，不要泛泛而谈。
+    const bullPrompt = `你是一位看多的股票研究员（Bull Analyst）。请仔细阅读以下关于 ${ticker} 的已保存证据。
+仅在证据足够时提出看多理由，每条理由都要引用证据 ID 和具体数据。
+缺失数据不能作为事实引用，也不能自行补造数字；如果没有可引用的理由，返回空 arguments。
 
-【证据】
-${evidenceText}
+【可引用证据】
+${evidenceText || '（无）'}
+
+【缺失数据，不可引用】
+${missingText || '（无）'}
 
 请以 JSON 格式返回：
 {
   "arguments": [
-    { "point": "理由标题", "evidence_refs": ["引用的证据标题"] },
+    { "point": "有证据支持的理由", "evidence_refs": ["上方证据 ID"] },
     ...
   ]
 }`;
 
-    const bearPrompt = `你是一位看空的股票研究员（Bear Analyst）。请仔细阅读以下关于 ${ticker} 的证据，列出 3-4 条看空理由。每条理由必须引用具体的证据数据，要有数字支撑，不要泛泛而谈。
+    const bearPrompt = `你是一位看空的股票研究员（Bear Analyst）。请仔细阅读以下关于 ${ticker} 的已保存证据。
+仅在证据足够时提出看空理由，每条理由都要引用证据 ID 和具体数据。
+缺失数据不能作为事实引用，也不能自行补造数字；如果没有可引用的理由，返回空 arguments。
 
-【证据】
-${evidenceText}
+【可引用证据】
+${evidenceText || '（无）'}
+
+【缺失数据，不可引用】
+${missingText || '（无）'}
 
 请以 JSON 格式返回：
 {
   "arguments": [
-    { "point": "理由标题", "evidence_refs": ["引用的证据标题"] },
+    { "point": "有证据支持的理由", "evidence_refs": ["上方证据 ID"] },
     ...
   ]
 }`;
 
     // Opening round: run bull and bear in parallel via the "slow" (pro) model.
     const [bullResult, bearResult] = await Promise.all([
-      this.llmService.chatSlowJSON([{ role: 'user', content: bullPrompt }]),
-      this.llmService.chatSlowJSON([{ role: 'user', content: bearPrompt }]),
+      this.llmService.chatSlowJSON([{ role: 'user', content: bullPrompt }], userId),
+      this.llmService.chatSlowJSON([{ role: 'user', content: bearPrompt }], userId),
     ]);
 
     totalTokens += bullResult.tokens + bearResult.tokens;
 
-    const bullArgs = this.extractArguments(bullResult.data);
-    const bearArgs = this.extractArguments(bearResult.data);
+    const bullArgs = this.validateArguments(bullResult.data, validIds);
+    const bearArgs = this.validateArguments(bearResult.data, validIds);
 
     // Persist arguments and debate records in parallel.
     await Promise.all([
-      ...bullArgs.map((arg, i) =>
+      ...bullArgs.map((arg) =>
         this.multiAgentService.addArgument(userId, runId, {
           side: 'bull',
           round: 1,
@@ -319,7 +341,7 @@ ${evidenceText}
           evidenceIds: arg.evidence_refs,
         }),
       ),
-      ...bearArgs.map((arg, i) =>
+      ...bearArgs.map((arg) =>
         this.multiAgentService.addArgument(userId, runId, {
           side: 'bear',
           round: 1,
@@ -341,11 +363,14 @@ ${evidenceText}
       }),
     ]);
 
-    const bullSummary = bullArgs.map((a) => a.point).join('; ');
-    const bearSummary = bearArgs.map((a) => a.point).join('; ');
-
     // Rebuttal round: each side attacks the other's opening points.
-    const bullRebuttalPrompt = `你是多头研究员。对方（空头）提出了以下看空论点，请逐一回应，指出其漏洞或不成立之处，并坚持你的看多立场。
+    const bullRebuttalPrompt = `你是多头研究员。审查空头论点，仅在可引用证据支持时回应。每条回应必须引用下列证据 ID，不可把缺失数据当作事实。没有依据时返回空 arguments。
+
+【可引用证据】
+${evidenceText || '（无）'}
+
+【缺失数据，不可引用】
+${missingText || '（无）'}
 
 【空头论点】
 ${bearArgs.map((a, i) => `${i + 1}. ${a.point}`).join('\n')}
@@ -356,12 +381,18 @@ ${bullArgs.map((a, i) => `${i + 1}. ${a.point}`).join('\n')}
 请以 JSON 格式返回：
 {
   "arguments": [
-    { "point": "回应内容" },
+    { "point": "有证据支持的回应", "evidence_refs": ["上方证据 ID"] },
     ...
   ]
 }`;
 
-    const bearRebuttalPrompt = `你是空头研究员。对方（多头）提出了以下看多论点，请逐一回应，指出其漏洞或不成立之处，并坚持你的看空立场。
+    const bearRebuttalPrompt = `你是空头研究员。审查多头论点，仅在可引用证据支持时回应。每条回应必须引用下列证据 ID，不可把缺失数据当作事实。没有依据时返回空 arguments。
+
+【可引用证据】
+${evidenceText || '（无）'}
+
+【缺失数据，不可引用】
+${missingText || '（无）'}
 
 【多头论点】
 ${bullArgs.map((a, i) => `${i + 1}. ${a.point}`).join('\n')}
@@ -372,21 +403,21 @@ ${bearArgs.map((a, i) => `${i + 1}. ${a.point}`).join('\n')}
 请以 JSON 格式返回：
 {
   "arguments": [
-    { "point": "回应内容" },
+    { "point": "有证据支持的回应", "evidence_refs": ["上方证据 ID"] },
     ...
   ]
 }`;
 
     try {
       const [bullRebuttal, bearRebuttal] = await Promise.all([
-        this.llmService.chatSlowJSON([{ role: 'user', content: bullRebuttalPrompt }]),
-        this.llmService.chatSlowJSON([{ role: 'user', content: bearRebuttalPrompt }]),
+        this.llmService.chatSlowJSON([{ role: 'user', content: bullRebuttalPrompt }], userId),
+        this.llmService.chatSlowJSON([{ role: 'user', content: bearRebuttalPrompt }], userId),
       ]);
 
       totalTokens += bullRebuttal.tokens + bearRebuttal.tokens;
 
-      const bullRebuttalArgs = this.extractArguments(bullRebuttal.data);
-      const bearRebuttalArgs = this.extractArguments(bearRebuttal.data);
+      const bullRebuttalArgs = this.validateArguments(bullRebuttal.data, validIds);
+      const bearRebuttalArgs = this.validateArguments(bearRebuttal.data, validIds);
 
       await Promise.all([
         ...bullRebuttalArgs.map((arg) =>
@@ -394,6 +425,7 @@ ${bearArgs.map((a, i) => `${i + 1}. ${a.point}`).join('\n')}
             side: 'bull',
             round: 2,
             argument: arg.point,
+            evidenceIds: arg.evidence_refs,
           }),
         ),
         ...bearRebuttalArgs.map((arg) =>
@@ -401,6 +433,7 @@ ${bearArgs.map((a, i) => `${i + 1}. ${a.point}`).join('\n')}
             side: 'bear',
             round: 2,
             argument: arg.point,
+            evidenceIds: arg.evidence_refs,
           }),
         ),
         this.multiAgentService.addDebateRecord(userId, runId, {
@@ -431,15 +464,20 @@ ${bearArgs.map((a, i) => `${i + 1}. ${a.point}`).join('\n')}
    */
   private async runCritiquePhase(runId: string, userId: string): Promise<number> {
     const detail = await this.multiAgentService.getRun(userId, runId);
+    const facts = detail.evidence.filter((item) => !this.isDataGap(item));
+    const missing = detail.evidence.filter((item) => this.isDataGap(item));
+    const evidenceText = this.formatEvidence(facts);
+    const missingText = missing.map((item) => `- ${item.title}: ${item.content}`).join('\n');
+    const supportedArguments = this.supportedArguments(detail.arguments, facts);
 
-    const bullArgs = detail.arguments
+    const bullArgs = supportedArguments
       .filter((a) => a.side === 'bull')
-      .map((a) => `[第${a.round}轮] ${a.argument}`)
+      .map((a) => `[第${a.round}轮，证据ID: ${a.evidenceIds.join('、') || '无'}] ${a.argument}`)
       .join('\n');
 
-    const bearArgs = detail.arguments
+    const bearArgs = supportedArguments
       .filter((a) => a.side === 'bear')
-      .map((a) => `[第${a.round}轮] ${a.argument}`)
+      .map((a) => `[第${a.round}轮，证据ID: ${a.evidenceIds.join('、') || '无'}] ${a.argument}`)
       .join('\n');
 
     const critiquePrompt = `你是一位资深投资评论家（Critic）。请阅读以下多空双方的辩论，尖锐地指出：
@@ -447,9 +485,15 @@ ${bearArgs.map((a, i) => `${i + 1}. ${a.point}`).join('\n')}
 1. 多头论点中最薄弱的环节是什么？为什么？
 2. 空头论点中最薄弱的环节是什么？为什么？
 3. 双方都忽略了哪些关键风险或机会？
-4. 双方在数据使用或推理中存在哪些逻辑漏洞？
+4. 双方在数据使用或推理中存在哪些逻辑漏洞？逐条核对其证据 ID 和下方原始数据，指出无依据或证据不足的断言。
 
 请务必具体、犀利，不要和稀泥。
+
+【原始可引用证据】
+${evidenceText || '（无）'}
+
+【缺失数据，不可作为事实】
+${missingText || '（无）'}
 
 【多头论点】
 ${bullArgs || '（无）'}
@@ -457,7 +501,7 @@ ${bullArgs || '（无）'}
 【空头论点】
 ${bearArgs || '（无）'}`;
 
-    const result = await this.llmService.chatSlow([{ role: 'user', content: critiquePrompt }]);
+    const result = await this.llmService.chatSlow([{ role: 'user', content: critiquePrompt }], userId);
 
     await this.multiAgentService.addDebateRecord(userId, runId, {
       round: 3,
@@ -489,21 +533,43 @@ ${bearArgs || '（无）'}`;
   ): Promise<number> {
     const detail = await this.multiAgentService.getRun(userId, runId);
 
-    // Cap evidence list to 8 items and truncate each content to 150 chars to
-    // keep the prompt within the slow model's context budget.
-    const evidenceSummary = detail.evidence
+    const facts = detail.evidence.filter((item) => !this.isDataGap(item));
+    const missing = detail.evidence.filter((item) => this.isDataGap(item));
+    const criticalGaps = missing.filter((item) =>
+      item.role === 'fundamental' || item.role === 'news');
+    const criticalGapTitles = criticalGaps.map((item) => item.title);
+    const implicitGaps: string[] = [];
+    if (!facts.some((item) => item.role === 'fundamental'
+      && item.evidenceType === 'financial')
+      && !criticalGaps.some((item) => item.title.includes('财报'))) {
+      implicitGaps.push('财报证据缺失');
+    }
+    if (!facts.some((item) => item.role === 'news'
+      && item.evidenceType === 'news')
+      && !criticalGaps.some((item) => item.role === 'news')) {
+      implicitGaps.push('新闻证据缺失');
+    }
+    criticalGapTitles.push(...implicitGaps);
+    const missingText = [
+      ...missing.map((item) => `- ${item.title}: ${item.content}`),
+      ...implicitGaps.map((title) => `- ${title}: 本次没有可核实的证据记录。`),
+    ].join('\n');
+    const hasCriticalGap = criticalGapTitles.length > 0;
+    // Cap factual evidence to fit the model context. Gaps remain separate.
+    const evidenceSummary = facts
       .slice(0, 8)
-      .map((e) => `- [${e.role}] ${e.title}: ${e.content.slice(0, 150)}`)
+      .map((e) => `- [${e.id}, ${e.role}] ${e.title}: ${e.content.slice(0, 150)}`)
       .join('\n');
+    const supportedArguments = this.supportedArguments(detail.arguments, facts);
 
-    const bullArgs = detail.arguments
+    const bullArgs = supportedArguments
       .filter((a) => a.side === 'bull')
-      .map((a) => `- ${a.argument}`)
+      .map((a) => `- ${a.argument} [证据ID: ${a.evidenceIds.join('、') || '无'}]`)
       .join('\n');
 
-    const bearArgs = detail.arguments
+    const bearArgs = supportedArguments
       .filter((a) => a.side === 'bear')
-      .map((a) => `- ${a.argument}`)
+      .map((a) => `- ${a.argument} [证据ID: ${a.evidenceIds.join('、') || '无'}]`)
       .join('\n');
 
     const criticEntry = detail.debate.find((d) => d.speaker === 'critic');
@@ -519,11 +585,16 @@ ${bearArgs || '（无）'}`;
 【重要约束】
 ${hasHardFailure ? `- ⚠️ 风控硬规则（${hardRules}）未通过，评级不得为 Strong Buy 或 Buy，最高只能给 Hold。` : `- 风控硬规则全部通过。`}
 - 如果置信度为 low，评级应为 Watch，而非 Buy 或 Sell。
+- 如果缺少关键的财报、估值或新闻数据，仅可给 Watch/low，不得给目标价或方向性交易建议。
+- 不得把缺失项、用户历史评级或模型推测当成已核实的事实。
 - rating 可选值：Strong Buy / Buy / Hold / Sell / Strong Sell / Watch
 - confidence 可选值：high / medium / low
 
 【证据摘要】
-${evidenceSummary}
+${evidenceSummary || '（无可用事实）'}
+
+【缺失数据，不可作为事实】
+${missingText || '（无）'}
 
 【多头论点】
 ${bullArgs || '（无）'}
@@ -551,17 +622,20 @@ ${riskSummary}
   "risks": "主要风险（用1) ... 2) ...编号）"
 }`;
 
-    const result = await this.llmService.chatSlowJSON([{ role: 'user', content: ratingPrompt }]);
+    const result = await this.llmService.chatSlowJSON([{ role: 'user', content: ratingPrompt }], userId);
 
     const data = result.data as Record<string, unknown>;
 
     let rating = String(data.rating ?? 'Watch').trim() as AgentRating;
-    const confidence = String(data.confidence ?? 'low').trim().toLowerCase() as AgentConfidence;
+    let confidence = String(data.confidence ?? 'low').trim().toLowerCase() as AgentConfidence;
 
     // Clamp unknown ratings to Watch as a safe default.
     const validRatings: AgentRating[] = ['Strong Buy', 'Buy', 'Hold', 'Sell', 'Strong Sell', 'Watch'];
     if (!validRatings.includes(rating)) {
       rating = 'Watch';
+    }
+    if (!['high', 'medium', 'low'].includes(confidence)) {
+      confidence = 'low';
     }
 
     // Hard override #1: hard risk-gate failure caps rating at Hold.
@@ -572,15 +646,39 @@ ${riskSummary}
     if (confidence === 'low' && (rating === 'Buy' || rating === 'Sell' || rating === 'Strong Buy' || rating === 'Strong Sell')) {
       rating = 'Watch';
     }
+    if (hasCriticalGap) {
+      rating = 'Watch';
+      confidence = 'low';
+    }
+
+    const gapSummary = [...new Set([
+      ...missing.map((item) => item.title),
+      ...implicitGaps,
+    ])].join('、');
+    const modelUncertainty = String(data.key_uncertainty ?? '').trim();
+    const uncertaintySuffix = modelUncertainty && modelUncertainty !== '无'
+      ? `；${modelUncertainty}` : '';
+    const keyUncertainty = gapSummary
+      ? `缺失数据：${gapSummary}${uncertaintySuffix}`
+      : modelUncertainty || undefined;
+    const modelLogic = String(data.aggregation_logic ?? '').trim();
+    const aggregationLogic = hasCriticalGap
+      ? `当前仅能观察，缺失关键数据：${gapSummary}${modelLogic ? `；${modelLogic}` : ''}`
+      : modelLogic || undefined;
+    const targetPrice = !hasCriticalGap && data.target_price !== null
+      && data.target_price !== undefined ? Number(data.target_price) : undefined;
 
     await this.multiAgentService.saveRating(userId, runId, {
       ticker,
       rating,
-      confidence: confidence as 'high' | 'medium' | 'low',
-      targetPrice: data.target_price !== null && data.target_price !== undefined ? Number(data.target_price) : undefined,
-      action: String(data.action ?? ''),
-      aggregationLogic: data.aggregation_logic ? String(data.aggregation_logic) : undefined,
-      keyUncertainty: data.key_uncertainty ? String(data.key_uncertainty) : undefined,
+      confidence,
+      targetPrice: targetPrice !== undefined && Number.isFinite(targetPrice) && targetPrice > 0
+        ? targetPrice : undefined,
+      action: hasCriticalGap
+        ? `数据不足，暂缓方向性交易；补齐${gapSummary}后复评。`
+        : String(data.action ?? ''),
+      aggregationLogic,
+      keyUncertainty,
       bullSummary: data.bull_summary ? String(data.bull_summary) : undefined,
       bearSummary: data.bear_summary ? String(data.bear_summary) : undefined,
       catalysts: data.catalysts ? String(data.catalysts) : undefined,
@@ -591,16 +689,54 @@ ${riskSummary}
   }
 
   /**
-   * Format the collected evidence list into a numbered human-readable block
-   * that is pasted verbatim into the debate prompts.
+   * Format saved facts with their citation IDs for debate and critique.
    */
-  private formatEvidence(evidence: EvidenceInput[]): string {
-    return evidence
-      .map(
-        (e, i) =>
-          `证据 ${i + 1} [${e.role}/${e.evidenceType}] ${e.title}\n内容: ${e.content}\n来源: ${e.sourceName ?? '未知'}\n相关度: ${e.relevanceScore}`,
-      )
-      .join('\n\n');
+  private formatEvidence(evidence: AgentEvidence[]): string {
+    return evidence.map((item, index) => [
+      `证据 ${index + 1} [ID: ${item.id}, ${item.role}/${item.evidenceType}] ${item.title}`,
+      `内容: ${item.content}`,
+      `来源: ${item.sourceName ?? '未知'}`,
+    ].join('\n')).join('\n\n');
+  }
+
+  private isDataGap(item: AgentEvidence): boolean {
+    return item.sourceName === 'Data Unavailable';
+  }
+
+  /** Ignore injected or stale arguments whose IDs are absent from this run. */
+  private supportedArguments(
+    argumentsForRun: BullBearArgument[],
+    facts: AgentEvidence[],
+  ): BullBearArgument[] {
+    const validIds = new Set(facts.map((item) => item.id));
+    return argumentsForRun.flatMap((argument) => {
+      const references = [...new Set(argument.evidenceIds)];
+      const valid = references.filter((id) => validIds.has(id));
+      if (valid.length !== references.length) {
+        this.logger.warn(`Ignored invalid stored evidence references for argument ${argument.id}`);
+      }
+      return valid.length > 0 ? [{ ...argument, evidenceIds: valid }] : [];
+    });
+  }
+
+  /** Remove nonexistent citations and discard claims with no saved fact. */
+  private validateArguments(
+    data: unknown,
+    validIds: Set<string>,
+  ): Array<{ point: string; evidence_refs: string[] }> {
+    return this.extractArguments(data).flatMap((argument) => {
+      const references = [...new Set(argument.evidence_refs)];
+      const valid = references.filter((id) => validIds.has(id));
+      const invalid = references.filter((id) => !validIds.has(id));
+      if (invalid.length > 0) {
+        this.logger.warn(`Dropped invalid evidence references: ${invalid.join(', ')}`);
+      }
+      if (valid.length === 0) {
+        this.logger.warn(`Dropped unsupported debate argument: ${argument.point}`);
+        return [];
+      }
+      return [{ point: argument.point, evidence_refs: valid }];
+    });
   }
 
   /**

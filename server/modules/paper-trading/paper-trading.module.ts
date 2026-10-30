@@ -8,14 +8,17 @@ import { Module } from '@nestjs/common';
 import { FxModule } from '../fx/fx.module';
 import { NotificationModule } from '../notifications/notification.module';
 import { QuoteModule } from '../quote/quote.module';
+import { LlmService } from '../multi-agent/llm.service';
+import { AgentBuilderController } from './agent-builder.controller';
+import { AgentBuilderService } from './agent-builder.service';
 import { BotScheduler } from './bot.scheduler';
 import { PaperTradingController } from './paper-trading.controller';
 import { PaperTradingService } from './paper-trading.service';
 
 @Module({
   imports: [QuoteModule, FxModule, NotificationModule],
-  controllers: [PaperTradingController],
-  providers: [PaperTradingService, BotScheduler],
+  controllers: [PaperTradingController, AgentBuilderController],
+  providers: [PaperTradingService, AgentBuilderService, LlmService, BotScheduler],
   exports: [PaperTradingService],
 })
 export class PaperTradingModule {}

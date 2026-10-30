@@ -84,7 +84,7 @@ export class QuoteService {
       };
     }
 
-    if (upper.endsWith('.SH')) {
+    if (upper.endsWith('.SH') || upper.endsWith('.SS')) {
       const codePart = upper.slice(0, -3);
       return {
         market: 'CN',
@@ -191,7 +191,7 @@ export class QuoteService {
         result = await this.fetchHkQuote(info.symbolNative);
       } else if (info.market === 'CN') {
         // CN provider endpoints need an sh/sz/bj prefix.
-        const prefix = info.displaySymbol.endsWith('.SH')
+        const prefix = info.displaySymbol.endsWith('.SH') || info.displaySymbol.endsWith('.SS')
           ? 'sh'
           : info.displaySymbol.endsWith('.SZ')
             ? 'sz'
