@@ -1,232 +1,173 @@
 # Architecture
 
-This document holds the technical details behind 吵股 Squabble: system boundary,
-components, request flow, the multi-agent analysis pipeline, project layout and
-data model. For the product overview see the [README](../README.md); 中文版见
-[README.zh-CN.md](../README.zh-CN.md).
+Squabble's working application is a React web client, a NestJS backend and
+PostgreSQL. The backend runs the built-in analysis pipeline, portfolio APIs,
+paper trading and notifications. Python is not required to run the web app or
+generate its reports.
 
-## Overall Architecture
+For setup, see [self-hosting](self-hosting.md). For the product overview, see
+the [README](../README.md).
 
-The system has two parts: a full-stack trading terminal (NestJS + React + PostgreSQL) that is the system of record for accounts, transactions, ratings and reports, and a standalone Python agent service under `agent/` that handles reasoning tasks such as market queries, research and analysis. The backend is the sole orchestrator and data gateway, delegating reasoning to the agent over a protected HTTP API. The agent is model-agnostic — it can switch between Volcengine Ark, DeepSeek or any OpenAI-compatible endpoint — and never touches the business database directly.
-
-Authentication is first-party: username+password accounts (bcrypt) with short-lived JWT bearer sessions — no cookies, no CSRF surface, no third-party identity provider. Every business row carries an `owner` text column holding the owning `users.id`; services scope all queries by the authenticated userId, giving per-account row-level isolation without platform middleware.
-
-Market data is requested directly from Finnhub in the browser, and the API token is stored only on the local device; FX rates are fetched centrally by the backend FX module.
-
-The system boundary at a glance:
+## Components and data flow
 
 ```mermaid
 flowchart LR
-    User["User (browser / mobile)"] --> Web["Webapp<br/>React · NestJS · PostgreSQL<br/>accounts · trades · risk · auth · data"]
-    Web <-->|"HTTP / SSE · x-agent-token"| Agent["Python Agent service<br/>research · tool calling · reasoning · multi-role"]
-    Agent --> LLM["LLM (swappable)<br/>Volcengine Ark · DeepSeek · OpenAI-compatible"]
-    Agent --> Ext["External data sources"]
-
-    classDef actor fill:#57606a,stroke:#24292f,color:#ffffff,stroke-width:2px
-    classDef web fill:#2da44e,stroke:#116329,color:#ffffff,stroke-width:2px
-    classDef py fill:#8250df,stroke:#5a2f9e,color:#ffffff,stroke-width:2px
-    classDef ext fill:#a371f7,stroke:#6e40c9,color:#ffffff,stroke-width:2px
-    class User actor
-    class Web web
-    class Agent py
-    class LLM,Ext ext
+    Browser[React web client] -->|HTTP API| Backend[NestJS backend]
+    Backend --> Database[(PostgreSQL)]
+    Backend --> Quotes[Public quote and FX providers]
+    Backend -->|Optional company metrics and news| Finnhub[Finnhub]
+    Backend -->|Configured AI requests| Model[OpenAI-compatible model provider]
+    Backend -->|Configured notifications| Notify[Notification providers]
+    External[External MCP client] -->|Session bearer token| Backend
 ```
 
-The backend is the only system of record; the agent fetches data and produces analysis through controlled interfaces and never reads or writes the database directly. The detailed components and data flows are below.
+- **Client:** React, TypeScript, Vite, React Query and shared API types. The
+  responsive web UI provides portfolios, analysis, imports, paper trading,
+  Agent Builder and settings. It supports Chinese/English and four visual
+  themes. There is currently no PWA manifest/service worker or native desktop
+  installer in this repository.
+- **Backend:** NestJS modules own the API and business logic. The web client
+  calls the deployment's API; quote fetching is performed by the backend,
+  rather than by a browser-held Finnhub token.
+- **Database:** `postgres.js` and Drizzle connect directly through
+  `server/common/platform/database.provider.ts`. The `platform` directory is
+  the local compatibility layer, not a dependency on a hosted aPaaS runtime.
+- **External data:** the quote module uses public Tencent, Sina and Yahoo
+  endpoints as implemented for each market. The market-overview module fetches
+  index data; the FX module fetches and stores exchange rates. Provider
+  coverage, availability and freshness vary.
 
-```mermaid
-flowchart TB
-    subgraph Browser["Browser / Mobile PWA"]
-        P["React Pages<br/>Dashboard · Holdings · Watchlist<br/>Analysis · Journal · Transactions"]:::fe
-        H["Custom Hooks<br/>useMarketQuotes · useTheme"]:::fe
-        AC["api/index.ts<br/>axiosForBackend wrapper"]:::fe
-        P --> AC
-        P --> H
-    end
+The local Docker setup runs the app and PostgreSQL. The production build
+serves the client through NestJS; development runs the Vite client and NestJS
+server separately.
 
-    subgraph Server["NestJS Backend (orchestrator of record)"]
-        C["Controller Layer<br/>@NeedLogin auth check<br/>userId from req.userContext"]:::ctrl
-        S["Service Layer<br/>business logic · Drizzle builder"]:::svc
-        MA["built-in multi-agent module<br/>pipeline · evidence · llm"]:::svc
-        GW["Agent Gateway<br/>x-agent-token · userContext · feature flag"]:::gw
-        C --> S
-        C --> MA
-        C --> GW
-    end
+## Accounts, ownership and credentials
 
-    subgraph PyAgent["Python Agent service (agent/ · model-agnostic)"]
-        RT["Agent runtime<br/>ReAct loop · planning · checkpoints"]:::py
-        TOOLS["Tool layer<br/>market · web · finance · workflow"]:::py
-        MODELS["Model abstraction<br/>Ark · DeepSeek · OpenAI-compatible"]:::py
-        RT --> TOOLS
-        RT --> MODELS
-    end
+First-party accounts use username/password authentication, bcrypt password
+hashes, JWT bearer sessions and offline recovery codes. Protected controllers
+obtain the authenticated user from `req.userContext`; business services scope
+user data by owner. This is application-level ownership filtering, not a claim
+that PostgreSQL row-level security policies enforce every query.
 
-    PG[("PostgreSQL<br/>20 business tables<br/>row-level isolation by owner")]:::db
-    FH["Finnhub<br/>real-time quotes"]:::ext
-    ARK["Ark / DeepSeek<br/>LLM providers"]:::ext
-    FXEXT["FX rate data source"]:::ext
+Per-user LLM and Finnhub credentials are encrypted in `user_api_settings`.
+The settings API returns configuration and key status, not saved plaintext
+keys. A user's saved model configuration takes precedence over the host's
+optional `DOUBAO_API_KEY`. Without either, built-in analysis uses basic mode.
+A configured provider failure is reported as an error; it does not silently
+switch to basic mode.
 
-    H -. direct from browser .-> FH
-    AC --> C
-    S --> PG
-    MA --> PG
-    MA --> ARK
-    S --> FXEXT
-    GW -. "HTTP + x-agent-token<br/>(delegate intelligence step)" .-> RT
-    RT -. "HTTP API only<br/>(never direct DB)" .-> C
-    TOOLS -.-> FH
-    MODELS -.-> ARK
+Screenshot OCR has a separate configuration path: its key and image are sent
+with the extraction request and forwarded by the backend to the selected
+vision provider. This differs from the saved integration settings. See
+[privacy](privacy.md) for storage and outbound-request details.
 
-    classDef fe fill:#1f6feb,stroke:#0b3d91,color:#ffffff,stroke-width:2px
-    classDef ctrl fill:#2da44e,stroke:#116329,color:#ffffff,stroke-width:2px
-    classDef svc fill:#f0883e,stroke:#9e4b0f,color:#ffffff,stroke-width:2px
-    classDef gw fill:#bc4c00,stroke:#7a2f00,color:#ffffff,stroke-width:2px
-    classDef py fill:#8250df,stroke:#5a2f9e,color:#ffffff,stroke-width:2px
-    classDef db fill:#0891b2,stroke:#155e75,color:#ffffff,stroke-width:2px
-    classDef ext fill:#a371f7,stroke:#6e40c9,color:#ffffff,stroke-width:2px
-```
+## Built-in analysis
 
-## Agent Reasoning: the Built-in Pipeline and the Standalone Service
+The production analysis implementation is in `server/modules/multi-agent/`.
+`BatchService` resolves holdings, watchlist entries or custom ticker symbols,
+creates runs, and schedules them with separate concurrency limits for full
+and summary modes. The client polls persisted status and can cancel a run.
+In-memory queue entries do not survive a restart; interrupted runs are marked
+failed with a retry message on startup.
 
-Reasoning lives in two places: a production pipeline embedded in the backend, and a standalone service that factors that intelligence out. They have distinct responsibilities:
+The pipeline performs these steps:
 
-- **Built-in analysis pipeline (NestJS)** — the implementation running daily today: a fixed five-stage pipeline (fetch → bull/bear debate → critic → risk gate → rating) that calls the LLM directly from the backend and produces the 14-section deep reports.
-- **Standalone Python Agent service (`agent/`)** — a separate service that takes reasoning out of the business backend. It relies on no heavyweight agent framework; tool calling, planning, checkpoints and multi-agent orchestration are implemented in this repository so they are easy to debug and extend. The model layer is provider-agnostic and can switch between Volcengine Ark, DeepSeek or any OpenAI-compatible endpoint.
+1. **Collect and persist evidence.** Public quotes and the user's portfolio
+   context are available without a model key. Optional Finnhub credentials
+   add supported US-company metrics and news. Missing inputs are persisted
+   explicitly as `Data Unavailable` records.
+2. **Debate and critique, when a model is configured.** Bull and bear calls
+   receive saved evidence, followed by a critic. Citation checks remove
+   nonexistent evidence references and arguments with no valid reference.
+   These checks establish a link to stored evidence; they do not establish
+   that a model's interpretation of it is correct.
+3. **Run local risk checks.** Portfolio context converts currencies for
+   exposure calculations. Rules that cannot be verified are recorded as
+   such. A failed hard rule prevents a Buy/Strong Buy final rating.
+4. **Aggregate and save.** Basic mode skips model debate and returns
+   `Watch/low` without a target price. Model mode combines the published
+   arguments, critique and risk results, then applies deterministic limits.
+   Critical evidence gaps force `Watch/low` and remove the target price.
+5. **Present the report for human review.** The report stores the available
+   outputs, evidence, risk results and a readable execution trace. The run
+   reaches `awaiting_human`; the user can review the result and choose the
+   supported synchronization actions.
 
-The boundary between them is deliberate. NestJS owns auth, the database, transactions, permissions and the UI, and is the only component that writes to the database. The Python agent never connects to the business database; it reads data from the backend through an Agent Gateway secured by `x-agent-token` (with the user identity injected server-side), and the backend delegates only the reasoning steps. Swapping models, changing reasoning logic or rewriting the agent therefore never affects accounts or data, and the agent can be developed and tested independently.
+**Current data limit:** the built-in collector does not fetch verified full
+financial statements or historical technical series. It explicitly records
+those gaps. The financial-statement gap currently keeps automatically
+generated model reports at `Watch/low`, including when Finnhub metrics/news
+are configured. The seeded demo's Buy ratings and scenario targets are
+fictional examples, not evidence of live forecast generation.
 
-## Request Flow
+The report UI supports a richer 14-section structure, but hides sections
+without data. `analysis-report.ts` builds live reports from persisted outputs;
+it does not invent financial models or fill every section. Earlier runs
+remain available for review.
 
-All backend endpoints follow a uniform layered design, illustrated by the holdings API:
+## Agent Builder and paper trading
 
-- The controller layer rejects anonymous requests via `@NeedLogin()`; userId is obtained from `req.userContext` and never accepted from client input.
-- The service layer accesses the database through the injected `DRIZZLE_DATABASE` handle; every query includes the `owner = userId` condition to prevent cross-account access.
-- Types shared between front-end and backend (e.g. `Holding`, `CreateHoldingDto`, `ListResponse<T>`) are defined centrally in `shared/api.interface.ts`.
+`server/modules/paper-trading/` owns a separate paper account, positions,
+orders, fills and event history. It does not submit orders to a real broker.
+The scheduler scans enabled accounts on its configured interval, subject to
+the market-session clock.
 
-```mermaid
-flowchart LR
-    Page["Page component<br/>e.g. HoldingsPage"]:::fe
-    Api["api/index.ts<br/>axiosForBackend"]:::fe
-    Ctrl["HoldingsController<br/>@NeedLogin()"]:::ctrl
-    Svc["HoldingsService"]:::svc
-    Drizzle["Drizzle ORM"]:::drv
-    PG[("holdings table")]:::db
+Agent Builder stores versioned guard/scout/balanced profiles and permits one
+active profile per user. Executable behavior comes from explicit symbol,
+rating, price-trigger and risk rules. Price triggers can create a paper idea
+without a research Buy rating; the reason identifies the investor's rule.
+The guard template does not open new positions. A custom prompt requires a
+configured model and can veto a candidate, but cannot change its side/size
+or bypass the deterministic limits.
 
-    Page -->|"fetchHoldings()"| Api
-    Api -->|"GET /api/portfolio/holdings"| Ctrl
-    Ctrl -->|"req.userContext.userId"| Svc
-    Svc -->|"db.select()...<br/>where(owner = userId)"| Drizzle
-    Drizzle --> PG
-    PG -->|"rows"| Svc
-    Svc -->|"mapRow → ListResponse"| Page
+Builder scans require a recently fetched public quote and an open market,
+and apply the configured order and daily-loss limits. Retrieval freshness
+does not guarantee an exchange-live price; public quotes may be delayed.
+Filled paper orders can
+create proposal records and optional notifications. A user may skip a
+proposal or manually record the time, quantity, price and fees of a trade
+placed in their own broker. That record stays in the proposal comparison
+ledger; it does not update portfolio holdings or transactions.
 
-    classDef fe fill:#1f6feb,stroke:#0b3d91,color:#ffffff,stroke-width:2px
-    classDef ctrl fill:#2da44e,stroke:#116329,color:#ffffff,stroke-width:2px
-    classDef svc fill:#f0883e,stroke:#9e4b0f,color:#ffffff,stroke-width:2px
-    classDef drv fill:#bf5af2,stroke:#8957e5,color:#ffffff,stroke-width:2px
-    classDef db fill:#0891b2,stroke:#155e75,color:#ffffff,stroke-width:2px
-```
+Notifications support Webhook, Bark, Server酱, SMTP and Telegram. Dispatch
+failures are logged and do not undo a paper fill.
 
-## Multi-Agent Pipeline
+## External agents
 
-A deep analysis of one stock consists of five stages. Each stage writes its status back to `agent_runs`, allowing the front-end to poll and display progress, and the run can be cancelled at any time.
+Two separate integration paths exist:
 
-```mermaid
-flowchart TB
-    Start(["Create agent_run"]):::start
-    F["① Fetching<br/>evidence.service gathers quotes,<br/>financials, news and portfolio context"]:::phase
-    D["② Bull/Bear Debate<br/>Bull analyst writes the bull case<br/>Bear analyst writes the bear case<br/>every point must cite evidence"]:::phase
-    CR["③ Critic Review<br/>challenges data freshness and valuation<br/>at least one prior claim overturned"]:::phase
-    RG["④ Risk Gate<br/>checks each strategy_rules entry<br/>hard failures constrain the rating"]:::gate
-    R["⑤ Rating Aggregation<br/>PM combines debate and risk results<br/>rating, confidence and action plan"]:::phase
-    H{"Human Decision"}:::decision
-    Done(["Write rating<br/>generate deep report"]):::done
+| Path | Current implementation |
+|---|---|
+| `/mcp` | JSON-RPC HTTP endpoint for external MCP clients. Agent-session bearer tokens scope permissions, paper-order spending limits and approval mode. Tools expose paper portfolio data, quotes, reports, orders and holdings import. |
+| `agent/` and `/openapi/agent-gateway/holdings` | Optional Python CLI scaffold with `init`, `health`, `quote`, `holdings` and `modelping`, an HTTP client, model adapter and JSONL checkpoints. The gateway is disabled by default and authenticates a configured shared token plus allowed user identity. |
 
-    Start --> F --> D --> CR --> RG --> R --> H
-    H -->|"Confirm"| Done
-    H -->|"Send back"| F
+The Python package is not a running research orchestration service: this
+repository does not yet implement the documented future ReAct loop, planning
+or full tool layer there. NestJS does not delegate the built-in report
+pipeline to Python.
 
-    Cancel["Cancel signal"]:::cancel
-    Cancel -.-> F
-    Cancel -.-> D
-    Cancel -.-> CR
+## Source and database layout
 
-    classDef start fill:#57606a,stroke:#24292f,color:#ffffff,stroke-width:2px
-    classDef phase fill:#1f6feb,stroke:#0b3d91,color:#ffffff,stroke-width:2px
-    classDef gate fill:#f0883e,stroke:#9e4b0f,color:#ffffff,stroke-width:2px
-    classDef decision fill:#f7d046,stroke:#c99c00,color:#24292f,stroke-width:2px
-    classDef done fill:#2da44e,stroke:#116329,color:#ffffff,stroke-width:2px
-    classDef cancel fill:#cf222e,stroke:#a40e26,color:#ffffff,stroke-width:2px
-```
+| Path | Purpose |
+|---|---|
+| `client/src/pages/`, `components/`, `hooks/`, `api/` | Web UI, queries, quote polling and API calls |
+| `server/modules/` | Auth, portfolio, analysis, market data, settings, imports, paper trading, notifications and MCP |
+| `server/common/platform/` | Direct database connection, auth guard and local framework adapters |
+| `server/database/schema.ts` | Drizzle table definitions used by application code |
+| `shared/api.interface.ts` | Shared request/response and domain types |
+| `scripts/db/` | Base schema, fictional demo data and additive schema updates |
+| `agent/` | Optional Python CLI and its offline tests |
+| `docker-compose.yml`, `deploy/` | Local demo and public deployment configuration |
 
-The deep report contains 14 sections rendered by `client/src/components/MultiAgent/DeepReportView.tsx`; data is fetched via `GET /api/multi-agent/deep-report/:runId`.
+The main data groups are portfolio records, analysis runs/evidence/reports,
+strategy rules, accounts and sessions, paper-trading records, builder
+profiles/proposals, notification channels, imports and encrypted integration
+settings. The actual definitions are in `server/database/schema.ts`; avoid
+using a fixed table count as an architectural contract.
 
-## Project Structure
-
-```
-.
-├── agent/                  # Python Agent service (model-agnostic, Typer/FastAPI)
-│   ├── src/agent_core/     # runtime, model abstraction, tools, webapp client
-│   ├── tests/              # pytest + pytest-httpx (no live network)
-│   ├── data/checkpoints/   # JSONL checkpoints (runtime; kept empty in git)
-│   └── pyproject.toml
-├── client/                 # React front-end
-│   └── src/
-│       ├── pages/          # business pages (grouped by feature)
-│       ├── components/
-│       │   ├── MultiAgent/ # deep reports, run cards, rating badges
-│       │   ├── ui/         # base components (shadcn style)
-│       │   └── business-ui/# business selectors (users / departments / chats)
-│       ├── hooks/          # quote polling, theme, mobile detection
-│       └── api/index.ts    # front-end wrappers for backend endpoints
-├── server/                 # NestJS backend (orchestrator of record)
-│   ├── database/schema.ts  # Drizzle schema (auto-generated, do not edit)
-│   ├── common/
-│   │   ├── middleware/     # local dev identity injection (LOCAL_DEV_USER_ID gate)
-│   │   └── filters/        # global exception filter
-│   └── modules/            # business modules (controller + service + module)
-├── shared/
-│   └── api.interface.ts    # types shared by front-end and backend
-├── scripts/
-│   ├── db/                 # schema + roles + demo seed used by docker compose
-│   ├── dev-local-*.ps1     # Windows one-click local launch (minimal / db / full / client)
-│   └── sync-from-miaoda.ps1# Miaoda -> GitHub sync (legacy, being retired)
-├── db/
-│   └── snapshot/           # local real-data snapshot (*.sql gitignored, local only)
-├── drizzle/                # drizzle-kit generated table migrations
-├── Dockerfile              # self-hosted image (build + runtime stages)
-└── docker-compose.yml      # PostgreSQL + app + fictional demo dataset
-```
-
-## Data Model
-
-The database contains 29 tables in six groups:
-
-| Group | Tables | Description |
-|---|---|---|
-| Core business | `holdings`, `watchlist`, `transactions`, `closed`, `analysis`, `groups`, `journal`, `snapshots`, `alpha_picks`, `cash_accounts`, `fx_rates` | Holdings, watchlist, transactions, daily analysis, groups, journal, net-value snapshots, etc. |
-| Multi-agent | `agent_runs`, `agent_evidence`, `bull_bear_arguments`, `debate_records`, `agent_ratings`, `risk_gate_results`, `agent_audit_log`, `deep_report` | Full-process data of analysis runs and the final deep reports |
-| Configuration | `strategy_rules` | Risk-control rules; UI supports create/edit and enable/disable |
-| Users & paper trading | `users`, `paper_accounts`, `paper_positions`, `paper_orders`, `paper_trades`, `paper_events`, `paper_snapshots` | First-party accounts plus the fully isolated AI paper-trading book (no real-broker code path exists) |
-| Notifications | `notification_channels` | Self-hosted push routing (webhook / bark / serverchan / smtp / telegram); channel secrets never leave the user's database |
-| Import | `import_logs` | Portfolio import history (CSV / Robinhood CSV / screenshot OCR) with per-row failure reasons |
-
-The table structure is defined in `server/database/schema.ts` and must stay in
-sync with `scripts/db/01_schema.sql` (applied on fresh installs).
-
-## Paper Trading & Notifications
-
-The paper-trading engine (`server/modules/paper-trading/`) is the executable
-half of the research pipeline: a scheduler (market-clock aware, US/HK/CN
-sessions) wakes every few minutes and, for each account with the bot enabled,
-derives signals from that user's own holdings/watchlist ratings and targets,
-passes them through hard guardrails (daily-loss circuit breaker, per-order
-notional cap on buys, per-day order cap), fills at the server-side quote
-(free public providers, no key needed — with a fallback chain through stored
-prices), and records an immutable event trail. Manual orders skip the bot caps
-so a human always stays in control; solvency checks apply to everyone.
-
-The notification module (`server/modules/notifications/`) fans fills, risk
-rejections and circuit-breaker events out to the user's configured channels.
-Dispatch is fire-and-forget: a channel failure is logged, never thrown.
+Fresh databases need `scripts/db/01_schema.sql`. Demo data is in the separate
+`02_demo_seed.sql`. The current database provider applies the additive
+`03_agent_builder.sql` through `06_account_recovery.sql` files during startup;
+that process does not create the base portfolio schema on an empty database.
+Keep the SQL and Drizzle definitions aligned. There is currently no
+`gen:db-schema` npm command in this repository.

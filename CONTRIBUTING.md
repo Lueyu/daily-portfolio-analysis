@@ -1,7 +1,10 @@
 # Contributing to 吵股 Squabble
 
-Thanks for your interest in improving this project! A few minutes reading this
-document will save both of us a round trip.
+Help make personal investing tools easier to understand and safer to try.
+Useful contributions include clearer onboarding, verified research data,
+paper-trading rules, privacy controls, translations and bug fixes.
+Start with the [local demo](docs/self-hosting.md), then use the
+[development guide](docs/development.md) if you want to change the app.
 
 ## Project layout
 
@@ -16,7 +19,7 @@ requests:
 | `agent/` | Standalone Python agent service |
 | `docs/`, `README*` | Documentation |
 | `scripts/db/` | Schema + demo seed used by docker compose |
-| `Dockerfile`, `docker-compose.yml`, `.github/` | Deployment & CI |
+| `Dockerfile`, `docker-compose.yml`, `deploy/`, `.github/` | Local demo, public deployment & CI |
 
 The project was originally developed on the Miaoda (aPaaS) cloud; that
 coupling has been fully removed, so there is no mirror/sync workflow anymore.
@@ -24,12 +27,15 @@ coupling has been fully removed, so there is no mirror/sync workflow anymore.
 ## Before you open a PR
 
 ```bash
-npm install          # lifecycle scripts are safe on any OS; no platform CLI needed
+npm ci               # install the versions in package-lock.json
 npm run lint         # eslint + typecheck + stylelint
 npm run test:server  # offline server tests
+npm run test:client  # client behavior tests
 ```
 
-Both must pass. For Python agent changes also run:
+These checks must pass for application changes. For documentation changes,
+check local links, rendered Markdown and commands against the current scripts.
+For Python agent changes also run:
 
 ```bash
 cd agent
@@ -42,7 +48,8 @@ uv run pytest -q     # offline test suite, no live network access
 - **Scope**: one PR per feature or fix. Small, focused PRs get reviewed faster.
 - **Commits**: use [Conventional Commits](https://www.conventionalcommits.org/)
   (`feat:`, `fix:`, `docs:`, `chore:` …) — the history follows this style.
-- **Language**: code comments in English; the UI strings are Simplified Chinese.
+- **Language**: code comments in English; update both Chinese and English UI
+  strings. Keep `README.md` and `README.zh-CN.md` aligned when behavior changes.
 - **No secrets**: never commit API keys or `db/snapshot/*.sql` (personal data).
 - **For demo/seed data** (`scripts/db/02_demo_seed.sql`): keep it fictional,
   plausible and clearly marked as demo data; it must never contain real
@@ -65,7 +72,7 @@ Ideas are welcome, especially around:
 - New analysis pipeline stages or report sections
 - Strategy rule types enforced by the risk gate
 - LLM provider support in `agent/`
-- Paper trading guardrails and broker adapters
+- Paper trading guardrails and manual trade-review workflows
 - Anything that makes the self-hosted experience smoother
 
 Label-worthy beginner issues are marked `good first issue`.

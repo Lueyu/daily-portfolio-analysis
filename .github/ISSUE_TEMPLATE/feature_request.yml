@@ -15,8 +15,8 @@ body:
       label: What would you like to see?
       description: |
         Ideas that fit this project especially well: new analysis pipeline
-        stages, new report sections, strategy rule types for the risk gate,
-        LLM provider support in agent/, self-hosting improvements.
+        stages, verified data sources, paper risk rules, privacy controls,
+        bilingual onboarding and simpler self-hosting.
     validations:
       required: true
   - type: textarea
