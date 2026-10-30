@@ -20,6 +20,15 @@
 
 ![仪表盘](docs/screenshots/dashboard.png)
 
+**选一个属于你的工作台。** 经典工作室、像素街机、漫画俱乐部、轨道空间站，四套主题各有深浅两种模式。点击顶部调色盘或进入设置即可切换。[外观说明](docs/appearance.md)。
+
+<details>
+<summary><b>四套吉祥物主题</b></summary>
+
+![四套外观主题](docs/screenshots/themes.png)
+
+</details>
+
 <details>
 <summary><b>更多截图</b>（AI 模拟盘 · 每日分析 · 深度研报）</summary>
 
@@ -62,6 +71,7 @@ docker compose up --build
 - ✅ **AI 模拟炒股** —— 信号驱动的盯盘代理 + 硬性守护（日亏损熔断、单笔/日频次上限）、三市场盘钟感知，成交即推送（Webhook / Bark / Server酱 / 邮件 / Telegram）
 - ✅ **新手 Agent Builder** —— 模板与显式风控、行为预览、单个启用配置、模拟盘提案与可选推送、真实成交手动回录
 - ✅ **个人 API 设置** —— 引导式配置兼容 OpenAI 的大模型与 Finnhub、加密保存密钥、测试连接
+- ✅ **四套视觉主题** —— 延续牛熊吉祥物、柔和浅色与深色模式、图表同步配色、中英文和移动端适配
 - ✅ **持仓导入** —— 通用 CSV（自动列映射 + GBK 编码）、Robinhood 导出预设、券商截图 OCR 识别（用你自己的多模态 key，同花顺 / 东方财富 / 雪球 / 富途 / Robinhood …）
 - 🔜 **桌面版** —— 一键安装包；下载量用 GitHub Releases 官方统计，零埋点
 

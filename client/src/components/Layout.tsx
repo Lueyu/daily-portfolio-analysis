@@ -42,6 +42,8 @@ import { useTheme } from '../hooks/use-theme';
 import { getAggregateMarketStatus, forceRefreshAllQuotes } from '../hooks/use-market-quotes';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Mascot } from '@/components/Mascot';
+import { AppearancePicker } from '@/components/AppearancePicker';
 
 /**
  * Sidebar navigation entries. `end: true` marks the index route so it is only
@@ -76,10 +78,15 @@ interface SidebarProfile {
 function Layout() {
   const { theme, toggleTheme } = useTheme();
   const { t, i18n } = useTranslation();
-  const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
   const location = useLocation();
   const pageScrollRef = useRef<HTMLElement>(null);
+  const zh = i18n.language.startsWith('zh');
+  const navGroups = [
+    { label: zh ? '我的投资' : 'Portfolio', items: navItems.slice(0, 4) },
+    { label: zh ? '研究与实验' : 'Research & lab', items: navItems.slice(4, 9) },
+    { label: zh ? '偏好设置' : 'Preferences', items: navItems.slice(9) },
+  ];
 
   const toggleLang = () => {
     const next = i18n.language === 'zh-CN' ? 'en' : 'zh-CN';
@@ -96,37 +103,43 @@ function Layout() {
   }
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-background text-foreground">
+    <div className="app-shell flex h-screen w-screen overflow-hidden bg-background text-foreground">
       {/* Sidebar */}
       <aside
-        className={`fixed inset-y-0 left-0 z-40 w-56 transform bg-sidebar text-sidebar-foreground transition-transform duration-200 md:static md:translate-x-0 ${
-          mobileOpen ? 'translate-x-0' : '-translate-x-full'
+        aria-label={zh ? '主导航' : 'Main navigation'}
+        className={`app-sidebar fixed inset-y-0 left-0 z-40 w-56 transform bg-sidebar text-sidebar-foreground transition-transform duration-200 md:static md:translate-x-0 ${
+          mobileOpen ? 'translate-x-0 visible' : '-translate-x-full invisible md:visible'
         }`}
       >
         <div className="flex h-full flex-col">
-          <div className="flex h-14 items-center justify-between border-b border-sidebar-border px-4">
-            <div className="flex items-center gap-2">
-              <img src="/logo.svg" alt={t('layout.appName')} className="h-8 w-8" />
-              <span className="font-serif text-lg font-semibold tracking-wide">
-                吵股
-              </span>
-            </div>
+          <div className="app-brand flex items-center justify-between">
+            <NavLink to="/" className="flex items-center gap-2.5" aria-label={t('layout.appName')}>
+              <Mascot className="app-brand-mark" />
+              <div>
+                <div className="app-wordmark">Squabble<span className="text-[var(--brand)]">.</span></div>
+                <div className="app-brand-caption">BULLS. BEARS. YOU.</div>
+              </div>
+            </NavLink>
             <button
               onClick={() => setMobileOpen(false)}
+              aria-label={zh ? '关闭导航' : 'Close navigation'}
               className="rounded-md p-1 hover:bg-sidebar-accent md:hidden"
             >
               <X size={18} />
             </button>
           </div>
 
-          <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto px-2 py-3">
-            {navItems.map((item) => (
+          <nav className="app-nav min-h-0 flex-1 overflow-y-auto">
+            {navGroups.map((group) => (
+              <div key={group.label} className="app-nav-group">
+                <div className="app-nav-label">{group.label}</div>
+                {group.items.map((item) => (
               <NavLink
                 key={item.path}
                 to={item.path}
                 end={item.end}
                 className={({ isActive }) =>
-                  `flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors ${
+                  `app-nav-link flex items-center px-3 py-2 text-sm transition-colors ${
                     isActive
                       ? 'bg-sidebar-accent text-sidebar-accent-foreground'
                       : 'text-sidebar-foreground/80 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground'
@@ -136,17 +149,20 @@ function Layout() {
                 <item.icon size={18} />
                 <span>{t(item.label)}</span>
               </NavLink>
+                ))}
+              </div>
             ))}
           </nav>
 
-          <div className="border-t border-sidebar-border p-3 space-y-1">
+          <div className="app-sidebar-footer border-t border-sidebar-border">
             <SidebarUserBlock />
+            <div className="app-footer-actions">
             <button
               onClick={toggleTheme}
               className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
             >
               {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
-              <span>{t(theme === 'dark' ? 'layout.darkMode' : 'layout.lightMode')}</span>
+              <span>{zh ? (theme === 'dark' ? '浅色' : '深色') : (theme === 'dark' ? 'Light' : 'Dark')}</span>
             </button>
             <button
               onClick={toggleLang}
@@ -156,6 +172,7 @@ function Layout() {
               <span>{i18n.language === 'zh-CN' ? 'English' : '中文'}</span>
             </button>
             <LogoutButton />
+            </div>
           </div>
         </div>
       </aside>
@@ -169,17 +186,19 @@ function Layout() {
       )}
 
       {/* Main content */}
-      <div className="flex flex-1 flex-col overflow-hidden">
+      <div className="app-workspace flex flex-1 flex-col overflow-hidden">
         {/* Top bar */}
-        <header className="flex h-14 flex-shrink-0 items-center justify-between border-b border-border bg-card px-4">
-          <div className="flex items-center gap-3">
+        <header className="app-topbar flex flex-shrink-0 items-center justify-between border-b border-border">
+          <div className="flex min-w-0 items-center gap-3">
             <button
               onClick={() => setMobileOpen(true)}
-              className="rounded-md p-1.5 hover:bg-secondary md:hidden"
+              aria-label={zh ? '打开导航' : 'Open navigation'}
+              aria-expanded={mobileOpen}
+              className="shrink-0 rounded-md p-1.5 hover:bg-secondary md:hidden"
             >
               <Menu size={20} />
             </button>
-            <div className="font-serif text-lg font-semibold">
+            <div className="app-page-title">
               {(() => {
                 const match = navItems.find((item) => {
                   if (item.end) return location.pathname === item.path;
@@ -189,11 +208,14 @@ function Layout() {
               })()}
             </div>
           </div>
-          <MarketStatusIndicator />
+          <div className="app-topbar-actions">
+            <div className="app-market-status"><MarketStatusIndicator /></div>
+            <AppearancePicker />
+          </div>
         </header>
 
         {/* Page content */}
-        <main ref={pageScrollRef} className="flex-1 overflow-y-auto p-4 md:p-6 safe-bottom">
+        <main ref={pageScrollRef} className="app-content flex-1 overflow-y-auto safe-bottom">
           <Outlet />
         </main>
       </div>
@@ -297,10 +319,11 @@ function LogoutButton() {
   return (
     <button
       onClick={handleLogout}
-      className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
+      title={t('layout.logout')}
+      className="app-logout flex items-center justify-center rounded-md text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
     >
       <LogOut size={18} />
-      <span>{t('layout.logout')}</span>
+      <span className="sr-only">{t('layout.logout')}</span>
     </button>
   );
 }

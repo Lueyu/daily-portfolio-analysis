@@ -7,5 +7,6 @@
 @import url("tw-animate-css");
 @import url("./tailwind-theme.css");
 @import url("./typography.css");
+@import url("./themes.css");
 
 @config "../../tailwind.config.ts";

@@ -243,13 +243,13 @@ function WatchlistPage() {
           <h1 className="font-serif text-2xl font-semibold tracking-tight text-foreground">
             {t('watchlist.title')}
           </h1>
-          <p className="mt-1 flex flex-wrap items-center gap-1.5 text-sm text-muted-foreground">
+          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-sm text-muted-foreground">
             <MarketStatusBadges
               marketStatus={marketStatus}
               marketErrors={marketErrors}
               lastUpdated={lastUpdated}
             />
-          </p>
+          </div>
         </div>
       </div>
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">

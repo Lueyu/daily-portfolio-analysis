@@ -6,12 +6,13 @@ import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 
 import { Button } from '@/components/ui/button';
+import { Mascot } from '@/components/Mascot';
 
 function NotFound() {
   const { t } = useTranslation();
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-background p-6 text-center">
-      <img src="/logo.svg" alt="Squabble" className="h-16 w-16" />
+      <Mascot className="h-16 w-16" />
       <h1 className="mt-6 font-serif text-4xl font-semibold text-foreground">
         {t('common.notFound')}
       </h1>

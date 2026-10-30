@@ -1,0 +1,37 @@
+{
+  "trigger": "Appearance",
+  "title": "A new stage for your workspace",
+  "description": "Your bull and bear, in a whole new world. Pick a style that makes daily research feel like you.",
+  "designLabel": "Choose a theme",
+  "modeLabel": "Display mode",
+  "light": "Light",
+  "dark": "Dark",
+  "selected": "Active",
+  "close": "Close appearance settings",
+  "footer": "Changes apply instantly and your preference is saved.",
+  "settingsTitle": "Workspace appearance",
+  "settingsDescription": "Pair a visual theme with light or dark mode, and settle into your own research rhythm.",
+  "current": "Current appearance: {{name}} · {{mode}}",
+  "themes": {
+    "classic": {
+      "name": "Classic Studio",
+      "caption": "Quiet structure. Room to think.",
+      "badge": "STUDIO / 01"
+    },
+    "arcade": {
+      "name": "Pixel Arcade",
+      "caption": "Pixel by pixel. A fresh high score.",
+      "badge": "PRESS START / 02"
+    },
+    "comic": {
+      "name": "Comic Club",
+      "caption": "Paper, ink, and a clash of ideas.",
+      "badge": "NEW ISSUE / 03"
+    },
+    "orbit": {
+      "name": "Orbital Deck",
+      "caption": "A quiet orbit. A new signal.",
+      "badge": "MISSION CONTROL / 04"
+    }
+  }
+}

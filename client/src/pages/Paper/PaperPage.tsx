@@ -38,6 +38,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import ReactECharts from 'echarts-for-react';
+import { useChartTheme } from '@/hooks/use-chart-theme';
 
 import {
   fetchPaperOverview,
@@ -500,15 +501,26 @@ function PaperPage() {
 /** Equity line chart for the paper account. */
 function PaperEquityChart({ data }: { data: Array<{ date: string; equity: string; dailyPl: string }> }) {
   const { t } = useTranslation();
+  const colors = useChartTheme();
   const option = useMemo(() => {
     if (data.length === 0) return {};
     return {
-      tooltip: { trigger: 'axis' },
+      backgroundColor: colors.surface,
+      textStyle: { color: colors.foreground, fontFamily: colors.fontFamily },
+      tooltip: {
+        trigger: 'axis',
+        confine: true,
+        backgroundColor: colors.tooltipBackground,
+        borderColor: colors.border,
+        textStyle: { color: colors.tooltipForeground },
+        axisPointer: { lineStyle: { color: colors.muted } },
+      },
       grid: { top: 20, right: 20, bottom: 30, left: 70 },
       xAxis: {
         type: 'category',
         data: data.map((d) => d.date.slice(5)),
-        axisLabel: { fontSize: 10, color: '#94a3b8' },
+        axisLabel: { fontSize: 10, color: colors.muted },
+        axisLine: { lineStyle: { color: colors.border } },
         axisTick: { show: false },
       },
       yAxis: {
@@ -516,10 +528,10 @@ function PaperEquityChart({ data }: { data: Array<{ date: string; equity: string
         scale: true,
         axisLabel: {
           fontSize: 10,
-          color: '#94a3b8',
+          color: colors.muted,
           formatter: (v: number) => `$${(v / 1000).toFixed(0)}k`,
         },
-        splitLine: { lineStyle: { color: 'rgba(148,163,184,0.15)' } },
+        splitLine: { lineStyle: { color: colors.grid } },
       },
       series: [
         {
@@ -529,21 +541,21 @@ function PaperEquityChart({ data }: { data: Array<{ date: string; equity: string
           symbol: 'circle',
           symbolSize: 5,
           data: data.map((d) => Number(d.equity)),
-          lineStyle: { color: 'hsl(152 55% 48%)', width: 2 },
-          itemStyle: { color: 'hsl(152 55% 48%)' },
+          lineStyle: { color: colors.line, width: 2 },
+          itemStyle: { color: colors.line },
           areaStyle: {
             color: {
               type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
               colorStops: [
-                { offset: 0, color: 'rgba(47,158,110,0.25)' },
-                { offset: 1, color: 'rgba(47,158,110,0)' },
+                { offset: 0, color: colors.areaStart },
+                { offset: 1, color: colors.areaEnd },
               ],
             },
           },
         },
       ],
     };
-  }, [data, t]);
+  }, [data, t, colors]);
   if (data.length === 0) {
     return <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">{t('ui.paper.chartNoData')}</div>;
   }

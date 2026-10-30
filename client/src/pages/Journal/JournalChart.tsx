@@ -19,6 +19,7 @@ import {
   EmptyDescription,
 } from '@/components/ui/empty';
 import { useTranslation } from 'react-i18next';
+import { useChartTheme } from '@/hooks/use-chart-theme';
 
 /** Props for {@link JournalChart}. */
 interface JournalChartProps {
@@ -31,6 +32,7 @@ interface JournalChartProps {
  */
 export function JournalChart({ snapshots, loading }: JournalChartProps) {
   const { t } = useTranslation();
+  const colors = useChartTheme();
   /** Build the ECharts option from snapshots; returns {} when there is no data. */
   const chartOption = useMemo(() => {
     const valid = snapshots.filter((s) => toDate(s.snapshotDate));
@@ -46,10 +48,20 @@ export function JournalChart({ snapshots, loading }: JournalChartProps) {
     const accountValues = sorted.map((s) => Number(s.accountValue) || 0);
 
     return {
+      backgroundColor: colors.surface,
+      textStyle: { color: colors.foreground, fontFamily: colors.fontFamily },
       grid: { top: 42, right: 54, bottom: 40, left: 54 },
       tooltip: {
         trigger: 'axis',
-        axisPointer: { type: 'cross' },
+        confine: true,
+        backgroundColor: colors.tooltipBackground,
+        borderColor: colors.border,
+        textStyle: { color: colors.tooltipForeground },
+        axisPointer: {
+          type: 'cross',
+          crossStyle: { color: colors.muted },
+          label: { backgroundColor: colors.foreground, color: colors.surface },
+        },
       },
       legend: {
         data: [t('journal.dailyPl'), t('journal.accountNav')],
@@ -57,13 +69,13 @@ export function JournalChart({ snapshots, loading }: JournalChartProps) {
         left: 'center',
         orient: 'horizontal',
         itemGap: 16,
-        textStyle: { fontSize: 12, color: '#78828c' },
+        textStyle: { fontSize: 12, color: colors.muted },
       },
       xAxis: {
         type: 'category',
         data: dates,
-        axisLabel: { fontSize: 10, color: '#78828c', interval: 'auto' },
-        axisLine: { lineStyle: { color: 'rgba(120,130,140,0.38)' } },
+        axisLabel: { fontSize: 10, color: colors.muted, interval: 'auto' },
+        axisLine: { lineStyle: { color: colors.border } },
         axisTick: { show: false },
       },
       yAxis: [
@@ -71,17 +83,17 @@ export function JournalChart({ snapshots, loading }: JournalChartProps) {
           type: 'value',
           axisLabel: {
             fontSize: 10,
-            color: '#78828c',
+            color: colors.muted,
             formatter: (v: number) =>
               Math.abs(v) >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v),
           },
-          splitLine: { lineStyle: { color: 'rgba(120,130,140,0.24)', type: 'dashed' } },
+          splitLine: { lineStyle: { color: colors.grid, type: 'dashed' } },
         },
         {
           type: 'value',
           axisLabel: {
             fontSize: 10,
-            color: '#78828c',
+            color: colors.muted,
             formatter: (v: number) =>
               Math.abs(v) >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v),
           },
@@ -110,22 +122,22 @@ export function JournalChart({ snapshots, loading }: JournalChartProps) {
           smooth: true,
           symbol: 'circle',
           symbolSize: 5,
-          lineStyle: { color: '#b8860b', width: 2 },
-          itemStyle: { color: '#b8860b' },
+          lineStyle: { color: colors.line, width: 2 },
+          itemStyle: { color: colors.line },
           areaStyle: {
             color: {
               type: 'linear',
               x: 0, y: 0, x2: 0, y2: 1,
               colorStops: [
-                { offset: 0, color: 'rgba(184, 134, 11, 0.15)' },
-                { offset: 1, color: 'rgba(184, 134, 11, 0.02)' },
+                { offset: 0, color: colors.areaStart },
+                { offset: 1, color: colors.areaEnd },
               ],
             },
           },
         },
       ],
     };
-  }, [snapshots, t]);
+  }, [snapshots, t, colors]);
 
   return (
     <Card>

@@ -45,7 +45,6 @@ import {
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
@@ -579,7 +578,7 @@ function StrategyRulesPage() {
           <Button
             variant="outline"
             onClick={() => setResetOpen(true)}
-            className="border-amber-600/40 text-amber-500 hover:bg-amber-500/10 hover:text-amber-400"
+            className="border-warning/40 text-warning hover:bg-warning/10 hover:text-warning"
           >
             <RotateCcw size={16} />
             {t('ui.rules.resetDefaults')}
@@ -593,59 +592,59 @@ function StrategyRulesPage() {
 
       {/* 说明卡片 */}
       <div className="grid gap-4 md:grid-cols-2">
-        <Card className="border-rose-500/20 bg-rose-950/10">
+        <Card className="border-destructive/20 bg-destructive/5">
           <CardHeader className="pb-3">
-            <div className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-md bg-rose-500/10 text-rose-400">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex h-8 w-8 items-center justify-center rounded-md bg-destructive/10 text-destructive">
                 <Shield size={18} />
               </div>
-              <CardTitle className="text-base text-rose-200">
+              <CardTitle className="text-base text-foreground">
                 {t('rules.hardRule')}
               </CardTitle>
               <Badge
                 variant="outline"
-                className="border-rose-500/40 bg-rose-500/10 text-rose-300"
+                className="border-destructive/40 bg-destructive/10 text-destructive"
               >
                 Hard
               </Badge>
             </div>
           </CardHeader>
           <CardContent>
-            <p className="text-sm text-rose-200/80">
+            <p className="text-sm leading-6 text-muted-foreground">
               {t('ui.rules.hardDescription')}
-              <span className="font-medium text-rose-300">
+              <span className="font-medium text-destructive">
                 {t('ui.rules.hardEmphasis')}
               </span>
               。
             </p>
-            <p className="mt-2 text-xs text-rose-400/70">
+            <p className="mt-2 text-xs text-muted-foreground">
               {t('ui.rules.hardCount', { count: hardCount })}
             </p>
           </CardContent>
         </Card>
 
-        <Card className="border-amber-500/20 bg-amber-950/10">
+        <Card className="border-warning/20 bg-warning/5">
           <CardHeader className="pb-3">
-            <div className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-md bg-amber-500/10 text-amber-400">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex h-8 w-8 items-center justify-center rounded-md bg-warning/10 text-warning">
                 <Lightbulb size={18} />
               </div>
-              <CardTitle className="text-base text-amber-200">
+              <CardTitle className="text-base text-foreground">
                 {t('rules.softRule')}
               </CardTitle>
               <Badge
                 variant="outline"
-                className="border-amber-500/40 bg-amber-500/10 text-amber-300"
+                className="border-warning/40 bg-warning/10 text-warning"
               >
                 Soft
               </Badge>
             </div>
           </CardHeader>
           <CardContent>
-            <p className="text-sm text-amber-200/80">
+            <p className="text-sm leading-6 text-muted-foreground">
               {t('ui.rules.softDescription')}
             </p>
-            <p className="mt-2 text-xs text-amber-400/70">
+            <p className="mt-2 text-xs text-muted-foreground">
               {t('ui.rules.softCount', { count: softCount })}
             </p>
           </CardContent>
@@ -654,11 +653,11 @@ function StrategyRulesPage() {
 
       {/* 错误提示 */}
       {error && (
-        <div className="flex items-start gap-3 rounded-md border border-rose-500/30 bg-rose-950/30 p-4 text-sm text-rose-300">
+        <div role="alert" className="flex items-start gap-3 rounded-md border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
           <AlertTriangle size={18} className="mt-0.5 shrink-0" />
-          <div>
+          <div className="min-w-0">
             <div className="font-medium">{t('rules.loadFailed')}</div>
-            <div className="text-rose-300/80">{error}</div>
+            <div className="break-words">{error}</div>
           </div>
         </div>
       )}
@@ -690,7 +689,7 @@ function StrategyRulesPage() {
                   </h2>
                   <Badge
                     variant="outline"
-                    className="border-amber-500/30 bg-amber-500/10 px-2 py-0 text-[10px] text-amber-400"
+                    className="border-warning/30 bg-warning/10 px-2 py-0 text-[10px] text-warning"
                   >
                     {groupRulesList.length}
                   </Badge>
@@ -738,7 +737,7 @@ function StrategyRulesPage() {
 
       {/* 新增 / 编辑弹窗 */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-xl">
+        <DialogContent className="max-h-[90dvh] max-w-xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {t(editingRule ? 'ui.rules.editTitle' : 'ui.rules.createTitle')}
@@ -751,7 +750,7 @@ function StrategyRulesPage() {
           </DialogHeader>
 
           <div className="grid gap-4 py-2">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="ruleKey">{t('ui.rules.ruleKey')}</Label>
                 <Input
@@ -777,7 +776,7 @@ function StrategyRulesPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid gap-4 sm:grid-cols-3">
               <div className="space-y-2">
                 <Label htmlFor="ruleType">{t('ui.rules.ruleType')}</Label>
                 <Select
@@ -822,7 +821,7 @@ function StrategyRulesPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="category">{t('ui.rules.category')}</Label>
                 <Select
@@ -1053,10 +1052,10 @@ function RuleCard({
           {/* 名称 + 说明 */}
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-medium text-foreground">
+              <span className="min-w-0 break-words font-medium text-foreground">
                 {rule.ruleName}
               </span>
-              <span className="font-mono text-[11px] text-muted-foreground/70">
+              <span className="min-w-0 break-all font-mono text-[11px] text-muted-foreground">
                 {rule.ruleKey}
               </span>
             </div>
@@ -1147,8 +1146,8 @@ function RuleCard({
             variant={rule.severity === 'hard_block' ? 'destructive' : 'outline'}
             className={
               rule.severity === 'hard_block'
-                ? 'bg-rose-600/90 text-rose-50'
-                : 'border-amber-500/40 bg-amber-500/10 text-amber-400'
+                ? 'bg-destructive text-destructive-foreground'
+                : 'border-warning/40 bg-warning/10 text-warning'
             }
           >
             {t(SEVERITY_LABEL_KEYS[rule.severity])}
@@ -1160,7 +1159,7 @@ function RuleCard({
             className={
               rule.ruleType === 'hard'
                 ? 'border-primary/40 bg-primary/10 text-primary'
-                : 'border-slate-500/40 bg-slate-500/10 text-slate-400'
+                : 'border-border bg-muted text-muted-foreground'
             }
           >
             {t(RULE_TYPE_LABEL_KEYS[rule.ruleType])}

@@ -278,7 +278,7 @@ export default function AgentBuilderPage() {
                     <p className="mt-1 font-semibold">{profile.config.maxOrderPct}%</p></div>
                   <div><span className="text-muted-foreground">{t('ui.builder.maxOrdersPerDay')}</span>
                     <p className="mt-1 font-semibold">{profile.config.maxOrdersPerDay}</p></div>
-                  <div><span className="text-muted-foreground">{t('ui.builder.tickers')}</span>
+                  <div className="min-w-0"><span className="text-muted-foreground">{t('ui.builder.tickers')}</span>
                     <p className="mt-1 truncate font-semibold">{profile.config.tickers.length
                       ? profile.config.tickers.join(', ') : t('ui.builder.allTracked')}</p></div>
                 </div>
@@ -460,22 +460,22 @@ function ProposalCard({ proposal, profiles, formatDate, onFill, onSkip, busy }: 
     <Card>
       <CardContent className="space-y-4 pt-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <div className="flex items-center gap-2">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
               <Badge variant={proposal.side === 'buy' ? 'default' : 'secondary'}>
                 {t(`ui.builder.side.${proposal.side}`)}
               </Badge>
               <span className="text-lg font-semibold">{proposal.ticker}</span>
               <span className="text-xs text-muted-foreground">{proposal.market} · {proposal.currency}</span>
             </div>
-            <p className="mt-2 text-xs text-muted-foreground">
+            <p className="mt-2 break-words text-xs text-muted-foreground">
               {profile?.config.name ?? t('ui.builder.unknownAgent')} · v{proposal.profileVersion}
               {' · '}{formatDate(proposal.createdAt)}
             </p>
           </div>
           {expired && <Badge variant="destructive">{t('ui.builder.expired')}</Badge>}
         </div>
-        <p className="text-sm leading-6">{proposal.reason}</p>
+        <p className="break-words text-sm leading-6">{proposal.reason}</p>
         <div className="flex flex-wrap gap-x-5 gap-y-2 text-xs text-muted-foreground">
           <span>{t('ui.builder.suggestedQuantity')}: <strong className="text-foreground">{proposal.quantity}</strong></span>
           <span>{t('ui.builder.referencePrice')}: <strong className="text-foreground">{proposal.referencePrice} {proposal.currency}</strong></span>
@@ -487,7 +487,7 @@ function ProposalCard({ proposal, profiles, formatDate, onFill, onSkip, busy }: 
             {proposal.paperOrderId
               ? t('ui.builder.paperLinked') : t('ui.builder.proposalOnly')}
           </p>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button type="button" variant="outline" size="sm" disabled={busy}
               onClick={onSkip}>{t('ui.builder.skip')}</Button>
             <Button type="button" size="sm" disabled={busy || expired}

@@ -16,7 +16,7 @@ import {
   Loader2Icon,
   XIcon,
 } from 'lucide-react';
-import { useTheme } from 'next-themes';
+import { useTheme } from '@/hooks/use-theme';
 import { Toaster as Sonner, type ToasterProps } from 'sonner';
 
 /** Toast notification renderer (sonner). */

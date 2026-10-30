@@ -1,0 +1,37 @@
+{
+  "trigger": "外观主题",
+  "title": "给工作台换个新舞台",
+  "description": "牛熊伙伴，全新登场。选一种喜欢的风格，让每一天的研究更有趣。",
+  "designLabel": "选择主题",
+  "modeLabel": "显示模式",
+  "light": "浅色",
+  "dark": "深色",
+  "selected": "使用中",
+  "close": "关闭外观设置",
+  "footer": "主题即时生效，偏好自动保存。",
+  "settingsTitle": "工作台外观",
+  "settingsDescription": "主题与明暗模式随心搭配，让牛熊伙伴陪你进入熟悉的研究节奏。",
+  "current": "当前外观：{{name}} · {{mode}}",
+  "themes": {
+    "classic": {
+      "name": "经典工作室",
+      "caption": "安静有序，专注每个判断。",
+      "badge": "STUDIO / 01"
+    },
+    "arcade": {
+      "name": "像素街机",
+      "caption": "像素颗粒，重启探索的乐趣。",
+      "badge": "PRESS START / 02"
+    },
+    "comic": {
+      "name": "漫画俱乐部",
+      "caption": "纸张与墨线，让观点碰撞。",
+      "badge": "NEW ISSUE / 03"
+    },
+    "orbit": {
+      "name": "轨道空间站",
+      "caption": "在安静的轨道，发现新信号。",
+      "badge": "MISSION CONTROL / 04"
+    }
+  }
+}

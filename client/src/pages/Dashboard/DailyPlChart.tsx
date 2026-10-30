@@ -9,6 +9,7 @@
 import { useMemo } from 'react';
 import ReactECharts from 'echarts-for-react';
 import { useTranslation } from 'react-i18next';
+import { useChartTheme } from '@/hooks/use-chart-theme';
 
 /** Props for {@link DailyPlChart}. */
 interface DailyPlChartProps {
@@ -31,6 +32,7 @@ const CURRENCY_SYMBOL: Record<string, string> = {
  */
 export default function DailyPlChart({ data, baseCurrency = 'USD' }: DailyPlChartProps) {
   const { t } = useTranslation();
+  const colors = useChartTheme();
   const symbol = CURRENCY_SYMBOL[baseCurrency.toUpperCase()] || '$';
 
   const option = useMemo(() => {
@@ -41,9 +43,19 @@ export default function DailyPlChart({ data, baseCurrency = 'USD' }: DailyPlChar
     const dailyPls = data.map((d) => Number(d.dailyPl) || 0);
 
     return {
+      backgroundColor: colors.surface,
+      textStyle: { color: colors.foreground, fontFamily: colors.fontFamily },
       tooltip: {
         trigger: 'axis',
-        axisPointer: { type: 'cross' },
+        confine: true,
+        backgroundColor: colors.tooltipBackground,
+        borderColor: colors.border,
+        textStyle: { color: colors.tooltipForeground },
+        axisPointer: {
+          type: 'cross',
+          crossStyle: { color: colors.muted },
+          label: { backgroundColor: colors.foreground, color: colors.surface },
+        },
         formatter: (params: { name: string; seriesName: string; value: number }[]) => {
           if (!params || params.length === 0) return '';
           const parts = [`<strong>${params[0].name}</strong>`];
@@ -65,14 +77,14 @@ export default function DailyPlChart({ data, baseCurrency = 'USD' }: DailyPlChar
         left: 'center',
         orient: 'horizontal',
         itemGap: 16,
-        textStyle: { fontSize: 11, color: '#78828c' },
+        textStyle: { fontSize: 11, color: colors.muted },
       },
       grid: { top: 38, right: 50, bottom: 40, left: 54 },
       xAxis: {
         type: 'category',
         data: dates,
-        axisLabel: { fontSize: 10, color: '#78828c', rotate: data.length > 20 ? 45 : 0 },
-        axisLine: { lineStyle: { color: 'rgba(120,130,140,0.38)' } },
+        axisLabel: { fontSize: 10, color: colors.muted, rotate: data.length > 20 ? 45 : 0 },
+        axisLine: { lineStyle: { color: colors.border } },
         axisTick: { show: false },
       },
       yAxis: [
@@ -80,20 +92,20 @@ export default function DailyPlChart({ data, baseCurrency = 'USD' }: DailyPlChar
           type: 'value',
           axisLabel: {
             fontSize: 10,
-            color: '#78828c',
+            color: colors.muted,
             formatter: (val: number) => {
               if (Math.abs(val) >= 1e6) return `${(val / 1e6).toFixed(1)}M`;
               if (Math.abs(val) >= 1e3) return `${(val / 1e3).toFixed(0)}k`;
               return val.toFixed(0);
             },
           },
-          splitLine: { lineStyle: { color: 'rgba(120,130,140,0.24)', type: 'dashed' } },
+          splitLine: { lineStyle: { color: colors.grid, type: 'dashed' } },
         },
         {
           type: 'value',
           axisLabel: {
             fontSize: 10,
-            color: '#78828c',
+            color: colors.muted,
             formatter: (val: number) => {
               if (Math.abs(val) >= 1e3) return `${(val / 1e3).toFixed(0)}k`;
               return val.toFixed(0);
@@ -110,7 +122,8 @@ export default function DailyPlChart({ data, baseCurrency = 'USD' }: DailyPlChar
           data: accountValues,
           smooth: true,
           symbol: 'none',
-          lineStyle: { color: '#14504A', width: 2 },
+          lineStyle: { color: colors.line, width: 2 },
+          itemStyle: { color: colors.line },
           areaStyle: {
             color: {
               type: 'linear',
@@ -119,8 +132,8 @@ export default function DailyPlChart({ data, baseCurrency = 'USD' }: DailyPlChar
               x2: 0,
               y2: 1,
               colorStops: [
-                { offset: 0, color: 'rgba(20, 80, 74, 0.15)' },
-                { offset: 1, color: 'rgba(20, 80, 74, 0)' },
+                { offset: 0, color: colors.areaStart },
+                { offset: 1, color: colors.areaEnd },
               ],
             },
           },
@@ -140,7 +153,7 @@ export default function DailyPlChart({ data, baseCurrency = 'USD' }: DailyPlChar
         },
       ],
     };
-  }, [data, symbol, t]);
+  }, [data, symbol, t, colors]);
 
   if (data.length === 0) {
     return (

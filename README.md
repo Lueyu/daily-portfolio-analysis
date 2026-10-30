@@ -22,7 +22,16 @@ Self-hosted. No phone number, no email verification, zero telemetry — see
 
 </div>
 
-![Dashboard](docs/screenshots/dashboard.png)
+![Dashboard](docs/screenshots/dashboard-en.png)
+
+**Make it your workspace.** Choose Classic Studio, Pixel Arcade, Comic Club or Orbital Deck — each with light and dark modes. Switch from the palette button or Settings. [Appearance guide](docs/appearance.md).
+
+<details>
+<summary><b>Four mascot-inspired themes</b></summary>
+
+![Four appearance themes](docs/screenshots/themes.png)
+
+</details>
 
 <details>
 <summary><b>More screenshots</b> (paper trading · daily analysis · deep research report)</summary>
@@ -80,6 +89,7 @@ providers and may be delayed or unavailable. Details:
 - ✅ **AI paper trading** — signal-driven watchbot with hard guardrails (daily-loss circuit breaker, per-order/per-day caps), market-clock aware, and push notifications on fills (Webhook / Bark / Server酱 / SMTP / Telegram); **MCP server** for connecting external AI agents (Claude / ChatGPT) with per-agent spending limits, read/trade permissions and approval modes
 - ✅ **Beginner Agent Builder** — versioned templates and explicit limits, behavior preview, one active profile, paper proposals, optional push, and manual real-execution recording
 - ✅ **Per-user API settings** — guided OpenAI-compatible LLM and Finnhub setup, encrypted keys, and connection tests
+- ✅ **Four visual themes** — mascot-led styles, warm light palettes, dark modes, synchronized charts and responsive bilingual layouts
 - ✅ **Portfolio import** — generic CSV with auto column mapping + GBK support, broker presets (Robinhood / Futu / Tiger / Xueqiu), and broker-screenshot OCR powered by your own multimodal key
 - 🔜 **Desktop app** — one-click installer; download counts via GitHub Releases, no telemetry
 

@@ -48,6 +48,7 @@ import {
   type UpdateLlmIntegrationRequest,
 } from '@/api/settings';
 import SettingsGuide from './SettingsGuide';
+import { AppearanceSettingsCard } from '@/components/AppearancePicker';
 
 interface LlmDraft {
   baseUrl: string;
@@ -277,6 +278,8 @@ export default function SettingsPage() {
           {t('ui.settings.secretBadge')}
         </div>
       </div>
+
+      <AppearanceSettingsCard />
 
       {settingsQuery.isLoading ? (
         <div className="flex min-h-56 items-center justify-center gap-2 text-muted-foreground" role="status">
