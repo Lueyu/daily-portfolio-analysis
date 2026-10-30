@@ -1,5 +1,5 @@
 import {
-  BadRequestException, Inject, Injectable, Logger, NotFoundException, type OnModuleInit,
+  BadRequestException, Inject, Injectable, Logger, NotFoundException, Optional, type OnModuleInit,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { and, desc, eq, gte, sql } from 'drizzle-orm';
@@ -25,11 +25,16 @@ import {
 import { discussionPrompt, evidenceKind, newCheckpoint, parseContribution, type DiscussionContribution } from './council.dialogue';
 import type { DialogueTurn } from './council.types';
 import { packDiscussionContext } from './council.context';
+import { LocalAgentsService } from '../a2a/local-agents.service';
+import { LocalAgentError } from '../a2a/local-agents.types';
+import { LlmBudgetService } from '../llm-budget/llm-budget.service';
+import { agentAssignment, agentContribution, agentErrorMessage } from './council.a2a';
 
 type SessionRow = typeof councilSessions.$inferSelect;
 type ReportRow = typeof councilReports.$inferSelect;
 interface ResearchSnapshot { evidence: CouncilEvidence[]; sourceRunId: string | null }
-interface MemberOutput { member: CouncilMember; contribution: DiscussionContribution; tokens: number; replyToMessageId: string | null }
+interface MemberOutput { member: CouncilMember; contribution: DiscussionContribution; tokens: number; replyToMessageId: string | null;
+  externalUsageUnknown?: boolean; sources?: CouncilEvidence[] }
 
 @Injectable()
 export class CouncilService implements OnModuleInit {
@@ -43,6 +48,8 @@ export class CouncilService implements OnModuleInit {
     private readonly evidence: EvidenceService,
     private readonly portfolio: PortfolioContextService,
     private readonly research: MultiAgentService,
+    @Optional() private readonly localAgents?: LocalAgentsService,
+    @Optional() private readonly budgets?: LlmBudgetService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -71,7 +78,7 @@ export class CouncilService implements OnModuleInit {
       team = normalizeCouncil({ enabled: true, members: input.members ?? source?.config.council?.members ?? DEFAULT_MEMBERS,
         webResearch: input.webResearch ?? source?.config.council?.webResearch ?? false });
     } catch (error) { throw new BadRequestException(error instanceof Error ? error.message : 'Invalid research team'); }
-    await this.llm.validateConnectionIds(userId, team.members.flatMap((member) => member.connectionId ? [member.connectionId] : []));
+    await this.validateMembers(userId, team.members);
     const config = source ? { ...source.config, council: team } : normalizeBuilderConfig({
       name: 'Research room', template: 'guard', tickers: [ticker], minimumRating: 'Buy', customPrompt: '',
       maxOrderPct: 5, dailyLossLimitPct: 3, maxOrdersPerDay: 1, notifyOnProposal: false,
@@ -123,9 +130,12 @@ export class CouncilService implements OnModuleInit {
     const previous = await this.requireSession(userId, id);
     if (previous.status === 'running') return this.hydrate(userId, previous);
     const members = this.members(previous.profileSnapshot);
-    await this.llm.validateConnectionIds(userId, members.flatMap((member) => member.connectionId ? [member.connectionId] : []));
-    if (members.some((member) => member.connectionId)) {
-      const configured = await Promise.all(members.map((member) => this.llm.isConfigured(userId, member.connectionId)));
+    await this.validateMembers(userId, members);
+    if (members.some((member) => member.executionMode === 'a2a') && (await this.budgets?.getSettings(userId))?.enabled !== false) {
+      throw new BadRequestException(agentErrorMessage('A2A_BUDGET_UNSUPPORTED', previous.language));
+    }
+    if (members.some((member) => member.connectionId || member.executionMode === 'a2a')) {
+      const configured = await Promise.all(members.map((member) => member.executionMode === 'a2a' ? true : this.llm.isConfigured(userId, member.connectionId)));
       if (configured.some((value) => !value)) throw new BadRequestException('Configure a model connection for every team member before starting');
     }
     const { row, started } = await this.db.transaction(async (tx) => {
@@ -208,7 +218,7 @@ export class CouncilService implements OnModuleInit {
       eq(councilSessions.cacheKey, key), gte(councilSessions.createdAt, new Date(Date.now() - 24 * 3600_000))))
       .orderBy(desc(councilSessions.createdAt)).limit(8);
     const modelConfigured = (await Promise.all(this.members(profile.config)
-      .map((member) => this.llm.isConfigured(userId, member.connectionId)))).every(Boolean);
+      .map((member) => member.executionMode === 'a2a' ? true : this.llm.isConfigured(userId, member.connectionId)))).every(Boolean);
     for (const row of rows) {
       const session = await this.hydrate(userId, row);
       const report = session.reports.at(-1);
@@ -255,7 +265,7 @@ export class CouncilService implements OnModuleInit {
       let row = await this.requireSession(userId, id);
       if (row.status !== 'running' || !row.checkpoint) return;
       if (row.checkpoint.inflight) return; // Another draining process owns this paid turn.
-      if (!row.evidenceSnapshot.length) {
+      if (!row.evidenceSnapshot.length && this.members(row.profileSnapshot).some((member) => member.executionMode !== 'a2a')) {
         const cycleId = row.checkpoint.cycleId;
         const snapshot = await this.collectSnapshot(userId, row.ticker, row.language, row.profileSnapshot, row.candidate, true, row);
         await this.db.update(councilSessions).set({ evidenceSnapshot: snapshot.evidence, sourceRunId: snapshot.sourceRunId })
@@ -275,7 +285,7 @@ export class CouncilService implements OnModuleInit {
       let claimId: string | null = null;
       try {
         const members = this.members(row.profileSnapshot);
-        if (!members.some((member) => member.connectionId) && !(await this.llm.isConfigured(userId))) {
+        if (!members.some((member) => member.connectionId || member.executionMode === 'a2a') && !(await this.llm.isConfigured(userId))) {
           await this.publish(userId, row, { decision: 'wait', summary: row.language === 'en'
             ? 'Basic mode: no model is configured. No AI discussion occurred. Configure a model to discuss the verified sources.'
             : '基础模式：尚未配置模型，未进行 AI 讨论。配置模型后可共同讨论已核实资料。',
@@ -294,6 +304,7 @@ export class CouncilService implements OnModuleInit {
         const recorded = await this.recordTurn(userId, row, turn, claimId, output);
         claimId = null;
         if (!recorded) continue;
+        if (output.sources?.length) row = { ...row, evidenceSnapshot: [...row.evidenceSnapshot, ...output.sources].slice(-60) };
         if (turn.phase === 'summary' && output.contribution.opinion) {
           const opinion = output.contribution.opinion;
           if (row.candidate && opinion.decision === 'approve' && criticalEvidenceGaps(row.evidenceSnapshot)
@@ -302,11 +313,24 @@ export class CouncilService implements OnModuleInit {
             opinion.summary = (row.language === 'en' ? 'Critical research evidence is missing; approval is withheld. ' : '关键研究证据缺失，暂缓批准。') + opinion.summary;
             opinion.nextReviewCondition = row.language === 'en' ? 'Obtain verified financial statements and current market evidence.' : '补齐经核实的财务报表和当前市场证据。';
           }
-          await this.publish(userId, row, opinion, 'llm', null, row.candidate ? null : output.contribution.researchStance);
+          await this.publish(userId, row, opinion, this.executionEngine(members), null, row.candidate ? null : output.contribution.researchStance);
         }
       } catch (error) {
         if (claimId) await this.releaseTurn(userId, id, claimId);
         const current = await this.requireSession(userId, id);
+        const code = error instanceof Error ? error.message : '';
+        if (code.startsWith('A2A_')) {
+          await this.db.transaction(async (tx) => {
+            const [locked] = await tx.select().from(councilSessions).where(and(eq(councilSessions.owner, userId), eq(councilSessions.id, id))).for('update');
+            if (!locked?.checkpoint) return;
+            const remote = locked.checkpoint.remote;
+            await tx.update(councilSessions).set({ status: 'paused', error: agentErrorMessage(code, row.language), updatedAt: new Date(),
+              checkpoint: { ...locked.checkpoint, inflight: undefined,
+                remote: code === 'A2A_CANCELLED' ? undefined : remote ? { ...remote, awaitingInput: code === 'A2A_INPUT_REQUIRED' || remote.awaitingInput } : undefined } })
+              .where(and(eq(councilSessions.owner, userId), eq(councilSessions.id, id)));
+          });
+          return;
+        }
         if (current.status !== 'running') return;
         if (current.revision !== row.revision) continue;
         const reason = safeAnalysisError(error, row.language);
@@ -350,13 +374,26 @@ export class CouncilService implements OnModuleInit {
         .where(and(eq(councilSessions.owner, userId), eq(councilSessions.id, row.id))).for('update');
       const checkpoint = current?.checkpoint;
       if (!checkpoint || checkpoint.inflight?.id !== claimId || checkpoint.cycleId !== row.checkpoint?.cycleId) return false;
+      if (output.member.executionMode === 'a2a' && (current.status !== 'running' || current.revision !== row.revision)) {
+        await tx.update(councilSessions).set({ checkpoint: { ...checkpoint, inflight: undefined, remote: undefined } })
+          .where(and(eq(councilSessions.owner, userId), eq(councilSessions.id, row.id)));
+        return false;
+      }
       const contribution = output.contribution;
       await tx.insert(councilMessages).values({ owner: userId, sessionId: row.id, role: output.member.role,
         memberName: output.member.name, revision: row.revision, tokensUsed: output.tokens, content: contribution.content,
         metadata: { cycleId: checkpoint.cycleId, turn: checkpoint.nextTurn, phase: turn.phase, memberId: output.member.id,
           replyToMessageId: output.replyToMessageId, evidenceIds: contribution.evidenceIds,
           reasoningSummary: contribution.reasoningSummary, questions: contribution.questions } });
-      await tx.update(councilSessions).set({ updatedAt: new Date(), checkpoint: { ...checkpoint, inflight: undefined,
+      if (output.member.executionMode === 'a2a') await tx.update(councilMessages).set({ metadata: {
+        cycleId: checkpoint.cycleId, turn: checkpoint.nextTurn, phase: turn.phase, memberId: output.member.id,
+        replyToMessageId: output.replyToMessageId, evidenceIds: contribution.evidenceIds, reasoningSummary: contribution.reasoningSummary,
+        questions: contribution.questions, externalAgent: true, externalUsageUnknown: output.externalUsageUnknown,
+      } }).where(and(eq(councilMessages.owner, userId), eq(councilMessages.sessionId, row.id),
+        sql`${councilMessages.metadata}->>'cycleId' = ${checkpoint.cycleId}`, sql`(${councilMessages.metadata}->>'turn')::int = ${checkpoint.nextTurn}`));
+      await tx.update(councilSessions).set({ updatedAt: new Date(),
+        ...(output.sources?.length ? { evidenceSnapshot: [...current.evidenceSnapshot, ...output.sources].slice(-60) } : {}),
+        checkpoint: { ...checkpoint, inflight: undefined, remote: undefined,
         nextTurn: checkpoint.nextTurn + (turn.phase === 'summary' ? 0 : 1),
         pendingResearch: turn.phase === 'summary' ? [] : contribution.researchRequests } })
         .where(and(eq(councilSessions.owner, userId), eq(councilSessions.id, row.id)));
@@ -365,6 +402,7 @@ export class CouncilService implements OnModuleInit {
   }
 
   private async runMember(userId: string, row: SessionRow, member: CouncilMember, turn: DialogueTurn): Promise<MemberOutput> {
+    if (member.executionMode === 'a2a') return this.runAgentMember(userId, row, member, turn);
     const messages = await this.db.select().from(councilMessages)
       .where(and(eq(councilMessages.owner, userId), eq(councilMessages.sessionId, row.id))).orderBy(councilMessages.createdAt);
     const discussion = messages.filter((item) => ['researcher', 'challenger', 'manager'].includes(item.role)
@@ -399,6 +437,66 @@ export class CouncilService implements OnModuleInit {
       memberName: row.language === 'en' ? 'Research tools' : '资料检索', revision: row.revision,
       content: acquisition.detail.slice(0, 1000), tokensUsed: 0,
       metadata: { phase: 'progress', acquisition: { ...acquisition, detail: acquisition.detail.slice(0, 1000) }, cycleId: row.checkpoint.cycleId } });
+  }
+
+  private async validateMembers(userId: string, members: CouncilMember[]): Promise<void> {
+    await this.llm.validateConnectionIds(userId, members.flatMap((member) => member.executionMode !== 'a2a' && member.connectionId ? [member.connectionId] : []));
+    for (const member of members.filter((item) => item.executionMode === 'a2a')) {
+      if (!this.localAgents || !member.agentId) throw new BadRequestException('Local agent service unavailable');
+      await this.localAgents.validate(userId, member.agentId);
+    }
+  }
+
+  private executionEngine(members: CouncilMember[]): CouncilReport['engine'] {
+    const count = members.filter((member) => member.executionMode === 'a2a').length;
+    return count === members.length ? 'a2a' : count ? 'mixed' : 'llm';
+  }
+
+  private async runAgentMember(userId: string, row: SessionRow, member: CouncilMember, turn: DialogueTurn): Promise<MemberOutput> {
+    if (!this.localAgents || !member.agentId || !row.checkpoint) throw new Error('A2A_UNAVAILABLE');
+    const current = await this.requireSession(userId, row.id);
+    const saved = current.checkpoint?.remote;
+    const messages = await this.db.select().from(councilMessages).where(and(eq(councilMessages.owner, userId), eq(councilMessages.sessionId, row.id)))
+      .orderBy(councilMessages.createdAt);
+    const lastUserMessageId = messages.filter((message) => message.role === 'user').at(-1)?.id;
+    const resumeInput = saved?.awaitingInput === true && lastUserMessageId !== saved.lastUserMessageId;
+    if (saved && ((!saved.taskId && saved.dispatchStarted) || saved.turn !== row.checkpoint.nextTurn || saved.agentId !== member.agentId)) throw new Error('A2A_DISPATCH_UNCERTAIN');
+    if (!saved?.taskId && (await this.budgets?.getSettings(userId))?.enabled !== false) throw new Error('A2A_BUDGET_UNSUPPORTED');
+    const remote = resumeInput ? { ...saved!, messageId: randomUUID(), revision: row.revision, dispatchStarted: false }
+      : saved ?? { agentId: member.agentId, messageId: randomUUID(), turn: row.checkpoint.nextTurn,
+        revision: row.revision, dispatchStarted: false, lastUserMessageId };
+    if (!saved || resumeInput) await this.db.update(councilSessions).set({ checkpoint: { ...current.checkpoint!, remote } })
+      .where(and(eq(councilSessions.owner, userId), eq(councilSessions.id, row.id)));
+    const result = await this.localAgents.execute(userId, { agentId: member.agentId, messageId: remote.messageId,
+      remoteTaskId: remote.taskId, contextId: remote.contextId, resumeInput,
+      prompt: agentAssignment({ ticker: row.ticker, language: row.language, member, turn,
+        candidate: row.candidate, messages: messages.filter((message) => message.role !== 'system'), evidence: row.evidenceSnapshot }),
+      onDispatch: async () => {
+        if ((await this.budgets?.getSettings(userId))?.enabled !== false) throw new LocalAgentError('A2A_BUDGET_UNSUPPORTED');
+        const dispatched = { ...remote, lastUserMessageId, awaitingInput: false, dispatchStarted: true };
+        const marked = await this.db.update(councilSessions).set({ checkpoint: sql`jsonb_set(${councilSessions.checkpoint}, '{remote}', ${JSON.stringify(dispatched)}::jsonb)` })
+          .where(and(eq(councilSessions.owner, userId), eq(councilSessions.id, row.id),
+            eq(councilSessions.status, 'running'), eq(councilSessions.revision, row.revision),
+            sql`${councilSessions.checkpoint}->'remote'->>'messageId' = ${remote.messageId}`)).returning({ id: councilSessions.id });
+        if (!marked.length) throw new LocalAgentError('A2A_PAUSED');
+      },
+      onTask: async (ref) => {
+        await this.db.transaction(async (tx) => {
+          const [latest] = await tx.select().from(councilSessions).where(and(eq(councilSessions.owner, userId), eq(councilSessions.id, row.id))).for('update');
+          if (latest?.checkpoint?.remote?.messageId !== remote.messageId) throw new Error('A2A_PAUSED');
+          await tx.update(councilSessions).set({ checkpoint: { ...latest.checkpoint, remote: { ...remote, ...ref, lastUserMessageId, awaitingInput: false, dispatchStarted: true } } })
+            .where(and(eq(councilSessions.owner, userId), eq(councilSessions.id, row.id)));
+        });
+      },
+      onProgress: (text) => this.recordAcquisition(userId, row, { source: member.name, status: 'started', detail: text.slice(0, 1000) }),
+      shouldContinue: async () => { const latest = await this.requireSession(userId, row.id);
+        return latest.status === 'running' && latest.revision === row.revision; },
+    });
+    try {
+      return { member, ...agentContribution(result, row.evidenceSnapshot, turn, row.candidate, row.language),
+        tokens: result.usageTokens ?? 0, externalUsageUnknown: result.usageTokens === null,
+        replyToMessageId: messages.filter((item) => item.role !== 'system').at(-1)?.id ?? null };
+    } catch { throw new LocalAgentError('A2A_INVALID_RESULT'); }
   }
 
   private async runResearch(userId: string, row: SessionRow): Promise<void> {
@@ -462,7 +560,7 @@ export class CouncilService implements OnModuleInit {
     }
   }
 
-  private async publish(userId: string, row: SessionRow, opinion: CouncilOpinion, engine: 'basic' | 'llm', error: string | null,
+  private async publish(userId: string, row: SessionRow, opinion: CouncilOpinion, engine: CouncilReport['engine'], error: string | null,
     researchStance: CouncilReport['researchStance'] = null): Promise<boolean> {
     return this.db.transaction(async (tx) => {
       const [current] = await tx.select().from(councilSessions)
@@ -473,12 +571,14 @@ export class CouncilService implements OnModuleInit {
         .orderBy(desc(councilReports.version)).limit(1);
       const [usage] = await tx.select({ total: sql<number>`coalesce(sum(${llmBudgetUsage.chargedTokens}), 0)` })
         .from(llmBudgetUsage).where(and(eq(llmBudgetUsage.owner, userId), eq(llmBudgetUsage.taskId, row.taskId)));
+      const [external] = await tx.select({ total: sql<number>`coalesce(sum(${councilMessages.tokensUsed}), 0)` }).from(councilMessages)
+        .where(and(eq(councilMessages.owner, userId), eq(councilMessages.sessionId, row.id), sql`${councilMessages.metadata}->>'externalAgent' = 'true'`));
       const historical = (current.checkpoint?.evidenceArchive ?? []).filter((item) => !row.evidenceSnapshot.some((fact) => fact.id === item.id))
         .map((item) => ({ ...item, title: (row.language === 'en' ? 'Earlier source: ' : '本轮较早资料：') + item.title }));
       await tx.insert(councilReports).values({ owner: userId, sessionId: row.id, version: (latest?.version ?? 0) + 1,
         revision: row.revision, decision: opinion.decision, summary: opinion.summary, dissent: opinion.dissent,
         nextReviewCondition: opinion.nextReviewCondition, sourceRunId: row.sourceRunId,
-        candidate: row.candidate, engine, researchStance, tokensUsed: Math.min(2_147_483_647, Number(usage?.total ?? 0)),
+        candidate: row.candidate, engine, researchStance, tokensUsed: Math.min(2_147_483_647, Number(usage?.total ?? 0) + Number(external?.total ?? 0)),
         evidence: [...row.evidenceSnapshot, ...historical].map(({ id, title, content, sourceUrl, fetchedAt }) => ({ id, title, content, sourceUrl, fetchedAt })) });
       await tx.update(councilSessions).set({ status: error ? 'failed' : 'completed', error, updatedAt: new Date(),
         ...(error || !current.checkpoint ? {} : { checkpoint: { ...current.checkpoint,
@@ -493,6 +593,8 @@ export class CouncilService implements OnModuleInit {
     const evidence: CouncilEvidence[] = [];
     let sourceRunId: string | null = null;
     const now = new Date().toISOString();
+    // Delegated teams gather their own research. Do not run the legacy collector before dispatch.
+    if (this.members(config).every((member) => member.executionMode === 'a2a')) return { evidence, sourceRunId };
     if (!fresh) try {
       const runs = await this.research.listRuns(userId, { ticker, status: 'completed', limit: 1 });
       const latest = runs.items[0];
@@ -598,8 +700,9 @@ export class CouncilService implements OnModuleInit {
         id, role, memberName, content, revision, tokensUsed, createdAt: createdAt.toISOString(),
         ...(metadata ? { memberId: metadata.memberId, phase: metadata.phase, replyToMessageId: metadata.replyToMessageId,
           evidenceIds: metadata.evidenceIds, reasoningSummary: metadata.reasoningSummary, questions: metadata.questions,
-          acquisition: metadata.acquisition } : {}),
-      })), reports: reports.map((report) => this.mapReport(report)), error: row.error,
+          acquisition: metadata.acquisition, externalAgent: metadata.externalAgent, externalUsageUnknown: metadata.externalUsageUnknown } : {}),
+      })), reports: reports.map((report) => ({ ...this.mapReport(report), externalUsageUnknown: messages.some((message) =>
+        message.createdAt <= report.createdAt && message.metadata?.externalUsageUnknown === true) })), error: row.error,
       members: this.members(row.profileSnapshot), webResearch: row.profileSnapshot.council?.webResearch ?? false,
       progress: row.checkpoint && row.checkpoint.nextTurn < row.checkpoint.turns.length ? {
         phase: row.checkpoint.turns[row.checkpoint.nextTurn].phase, memberId: row.checkpoint.turns[row.checkpoint.nextTurn].memberId,

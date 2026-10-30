@@ -40,6 +40,7 @@ COPY scripts/db/10_model_connections.sql ./scripts/db/10_model_connections.sql
 COPY scripts/db/11_research_tools.sql ./scripts/db/11_research_tools.sql
 COPY scripts/db/12_council_dialogue.sql ./scripts/db/12_council_dialogue.sql
 COPY scripts/db/13_budget_toggle.sql ./scripts/db/13_budget_toggle.sql
+COPY scripts/db/14_a2a_agents.sql ./scripts/db/14_a2a_agents.sql
 COPY scripts/ensure-settings-key.cjs scripts/start-app.cjs ./scripts/
 
 # Views and static assets are resolved from process.cwd()/dist/client

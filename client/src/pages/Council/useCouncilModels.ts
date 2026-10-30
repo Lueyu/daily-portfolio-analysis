@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import type { CouncilMember } from '@shared/council.interface';
 import { fetchIntegrationSettings } from '@/api/settings';
 import { fetchModelConnections } from '@/api/model-connections';
+import { fetchLocalAgents, type LocalAgentConnection } from '@/api/local-agents';
 
 export interface CouncilModelOption {
   value: string;
@@ -16,10 +17,18 @@ export function councilModelValue(member: Pick<CouncilMember, 'connectionId' | '
   return `${member.connectionId || 'default'}:${member.model}`;
 }
 
+export function assignLocalAgents(members: CouncilMember[], agents: LocalAgentConnection[]): CouncilMember[] {
+  const available = agents.filter(agent => agent.available);
+  if (!available.length) return members;
+  return members.map((member, index) => ({ ...member, executionMode: 'a2a',
+    agentId: available[index % available.length].id, connectionId: undefined }));
+}
+
 export function useCouncilModels() {
   const { t } = useTranslation();
   const integration = useQuery({ queryKey: ['settings', 'integrations'], queryFn: fetchIntegrationSettings });
   const connections = useQuery({ queryKey: ['settings', 'model-connections'], queryFn: fetchModelConnections });
+  const localAgents = useQuery({ queryKey: ['settings', 'local-agents'], queryFn: fetchLocalAgents });
   const options: CouncilModelOption[] = (['fast', 'slow'] as const).map((model) => ({
     value: `default:${model}`, model, disabled: false,
     label: [t('council.members.defaultConnection'), integration.data?.llm[model === 'fast' ? 'fastModel' : 'slowModel'],
@@ -32,7 +41,11 @@ export function useCouncilModels() {
       label: `${connection.name} · ${connection[model === 'fast' ? 'fastModel' : 'slowModel']} · ${t(`council.members.modelTier.${model}`)}${connection.available && !connection.needsReentry ? '' : ` (${t('council.members.unavailable')})`}`,
     });
   }
-  return { options, loading: integration.isLoading || connections.isLoading,
-    error: integration.error ?? connections.error,
-    refetch: () => { void integration.refetch(); void connections.refetch(); } };
+  const memberLabel = (member: CouncilMember): string => member.executionMode === 'a2a'
+    ? `${t('council.localAgents.routeAgent')} · ${localAgents.data?.find(agent => agent.id === member.agentId)?.name ?? t('council.localAgents.unavailable')}`
+    : options.find(option => option.value === councilModelValue(member))?.label ?? t('council.members.connectionMissing');
+  return { options, localAgents: localAgents.data ?? [], memberLabel,
+    loading: integration.isLoading || connections.isLoading || localAgents.isLoading,
+    error: integration.error ?? connections.error ?? localAgents.error,
+    refetch: () => { void integration.refetch(); void connections.refetch(); void localAgents.refetch(); } };
 }

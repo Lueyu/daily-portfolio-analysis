@@ -6,23 +6,27 @@ Build a small research team in **Agent Builder**, discuss a stock in the **Resea
 
 ## Configure the team
 
+Each member now has two execution choices. **Local agent · A2A** delegates the brief to a registered A2A 1.0 JSON-RPC agent; Squabble manages routing, task progress, user steering and report storage, while the agent uses its own tools. **Model API · built-in research** keeps the existing direct-model workflow and Squabble's data collectors. New independent rooms prefer connected local agents; existing profiles and rooms retain their saved configuration. You can explicitly delegate an existing team while preserving its roles.
+
+The repository includes a local **Codex CLI bridge**. Other A2A 1.0 peers can be registered, but a native Claude CLI adapter is not bundled. The operator registers trusted endpoints and exact account access; the web page cannot execute arbitrary commands or register arbitrary localhost URLs. Start with [local agent setup](local-agents.md). Local runtime does not mean offline inference. A2A agents currently require the Squabble research budget to be off; the agent/provider manages its internal spending, and missing usage is displayed as unknown.
+
 Choose **2–6 members**, including exactly one moderator/manager. Seven templates cover value, growth, risk, technicals, news, macro and moderation. The default three-person team works as follows:
 
-| Member | Job | Default model tier |
+| Member | Job | Direct-model default tier |
 |---|---|---|
 | Researcher | Build a case from the available evidence. | Fast |
 | Challenger | Test the researcher's claims, cite contrary facts and ask questions. | Fast |
 | Portfolio manager | Summarize agreements, disagreements and next checks; assess an exact trade candidate only when one is attached. | Slow |
 
-Customize names, role titles, personality, research focus, speaking style and an additional prompt. Each member selects the default model connection or a separately saved connection and its fast/slow model. **Settings → Team model connections** supports up to eight extra OpenAI-compatible public HTTPS connections. Credentials are encrypted server-side and never copied into room configuration. A missing connection stops that member instead of silently switching credentials.
+Customize names, role titles, personality, research focus, speaking style and an additional prompt. In direct-model mode, each member selects the default model connection or a separately saved connection and its fast/slow model. **Settings → Team model connections** supports up to eight extra OpenAI-compatible public HTTPS connections. Credentials are encrypted server-side and never copied into room configuration. A missing connection stops that member instead of silently switching credentials.
 
-The default discussion has four sequential turns: research → challenge → response → summary. Larger teams add viewpoints before the response and summary. Members see previous contributions, user steering and cited facts, and can request bounded financial, valuation, news, price or optional web research. Permissions, trade direction/size and hard spending limits cannot be overridden by a prompt. Expand a message to read its **public rationale**, questions and sources; this is not the model's private chain of thought.
+The default discussion has four sequential turns: research → challenge → response → summary. Larger teams add viewpoints before the response and summary. Members see previous contributions, user steering and cited facts. Direct-model members can request bounded financial, valuation, news, price or optional web research; A2A members research in their own runtime. Permissions and trade direction/size remain outside persona prompts. Expand a message to read its **public rationale**, questions and sources; this is not the model's private chain of thought.
 
-Each room request waits up to two minutes and does not automatically retry transport failures. A timed-out request may still be billed; its reservation remains counted. Explicitly continue from the retained turn after checking the provider.
+Each direct-model request waits up to two minutes and does not automatically retry transport failures. A timed-out request may still be billed; its reservation remains counted. Explicitly continue from the retained turn after checking the provider. A2A execution instead follows the remote task lifecycle, persists task/context IDs, polls progress and collects artifacts. Pausing requests cancellation; a remote runtime may already have spent tokens. Ambiguous dispatch is not blindly replayed. Sources returned by an external agent are recorded as agent-provided evidence, not automatically treated as verified financial data or trading approval.
 
 The controls follow the useful separation of role/goals/tools in [CrewAI agents](https://docs.crewai.com/en/concepts/agents) and speaker selection/termination in [AutoGen group chat](https://microsoft.github.io/autogen/stable/user-guide/agentchat-user-guide/selector-group-chat.html). Squabble implements its own bounded workflow; it does not add either framework as a runtime dependency. Role, personality and prompt shape the contribution; focus determines research preferences; concise/detailed/Socratic style shapes presentation. Tool permissions, stop conditions and shared spending caps stay outside persona prompts.
 
-For a free starting point, turn off the council and leave custom AI review instructions empty. Basic analysis, public quotes and explicit investor-authored price rules can work without a model key. Enabling the council requires a configured model to activate that Builder profile. Opening a discussion without a model produces an honest basic **wait** report, without simulated AI member messages. A provider's “free” model is still subject to its own key requirements, availability, limits and pricing.
+For a free starting point, turn off the council and leave custom AI review instructions empty. Basic analysis, public quotes and explicit investor-authored price rules can work without a model key. An enabled council needs each member's selected executor to be configured. In direct-model mode, opening a discussion without a model produces an honest basic **wait** report, without simulated AI member messages. A provider's “free” model is still subject to its own key requirements, availability, limits and pricing.
 
 ## Discuss and keep the report
 
@@ -33,6 +37,8 @@ For a free starting point, turn off the council and leave custom AI review instr
 5. Reports are organized in the right sidebar (the Reports button on small screens). Open a version to read its conclusions, dissent, evidence and related report or paper-order links. Each discussion freezes the profile configuration and version; after editing the profile, start a new discussion to use that version.
 
 A note can contain up to 2,000 characters; a discussion accepts up to 30 user notes. Completed turns and the next speaker are checkpointed in the database. An interruption continues from that point instead of replaying the whole round. Continuing or pausing does not reset the task budget. Bounded context goes to the model; full collected sources and user notes remain in the instance database. Standalone reports use positive, balanced or cautious assessments; they are not trade approvals. Open the members panel and create a new room to use a changed team.
+
+The following collector behavior applies to **direct-model mode**. A2A members obtain research through their own runtime and return sources with their report.
 
 For supported US stocks, a saved Finnhub key enables valuation metrics, recent company news and reported financial statements with filing dates and SEC references. Access and completeness depend on the endpoint and subscription; a successful connection test does not guarantee every field. Missing balance-sheet items, stale filings, unsupported markets, provider permissions and network errors are identified separately. Available facts remain in the report. Research-driven approval is withheld when critical evidence is missing. An explicitly configured price-rule candidate can be assessed as **rule-only**, with gaps disclosed; this is not an AI price forecast.
 
@@ -63,6 +69,8 @@ The review interval uses each market's local date. Changed profile/research/posi
 
 ## Budget and usage
 
+The limits and reservation accounting below apply to **direct-model calls made by Squabble**. Standard A2A has no universal hard token-budget mechanism. Current external-agent dispatch therefore requires the research-budget switch to be off; timeouts and concurrency controls in the local bridge still apply. External reported usage can be recorded, while absent usage remains unknown. The selected agent's own credentials, billing and retention policies apply.
+
 **Research budget** is in Settings. It is enabled by default. Turn it off to stop enforcing the app's input, token and call limits while retaining the usage ledger and saved limit values. Turning it back on restores those values, and already recorded usage still counts. Explicit per-request output parameters and provider limits and charges still apply. All council members and revisions in a discussion share one task identifier.
 
 | Setting | Default |
@@ -82,6 +90,8 @@ Optional input/output prices are your estimates in USD per million tokens. If ei
 Users can change their own limits. These account budgets are not an operator-wide spending ceiling for a shared server API key. Operators should also set limits at the provider; all users' usage can accrue to that key.
 
 ## Storage and operation
+
+For A2A members, the assigned brief and relevant conversation context are sent to the registered agent, whose runtime and selected provider also process that content. The bundled bridge persists task prompts and outputs locally. Keep that task directory private and apply your own retention policy; see [local agent setup](local-agents.md).
 
 Messages, member preferences, frozen configuration, evidence snapshots and reports persist in the instance database. Each selected model provider receives bounded evidence, profile/candidate context, user notes and prior contributions. Optional DeepSeek Search receives the ticker and research query. Budget records keep task/model identifiers, usage, status and timestamps, not prompt bodies. Hosting operators can access their database and server secrets. See [Privacy and data flow](privacy.md).
 
