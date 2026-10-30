@@ -10,6 +10,7 @@
 import {
   CanActivate,
   ExecutionContext,
+  Inject,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -17,12 +18,15 @@ import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
 import { NEED_LOGIN_KEY } from './need-login.decorator';
 import { verifyAccessToken } from '../../modules/auth/jwt';
+import { DRIZZLE_DATABASE, type PostgresJsDatabase } from './database.provider';
+import { users } from '../../database/schema';
+import { eq } from 'drizzle-orm';
 
 @Injectable()
 export class AuthGlobalGuard implements CanActivate {
-  constructor(private readonly reflector: Reflector) {}
+  constructor(private readonly reflector: Reflector, @Inject(DRIZZLE_DATABASE) private readonly db: PostgresJsDatabase) {}
 
-  canActivate(context: ExecutionContext): boolean {
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     const needLogin = this.reflector.getAllAndOverride<boolean>(NEED_LOGIN_KEY, [
       context.getHandler(),
       context.getClass(),
@@ -37,6 +41,11 @@ export class AuthGlobalGuard implements CanActivate {
     const payload = verifyAccessToken(header.slice('Bearer '.length));
     if (!payload) {
       throw new UnauthorizedException('登录已过期，请重新登录');
+    }
+    const [user] = await this.db.select({ sessionVersion: users.sessionVersion })
+      .from(users).where(eq(users.id, payload.sub));
+    if (!user || user.sessionVersion !== (payload.ver ?? 0)) {
+      throw new UnauthorizedException('Session revoked; please sign in again');
     }
     req.userContext = { userId: payload.sub, username: payload.username };
     return true;

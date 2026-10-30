@@ -2,7 +2,7 @@ node_modules
 dist
 .git
 .githooks
-.env
+.env*
 logs
 db
 backups
@@ -11,3 +11,4 @@ docs
 .github
 *.tsbuildinfo
 screenshots
+output

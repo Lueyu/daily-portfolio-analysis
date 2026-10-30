@@ -37,6 +37,7 @@ import { PaperTradingModule } from './modules/paper-trading/paper-trading.module
 import { ImportModule } from './modules/import/import.module';
 import { McpModule } from './modules/mcp/mcp.module';
 import { SettingsModule } from './modules/settings/settings.module';
+import { HealthModule } from './modules/health/health.module';
 
 /**
  * Root Nest module. Aggregates feature modules and installs the global
@@ -48,6 +49,7 @@ import { SettingsModule } from './modules/settings/settings.module';
     DatabaseModule,
     AuthModule,
     SettingsModule,
+    HealthModule,
 
     // ====== @route-section: business-modules START ======
     HoldingsModule,

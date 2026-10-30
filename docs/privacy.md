@@ -26,9 +26,12 @@ take our word for it.
 | User-supplied LLM / Finnhub API keys | ✅ Encrypted in your own DB | 各账号独立保存；设置接口只返回配置状态及遮盖提示，不返回明文。Docker 在独立持久卷自动生成加密密钥；源码部署可用私有 `SETTINGS_ENCRYPTION_KEY` 或私有 `JWT_SECRET`，已知演示密钥不可用于保存 API key。更换加密密钥后须重新填写 |
 | Paper orders & real-execution notes | ✅ In your own DB | 模拟交易与自报的真实成交记录分表存储；不会自动改写真实交易流水 |
 | Password | ✅ bcrypt 哈希 | 明文密码不落库、不记日志 |
+| Recovery code | ✅ SHA-256 哈希 | 注册或重置时只在当前页面显示一次；请离线保存。丢失密码和恢复码后无法自助找回 |
 
 > 账号体系已落地：自建「用户名 + 密码」登录（`server/modules/auth`），JWT 会话，
 > 无 cookie、无 CSRF 面。注册可通过 `REGISTER_ENABLED=false` 关闭。
+> 浏览器会把会话令牌保存在本地存储。请勿在不受信任的公共电脑上登录；
+> 账号恢复会撤销旧会话。
 
 ## What leaves your machine
 

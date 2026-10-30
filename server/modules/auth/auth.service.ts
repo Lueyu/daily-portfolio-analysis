@@ -19,12 +19,13 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import bcrypt from 'bcryptjs';
+import { createHash, randomBytes } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
 import {
   DRIZZLE_DATABASE,
   type PostgresJsDatabase,
 } from '../../common/platform/database.provider';
-import { users } from '../../database/schema';
+import { agentSessions, users } from '../../database/schema';
 import { signAccessToken, signRefreshToken, verifyRefreshToken } from './jwt';
 
 /** Shape returned by register/login/refresh. */
@@ -32,6 +33,11 @@ export interface AuthResult {
   user: { id: string; username: string; displayName: string | null };
   accessToken: string;
   refreshToken: string;
+  recoveryCode?: string;
+}
+
+function recoveryHash(code: string): string {
+  return createHash('sha256').update(code.toLowerCase()).digest('hex');
 }
 
 /** Username rules: 2-32 chars of letters/digits/._- */
@@ -46,8 +52,8 @@ function normalizeUsername(raw: string): string {
 }
 
 function validatePassword(raw: string): void {
-  if (typeof raw !== 'string' || raw.length < 6 || raw.length > 128) {
-    throw new BadRequestException('Password must be 6-128 characters');
+  if (typeof raw !== 'string' || raw.length < 12 || raw.length > 128) {
+    throw new BadRequestException('Password must be 12-128 characters');
   }
 }
 
@@ -78,16 +84,18 @@ export class AuthService {
     }
 
     const passwordHash = await bcrypt.hash(input.password, 10);
+    const recoveryCode = randomBytes(24).toString('hex');
     const [created] = await this.db
       .insert(users)
       .values({
         username,
         passwordHash,
+        recoveryCodeHash: recoveryHash(recoveryCode),
         displayName: input.displayName?.trim() || username,
       })
-      .returning({ id: users.id, username: users.username, displayName: users.displayName });
+      .returning({ id: users.id, username: users.username, displayName: users.displayName, sessionVersion: users.sessionVersion });
 
-    return this.issueTokens(created);
+    return { ...this.issueTokens(created), recoveryCode };
   }
 
   /** Verify credentials and issue tokens. */
@@ -108,7 +116,52 @@ export class AuthService {
       id: user.id,
       username: user.username,
       displayName: user.displayName,
+      sessionVersion: user.sessionVersion,
     });
+  }
+
+  /** One-time offline recovery code replaces the password and all prior sessions. */
+  async recoverAccount(input: { username?: string; recoveryCode?: string; newPassword?: string }): Promise<AuthResult> {
+    const code = input.recoveryCode?.trim() ?? '';
+    if (!/^[a-fA-F0-9]{48}$/.test(code)) throw new UnauthorizedException('Invalid recovery code');
+    validatePassword(input.newPassword ?? '');
+    const username = normalizeUsername(input.username ?? '');
+    const [user] = await this.db.select().from(users).where(eq(users.username, username));
+    if (!user?.recoveryCodeHash || user.recoveryCodeHash !== recoveryHash(code)) {
+      throw new UnauthorizedException('Invalid recovery code');
+    }
+    const passwordHash = await bcrypt.hash(input.newPassword!, 10);
+    const nextCode = randomBytes(24).toString('hex');
+    return this.db.transaction(async (tx) => {
+      const [updated] = await tx.update(users).set({
+        passwordHash,
+        recoveryCodeHash: recoveryHash(nextCode),
+        sessionVersion: user.sessionVersion + 1,
+        updatedAt: new Date(),
+      }).where(and(eq(users.id, user.id), eq(users.recoveryCodeHash, user.recoveryCodeHash)))
+        .returning({ id: users.id, username: users.username, displayName: users.displayName, sessionVersion: users.sessionVersion });
+      if (!updated) throw new UnauthorizedException('Invalid recovery code');
+      await tx.update(agentSessions).set({ status: 'revoked', updatedAt: new Date() })
+        .where(eq(agentSessions.owner, user.id));
+      return { ...this.issueTokens(updated), recoveryCode: nextCode };
+    });
+  }
+
+  /** Let an existing signed-in user create or rotate an offline recovery code. */
+  async rotateRecoveryCode(userId: string, password: string): Promise<AuthResult> {
+    const [user] = await this.db.select().from(users).where(eq(users.id, userId));
+    if (!user || !await bcrypt.compare(password ?? '', user.passwordHash)) {
+      throw new UnauthorizedException('Invalid password');
+    }
+    const code = randomBytes(24).toString('hex');
+    const [updated] = await this.db.update(users).set({
+      recoveryCodeHash: recoveryHash(code),
+      sessionVersion: user.sessionVersion + 1,
+      updatedAt: new Date(),
+    }).where(and(eq(users.id, user.id), eq(users.sessionVersion, user.sessionVersion)))
+      .returning({ id: users.id, username: users.username, displayName: users.displayName, sessionVersion: users.sessionVersion });
+    if (!updated) throw new UnauthorizedException('Please sign in again');
+    return { ...this.issueTokens(updated), recoveryCode: code };
   }
 
   /** Rotate tokens from a valid refresh token. */
@@ -121,11 +174,11 @@ export class AuthService {
       throw new UnauthorizedException('Refresh token is invalid or expired');
     }
     const [user] = await this.db
-      .select({ id: users.id, username: users.username, displayName: users.displayName })
+      .select({ id: users.id, username: users.username, displayName: users.displayName, sessionVersion: users.sessionVersion })
       .from(users)
       .where(and(eq(users.id, payload.sub), eq(users.username, payload.username)));
-    if (!user) {
-      throw new NotFoundException('Account not found');
+    if (!user || (payload.ver ?? 0) !== user.sessionVersion) {
+      throw new UnauthorizedException('Refresh token is invalid or expired');
     }
     return this.issueTokens(user);
   }
@@ -156,11 +209,12 @@ export class AuthService {
     id: string;
     username: string;
     displayName: string | null;
+    sessionVersion: number;
   }): AuthResult {
     return {
       user: { id: user.id, username: user.username, displayName: user.displayName },
-      accessToken: signAccessToken({ id: user.id, username: user.username }),
-      refreshToken: signRefreshToken({ id: user.id, username: user.username }),
+      accessToken: signAccessToken({ id: user.id, username: user.username, sessionVersion: user.sessionVersion }),
+      refreshToken: signRefreshToken({ id: user.id, username: user.username, sessionVersion: user.sessionVersion }),
     };
   }
 }

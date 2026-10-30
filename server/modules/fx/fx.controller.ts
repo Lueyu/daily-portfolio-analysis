@@ -3,8 +3,7 @@
  *
  * Exposes foreign-exchange rate endpoints under `/api/fx`: latest rate for a
  * currency pair, rates for a given date, and a manual refresh from the upstream
- * provider. These routes are not behind `@NeedLogin()`; rates are generic reference
- * data.
+ * provider. Routes require a signed-in user to avoid anonymous provider abuse.
  */
 import {
   Controller,
@@ -15,6 +14,7 @@ import {
 } from '@nestjs/common';
 
 import { FxService } from './fx.service';
+import { NeedLogin } from '../../common/platform/need-login.decorator';
 import type { FxRate } from '@shared/api.interface';
 
 /** Generic list response wrapper. */
@@ -26,6 +26,7 @@ interface ListResponse<T> {
  * REST controller for FX rates. Delegates to `FxService`.
  */
 @Controller('api/fx')
+@NeedLogin()
 export class FxController {
   constructor(private readonly fxService: FxService) {}
 

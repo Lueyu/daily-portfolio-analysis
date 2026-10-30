@@ -80,6 +80,8 @@ without one. An optional [Finnhub](https://finnhub.io/docs/api) key adds
 US-company metrics and news. Stock quotes and dashboard indices use public
 providers by default and may be delayed or unavailable. Details:
 [self-hosting guide](docs/self-hosting.md).
+For an internet-facing deployment without demo data, use the
+[public deployment guide](docs/public-deployment.md).
 
 > 🧡 The app is free and open source. External LLM and market-data providers
 > may charge for usage under your own account and plan.
@@ -88,7 +90,7 @@ providers by default and may be delayed or unavailable. Details:
 
 - ✅ Multi-agent research reports (bull/bear debate, critic, risk gates, versioned)
 - ✅ One-command Docker demo with fictional data
-- ✅ **First-party accounts** — username + password (bcrypt), JWT sessions, no phone number, no email verification, registration toggle via env
+- ✅ **First-party accounts** — username + password (bcrypt), offline recovery codes, revocable JWT sessions, no phone number or email verification, registration toggle via env
 - ✅ **AI paper trading** — signal-driven watchbot with hard guardrails (daily-loss circuit breaker, per-order/per-day caps), market-clock aware, and push notifications on fills (Webhook / Bark / Server酱 / SMTP / Telegram); **MCP server** for connecting external AI agents (Claude / ChatGPT) with per-agent spending limits, read/trade permissions and approval modes
 - ✅ **Beginner Agent Builder** — versioned templates and explicit limits, behavior preview, one active profile, paper proposals, optional push, and manual real-execution recording
 - ✅ **Per-user API settings** — guided OpenAI-compatible LLM and Finnhub setup, encrypted keys, and connection tests

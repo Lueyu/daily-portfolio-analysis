@@ -61,6 +61,7 @@ const PUBLIC_AUTH_PATHS = [
   '/api/auth/login',
   '/api/auth/register',
   '/api/auth/refresh',
+  '/api/auth/recover',
 ];
 
 http.interceptors.response.use(

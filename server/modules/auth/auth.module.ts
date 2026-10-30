@@ -10,11 +10,13 @@ import { APP_GUARD } from '@nestjs/core';
 import { AuthGlobalGuard } from '../../common/platform/auth.guard';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
+import { AuthRateLimiter } from './auth-rate-limiter';
 
 @Module({
   controllers: [AuthController],
   providers: [
     AuthService,
+    AuthRateLimiter,
     {
       provide: APP_GUARD,
       useClass: AuthGlobalGuard,

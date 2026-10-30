@@ -13,12 +13,14 @@ export interface AccessPayload {
   sub: string;
   username: string;
   typ: 'access';
+  ver?: number;
 }
 
 export interface RefreshPayload {
   sub: string;
   username: string;
   typ: 'refresh';
+  ver?: number;
 }
 
 function getSecret(): string {
@@ -32,15 +34,15 @@ function getSecret(): string {
 }
 
 /** Sign a short-lived access token (default 2h). */
-export function signAccessToken(user: { id: string; username: string }): string {
-  return jwt.sign({ sub: user.id, username: user.username, typ: 'access' }, getSecret(), {
+export function signAccessToken(user: { id: string; username: string; sessionVersion?: number }): string {
+  return jwt.sign({ sub: user.id, username: user.username, typ: 'access', ver: user.sessionVersion ?? 0 }, getSecret(), {
     expiresIn: (process.env.ACCESS_TOKEN_TTL ?? '2h') as jwt.SignOptions['expiresIn'],
   });
 }
 
 /** Sign a long-lived refresh token (default 30d). */
-export function signRefreshToken(user: { id: string; username: string }): string {
-  return jwt.sign({ sub: user.id, username: user.username, typ: 'refresh' }, getSecret(), {
+export function signRefreshToken(user: { id: string; username: string; sessionVersion?: number }): string {
+  return jwt.sign({ sub: user.id, username: user.username, typ: 'refresh', ver: user.sessionVersion ?? 0 }, getSecret(), {
     expiresIn: (process.env.REFRESH_TOKEN_TTL ?? '30d') as jwt.SignOptions['expiresIn'],
   });
 }

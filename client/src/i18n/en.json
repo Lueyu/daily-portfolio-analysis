@@ -22,7 +22,7 @@
     "loggingIn": "Signing in…", "creating": "Creating…", "createAccount": "Create Account",
     "hasAccount": "Already have an account?", "noAccount": "No account yet?",
     "demoHint": "Docker demo: demo / demo1234 (click to fill)",
-    "privacyLine": "We only store your username and a password hash — no phone number, no email verification, zero telemetry.",
+    "privacyLine": "We store your username, password hash, and recovery-code hash — no phone number, no email verification, zero telemetry.",
     "privacyLink": "Privacy Policy", "loginFailed": "Sign-in failed, please try again",
     "registerFailed": "Registration failed, please try again",
     "enterCredentials": "Please enter username and password",
@@ -30,7 +30,15 @@
     "welcomeJoin": "Welcome to Squabble",
     "usernamePlaceholder": "2-32 letters, digits, or . _ -",
     "nicknamePlaceholder": "What should we call you",
-    "passwordPlaceholder": "At least 6 characters", "confirmPlaceholder": "Type it again"
+    "passwordPlaceholder": "At least 12 characters", "confirmPlaceholder": "Type it again",
+    "forgotPassword": "Forgot password?", "recoverTitle": "Recover your account", "recoverSubtitle": "Use the recovery code you saved when you registered.",
+    "recoveryCodeLabel": "Recovery code", "recoveryCodePlaceholder": "48-character recovery code", "newPassword": "New password",
+    "recoverButton": "Reset password", "recovering": "Resetting…", "recoverFailed": "Recovery failed. Check your username and code.",
+    "recoveryCodeExplanation": "Save this recovery code now. It is the only way to reset your password without email.",
+    "recoveryCodeWarning": "It is shown only once. Store it privately, away from this device. Each reset replaces the previous code.",
+    "savedRecoveryCode": "I've saved my code", "backToLogin": "Back to sign in",
+    "recoverySettingsTitle": "Account recovery", "recoverySettingsSubtitle": "Generate a recovery code for this account. Creating a new one replaces the old code and signs out other sessions.",
+    "generateRecoveryCode": "Generate recovery code", "recoveryGenerateFailed": "Could not generate a code. Check your password."
   },
   "dash": {
     "title": "Investment Dashboard", "subtitle": "Full-asset overview, market grouping and daily P&L",

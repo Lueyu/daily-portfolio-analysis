@@ -27,6 +27,7 @@ function RegisterPage() {
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [recoveryCode, setRecoveryCode] = useState('');
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -43,7 +44,8 @@ function RegisterPage() {
       const result = await apiRegister({ username: username.trim(), password, displayName: displayName.trim() || undefined });
       tokenStore.save(result.accessToken, result.refreshToken);
       toast.success(`${t('auth.welcomeJoin')}, ${result.user.displayName ?? result.user.username}`);
-      navigate('/', { replace: true });
+      if (result.recoveryCode) setRecoveryCode(result.recoveryCode);
+      else navigate('/', { replace: true });
     } catch (error) {
       toast.error(errorMessage(error) || t('auth.registerFailed'));
     } finally {
@@ -53,6 +55,14 @@ function RegisterPage() {
 
   return (
     <AuthShell title={t('auth.registerTitle')} subtitle={t('auth.registerTagline')}>
+      {recoveryCode ? (
+        <div className="mt-8 space-y-5">
+          <p className="text-sm leading-relaxed">{t('auth.recoveryCodeExplanation')}</p>
+          <div className="rounded-xl border border-border bg-muted p-4 font-mono text-sm break-all select-all" aria-label={t('auth.recoveryCodeLabel')}>{recoveryCode}</div>
+          <p className="text-xs leading-relaxed text-muted-foreground">{t('auth.recoveryCodeWarning')}</p>
+          <Button type="button" className="w-full" onClick={() => navigate('/', { replace: true })}>{t('auth.savedRecoveryCode')}</Button>
+        </div>
+      ) : <>
       <form className="mt-8 space-y-4" onSubmit={handleSubmit}>
         <div className="space-y-2">
           <Label htmlFor="username">{t('auth.username')}</Label>
@@ -64,7 +74,7 @@ function RegisterPage() {
         </div>
         <div className="space-y-2">
           <Label htmlFor="password">{t('auth.password')}</Label>
-          <Input id="password" type="password" autoComplete="new-password" placeholder={t('auth.passwordPlaceholder')} value={password} onChange={(e) => setPassword(e.target.value)} />
+          <Input id="password" type="password" autoComplete="new-password" minLength={12} maxLength={128} placeholder={t('auth.passwordPlaceholder')} value={password} onChange={(e) => setPassword(e.target.value)} />
         </div>
         <div className="space-y-2">
           <Label htmlFor="confirm">{t('auth.confirmPassword')}</Label>
@@ -81,6 +91,7 @@ function RegisterPage() {
           {t('auth.login')}
         </Link>
       </div>
+      </>}
     </AuthShell>
   );
 }
