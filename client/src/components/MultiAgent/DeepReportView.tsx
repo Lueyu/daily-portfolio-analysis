@@ -28,6 +28,7 @@ import {
 } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 import { useTranslation } from 'react-i18next';
+import { formatScenarioProbabilities } from './scenario-probability';
 import type {
   DeepReport,
   AgentRating,
@@ -900,10 +901,10 @@ const CatalystsSection: React.FC<{ report: DeepReport }> = ({ report }) => {
   };
 
   const catalystTypeColor: Record<CatalystItem['type'], string> = {
-    earnings: 'bg-blue-500/20 text-blue-300 border-blue-500/40',
-    product: 'bg-violet-500/20 text-violet-300 border-violet-500/40',
+    earnings: 'bg-blue-500/20 text-blue-800 dark:text-blue-300 border-blue-500/40',
+    product: 'bg-violet-500/20 text-violet-800 dark:text-violet-300 border-violet-500/40',
     policy: 'bg-amber-500/20 text-amber-800 dark:text-amber-300 border-amber-500/40',
-    industry: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40',
+    industry: 'bg-cyan-500/20 text-cyan-800 dark:text-cyan-300 border-cyan-500/40',
     other: 'bg-slate-500/20 text-foreground/85 border-slate-500/40',
   };
 
@@ -1268,6 +1269,7 @@ const DeepReportView: React.FC<DeepReportViewProps> = ({
   const { t } = useTranslation();
   const [activeSection, setActiveSection] = useState<string>('');
   const contentRef = useRef<HTMLDivElement>(null);
+  const probabilities = formatScenarioProbabilities(report);
 
   // Build section list based on actual data
   const sections: SectionDef[] = [
@@ -1485,7 +1487,7 @@ const DeepReportView: React.FC<DeepReportViewProps> = ({
                   </p>
                   {report.probBear != null && (
                     <p className="text-xs text-rose-700/70 dark:text-rose-400/70 mt-0.5">
-                      {t('ui.report.probabilityValue', { value: report.probBear })}
+                      {t('ui.report.probabilityValue', { value: probabilities.probBear })}
                     </p>
                   )}
                 </CardContent>
@@ -1500,7 +1502,7 @@ const DeepReportView: React.FC<DeepReportViewProps> = ({
                   </p>
                   {report.probBase != null && (
                     <p className="text-xs text-amber-700/70 dark:text-amber-400/70 mt-0.5">
-                      {t('ui.report.probabilityValue', { value: report.probBase })}
+                      {t('ui.report.probabilityValue', { value: probabilities.probBase })}
                     </p>
                   )}
                 </CardContent>
@@ -1515,7 +1517,7 @@ const DeepReportView: React.FC<DeepReportViewProps> = ({
                   </p>
                   {report.probBull != null && (
                     <p className="text-xs text-emerald-700/70 dark:text-emerald-400/70 mt-0.5">
-                      {t('ui.report.probabilityValue', { value: report.probBull })}
+                      {t('ui.report.probabilityValue', { value: probabilities.probBull })}
                     </p>
                   )}
                 </CardContent>
