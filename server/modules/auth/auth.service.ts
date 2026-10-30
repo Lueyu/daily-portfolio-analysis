@@ -40,14 +40,14 @@ const USERNAME_PATTERN = /^[a-zA-Z0-9_.-]{2,32}$/;
 function normalizeUsername(raw: string): string {
   const username = (raw ?? '').trim().toLowerCase();
   if (!USERNAME_PATTERN.test(username)) {
-    throw new BadRequestException('用户名需为 2-32 位字母、数字或 . _ -');
+    throw new BadRequestException('Username must be 2-32 letters, digits, or . _ -');
   }
   return username;
 }
 
 function validatePassword(raw: string): void {
   if (typeof raw !== 'string' || raw.length < 6 || raw.length > 128) {
-    throw new BadRequestException('密码长度需在 6-128 位之间');
+    throw new BadRequestException('Password must be 6-128 characters');
   }
 }
 
@@ -64,7 +64,7 @@ export class AuthService {
     displayName?: string;
   }): Promise<AuthResult> {
     if (process.env.REGISTER_ENABLED === 'false') {
-      throw new BadRequestException('该实例已关闭注册');
+      throw new BadRequestException('Registration is disabled on this instance');
     }
     const username = normalizeUsername(input.username);
     validatePassword(input.password);
@@ -74,7 +74,7 @@ export class AuthService {
       .from(users)
       .where(eq(users.username, username));
     if (existing) {
-      throw new ConflictException('用户名已被占用');
+      throw new ConflictException('Username is already taken');
     }
 
     const passwordHash = await bcrypt.hash(input.password, 10);
@@ -98,11 +98,11 @@ export class AuthService {
       .from(users)
       .where(eq(users.username, username));
     if (!user) {
-      throw new UnauthorizedException('用户名或密码错误');
+      throw new UnauthorizedException('Invalid username or password');
     }
     const ok = await bcrypt.compare(input.password ?? '', user.passwordHash);
     if (!ok) {
-      throw new UnauthorizedException('用户名或密码错误');
+      throw new UnauthorizedException('Invalid username or password');
     }
     return this.issueTokens({
       id: user.id,
@@ -114,18 +114,18 @@ export class AuthService {
   /** Rotate tokens from a valid refresh token. */
   async refresh(refreshToken: string | undefined): Promise<AuthResult> {
     if (!refreshToken) {
-      throw new UnauthorizedException('缺少 refresh token');
+      throw new UnauthorizedException('Missing refresh token');
     }
     const payload = verifyRefreshToken(refreshToken);
     if (!payload) {
-      throw new UnauthorizedException('refresh token 无效或已过期');
+      throw new UnauthorizedException('Refresh token is invalid or expired');
     }
     const [user] = await this.db
       .select({ id: users.id, username: users.username, displayName: users.displayName })
       .from(users)
       .where(and(eq(users.id, payload.sub), eq(users.username, payload.username)));
     if (!user) {
-      throw new NotFoundException('账号不存在');
+      throw new NotFoundException('Account not found');
     }
     return this.issueTokens(user);
   }
@@ -147,7 +147,7 @@ export class AuthService {
       .from(users)
       .where(eq(users.id, userId));
     if (!user) {
-      throw new NotFoundException('账号不存在');
+      throw new NotFoundException('Account not found');
     }
     return user;
   }

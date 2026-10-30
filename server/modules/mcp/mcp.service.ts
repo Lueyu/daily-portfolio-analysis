@@ -93,7 +93,7 @@ export class McpService {
   /** Create a new agent session and return it with the token (shown once). */
   async createSession(userId: string, dto: CreateAgentSessionDto): Promise<AgentSession> {
     const name = (dto.name ?? '').trim();
-    if (!name) throw new BadRequestException('请填写代理名称');
+    if (!name) throw new BadRequestException('Please provide an agent name');
     const token = generateToken();
     const [row] = await this.db
       .insert(agentSessions)
@@ -126,7 +126,7 @@ export class McpService {
       .set(values)
       .where(and(eq(agentSessions.owner, userId), eq(agentSessions.id, id)))
       .returning();
-    if (!row) throw new NotFoundException('会话不存在');
+    if (!row) throw new NotFoundException('Session not found');
     return this.mapSession(row);
   }
 
@@ -144,13 +144,13 @@ export class McpService {
 
   /** Validate the Bearer token against an active agent session. */
   async authenticate(token: string): Promise<McpSessionContext> {
-    if (!token) throw new UnauthorizedException('缺少 MCP token');
+    if (!token) throw new UnauthorizedException('Missing MCP token');
     const [row] = await this.db
       .select()
       .from(agentSessions)
       .where(eq(agentSessions.token, token));
-    if (!row) throw new UnauthorizedException('MCP token 无效');
-    if (row.status !== 'active') throw new ForbiddenException('该代理会话已被吊销');
+    if (!row) throw new UnauthorizedException('Invalid MCP token');
+    if (row.status !== 'active') throw new ForbiddenException('This agent session has been revoked');
     // Track usage.
     await this.db
       .update(agentSessions)
@@ -308,7 +308,7 @@ export class McpService {
 
   private async toolGetQuotes(_ctx: McpSessionContext, args: Record<string, unknown>) {
     const tickers = Array.isArray(args.tickers) ? args.tickers.map(String) : [];
-    if (tickers.length === 0) throw new BadRequestException('tickers 不能为空');
+    if (tickers.length === 0) throw new BadRequestException('tickers cannot be empty');
     const quotes = await this.quoteService.getBatchQuotes(tickers.slice(0, 20));
     return quotes.map((q) => ({
       ticker: q.symbol,
@@ -323,7 +323,7 @@ export class McpService {
 
   private async toolGetResearchReport(_ctx: McpSessionContext, args: Record<string, unknown>) {
     const ticker = String(args.ticker ?? '').trim().toUpperCase();
-    if (!ticker) throw new BadRequestException('ticker 不能为空');
+    if (!ticker) throw new BadRequestException('ticker cannot be empty');
     const [report] = await this.db
       .select()
       .from(deepReport)
@@ -353,14 +353,14 @@ export class McpService {
 
   private async toolPlaceOrder(ctx: McpSessionContext, args: Record<string, unknown>) {
     if (ctx.permission !== 'trade') {
-      throw new ForbiddenException('该代理会话只有只读权限，无法下单');
+      throw new ForbiddenException('This agent session is read-only and cannot place orders');
     }
     const ticker = String(args.ticker ?? '').trim();
     const side = String(args.side ?? '').trim();
     const quantity = Math.floor(Number(args.quantity));
-    if (!ticker) throw new BadRequestException('ticker 不能为空');
-    if (side !== 'buy' && side !== 'sell') throw new BadRequestException('side 必须为 buy 或 sell');
-    if (!Number.isFinite(quantity) || quantity <= 0) throw new BadRequestException('quantity 必须为正整数');
+    if (!ticker) throw new BadRequestException('ticker cannot be empty');
+    if (side !== 'buy' && side !== 'sell') throw new BadRequestException('side must be buy or sell');
+    if (!Number.isFinite(quantity) || quantity <= 0) throw new BadRequestException('quantity must be a positive integer');
 
     // Check the session's daily spending limit for today.
     const todaySpend = await this.todaySessionSpend(ctx.sessionId);
@@ -427,7 +427,7 @@ export class McpService {
 
   private async toolImportHoldings(ctx: McpSessionContext, args: Record<string, unknown>) {
     const rows = Array.isArray(args.rows) ? args.rows : [];
-    if (rows.length === 0) throw new BadRequestException('rows 不能为空');
+    if (rows.length === 0) throw new BadRequestException('rows cannot be empty');
     const source = String(args.source ?? 'mcp');
     const result = await this.importService.commit(ctx.userId, {
       source: source as 'csv',

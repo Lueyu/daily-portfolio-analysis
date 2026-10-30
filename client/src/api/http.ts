@@ -49,6 +49,9 @@ http.interceptors.request.use((config) => {
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+  // Tell the server which language the client is using (bilingual errors).
+  const lang = localStorage.getItem('sq-lang') ?? 'zh-CN';
+  config.headers['X-Lang'] = lang;
   return config;
 });
 

@@ -47,12 +47,12 @@ export class ImportService {
     failed: Array<{ ticker: string; reason: string }>;
   }> {
     const rows = dto.rows ?? [];
-    if (rows.length === 0) throw new BadRequestException('没有可导入的行');
+    if (rows.length === 0) throw new BadRequestException('No rows to import');
     if (rows.length > MAX_ROWS_PER_IMPORT) {
       throw new BadRequestException(`单次最多导入 ${MAX_ROWS_PER_IMPORT} 行（收到 ${rows.length} 行）`);
     }
     if (!['csv', 'robinhood', 'ocr'].includes(dto.source)) {
-      throw new BadRequestException('未知的导入来源');
+      throw new BadRequestException('Unknown import source');
     }
 
     // Existing tickers -> skip list. Comparison happens on a canonical key
@@ -70,24 +70,24 @@ export class ImportService {
     for (const row of rows) {
       const raw = (row.ticker ?? '').toString().trim();
       if (!raw) {
-        failures.push({ ticker: '(空)', reason: '缺少股票代码' });
+        failures.push({ ticker: '(空)', reason: 'Missing ticker' });
         continue;
       }
       let info: ReturnType<QuoteService['detectMarket']>;
       try {
         info = this.quoteService.detectMarket(raw);
       } catch {
-        failures.push({ ticker: raw, reason: '无法识别该代码所属市场' });
+        failures.push({ ticker: raw, reason: 'Cannot identify market for this ticker' });
         continue;
       }
       const shares = Number(row.shares);
       if (!Number.isFinite(shares) || shares <= 0) {
-        failures.push({ ticker: raw, reason: '股数无效（需大于 0）' });
+        failures.push({ ticker: raw, reason: 'Invalid share count (must be > 0)' });
         continue;
       }
       const avgCost = row.avgCost == null ? null : Number(row.avgCost);
       if (avgCost != null && (!Number.isFinite(avgCost) || avgCost < 0)) {
-        failures.push({ ticker: raw, reason: '成本价无效' });
+        failures.push({ ticker: raw, reason: 'Invalid cost price' });
         continue;
       }
       const ticker = normalizeTickerForStorage(raw, info.market);

@@ -244,14 +244,14 @@ export class PaperTradingService {
   ): Promise<PaperOrder> {
     const account = await this.requireAccount(userId);
     if (dto.orderType && dto.orderType !== 'market') {
-      throw new BadRequestException('V1 仅支持市价单（market）');
+      throw new BadRequestException('V1 only supports market orders');
     }
     const quantity = Math.floor(Number(dto.quantity));
     if (!Number.isFinite(quantity) || quantity <= 0) {
-      throw new BadRequestException('数量必须为正整数');
+      throw new BadRequestException('Quantity must be a positive integer');
     }
     if (dto.side !== 'buy' && dto.side !== 'sell') {
-      throw new BadRequestException('side 必须为 buy 或 sell');
+      throw new BadRequestException('Side must be buy or sell');
     }
 
     const price = await this.resolvePrice(userId, dto.ticker);
@@ -485,7 +485,7 @@ export class PaperTradingService {
       .where(and(eq(paperOrders.id, orderId), eq(paperOrders.owner, userId)));
     if (!order) throw new NotFoundException('订单不存在');
     if (order.status !== 'pending_approval') {
-      throw new BadRequestException('该订单不在待审批状态');
+      throw new BadRequestException('Order is not in pending approval state');
     }
 
     const price = await this.resolvePrice(userId, order.ticker);
@@ -536,7 +536,7 @@ export class PaperTradingService {
       .where(and(eq(paperOrders.id, orderId), eq(paperOrders.owner, userId)));
     if (!order) throw new NotFoundException('订单不存在');
     if (order.status !== 'pending_approval') {
-      throw new BadRequestException('该订单不在待审批状态');
+      throw new BadRequestException('Order is not in pending approval state');
     }
     const [updated] = await this.db
       .update(paperOrders)
@@ -660,7 +660,7 @@ export class PaperTradingService {
   }> {
     const account = await this.requireAccount(userId);
     if (!account.botEnabled) {
-      throw new BadRequestException('盯盘代理未开启');
+      throw new BadRequestException('Bot is not enabled');
     }
 
     // Universe: the caller's real holdings + watchlist carry the ratings and
@@ -835,7 +835,7 @@ export class PaperTradingService {
   /** Throw 404 unless the caller has a paper account. */
   private async requireAccount(userId: string) {
     const rows = await this.db.select().from(paperAccounts).where(eq(paperAccounts.owner, userId));
-    if (!rows[0]) throw new NotFoundException('模拟盘账户不存在');
+    if (!rows[0]) throw new NotFoundException('Paper account not found');
     return rows[0];
   }
 
