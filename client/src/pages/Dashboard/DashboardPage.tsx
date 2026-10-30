@@ -24,7 +24,6 @@ import {
   BarChart3,
   PieChart,
   ChevronDown,
-  RefreshCw,
   Clock,
   Sparkles,
   AlertTriangle,
@@ -40,12 +39,12 @@ import type {
   GroupSummary,
   Holding,
   Currency,
-  Market,
   AgentRunWithRating,
   RiskGateResult,
 } from '@shared/api.interface';
 import RatingBadge from '@/components/MultiAgent/RatingBadge';
 import ConfidenceBadge from '@/components/MultiAgent/ConfidenceBadge';
+import { Mascot } from '@/components/Mascot';
 import { useMarketQuotes } from '@/hooks/use-market-quotes';
 import { MarketStatusBadges } from '@/components/MarketStatusBadges';
 import {
@@ -76,7 +75,6 @@ import {
   EmptyHeader,
   EmptyTitle,
   EmptyDescription,
-  EmptyContent,
 } from '@/components/ui/empty';
 import {
   Select,
@@ -89,6 +87,7 @@ import DailyPlChart from './DailyPlChart';
 import DailyPnLBreakdown from './DailyPnLBreakdown';
 import { Badge } from '@/components/ui/badge';
 import { useTranslation } from 'react-i18next';
+import './dashboard-design.css';
 
 /**
  * Pick a display company name, returning null when the name is effectively
@@ -282,7 +281,7 @@ export default function DashboardPage() {
         percent: true,
       },
     ],
-    []
+    [t]
   );
 
   /** Group-level summaries sorted by market value (desc) for the market table. */
@@ -419,29 +418,38 @@ export default function DashboardPage() {
 
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col items-start justify-between gap-3 md:flex-row md:items-center">
-        <div>
-          <h1 className="font-serif text-3xl font-semibold tracking-tight text-foreground">
-            {t('dash.title')}
-          </h1>
-          <p className="mt-1 flex flex-wrap items-center gap-1.5 text-sm text-muted-foreground">
-            <MarketStatusBadges
-              marketStatus={marketStatus}
-              marketErrors={marketErrors}
-              lastUpdated={lastUpdated}
-            />
-          </p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {t('dash.subtitle')}
-          </p>
+    <div className="dashboard-page space-y-5">
+      <section className="dashboard-hero" aria-labelledby="dashboard-title">
+        <div className="dashboard-hero-main">
+          <div className="dashboard-mascot-frame" aria-hidden="true">
+            <Mascot className="dashboard-hero-mascot" />
+          </div>
+          <div className="dashboard-hero-copy">
+            <span className="dashboard-eyebrow">{t('auth.welcomeBack')}</span>
+            <h1 id="dashboard-title" className="font-serif text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
+              {t('dash.title')}
+            </h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {t('dash.subtitle')}
+            </p>
+            <div className="dashboard-market-status">
+              <MarketStatusBadges
+                marketStatus={marketStatus}
+                marketErrors={marketErrors}
+                lastUpdated={lastUpdated}
+              />
+            </div>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="dashboard-currency-control">
+          <label htmlFor="dashboard-base-currency" className="text-xs text-muted-foreground">
+            {t('ui.dashboard.baseCurrency')}
+          </label>
           <Select
             value={baseCurrency}
             onValueChange={(v) => setBaseCurrency(v as Currency)}
           >
-            <SelectTrigger className="w-[160px]">
+            <SelectTrigger id="dashboard-base-currency" className="w-[160px] bg-card">
               <SelectValue placeholder={t('ui.dashboard.baseCurrency')} />
             </SelectTrigger>
             <SelectContent>
@@ -453,13 +461,13 @@ export default function DashboardPage() {
             </SelectContent>
           </Select>
         </div>
-      </div>
+      </section>
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+      <div className="dashboard-metrics" data-ai-section-type="card-stat">
         {loading
           ? Array.from({ length: 6 }).map((_, i) => (
-              <Card key={i}>
-                <CardContent className="min-w-0 p-3 sm:p-4">
+              <Card key={i} className="metric-card">
+                <CardContent className="metric-card-content">
                   <Skeleton className="mb-2 h-4 w-16" />
                   <Skeleton className="h-7 w-24" />
                 </CardContent>
@@ -472,18 +480,19 @@ export default function DashboardPage() {
                 ? formatPercent(value)
                 : formatCurrencyWithCode(value, baseCurrency);
               return (
-                <Card key={m.key}>
-                  <CardContent className="flex min-w-0 flex-col p-3 sm:p-4">
-                    <div className="flex min-h-8 items-start gap-1.5 text-xs leading-4 text-muted-foreground">
-                      <m.icon size={14} className="mt-0.5 shrink-0 text-primary" />
+                <Card key={m.key} className={cn('metric-card', m.large && 'metric-card-primary')}>
+                  <CardContent className="metric-card-content">
+                    <div className="metric-label">
+                      <m.icon size={15} className="metric-icon" aria-hidden="true" />
                       <span className="min-w-0">{m.label}</span>
                     </div>
                     <div
                       className={cn(
-                        'mt-1 min-w-0 whitespace-nowrap font-mono text-base font-semibold tabular-nums sm:text-lg',
-                        m.large ? 'xl:text-xl' : '',
+                        'metric-value font-mono font-semibold tabular-nums',
+                        displayValue.length > 12 && 'metric-value-compact',
                         colorCls
                       )}
+                      title={displayValue}
                     >
                       {displayValue}
                     </div>
@@ -493,24 +502,24 @@ export default function DashboardPage() {
             })}
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-1">
+      <div className="dashboard-analysis-grid">
+        <Card className="dashboard-panel dashboard-ai-card">
           <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Sparkles size={16} className="text-primary" />
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex min-w-0 items-center gap-2">
+                <Sparkles size={16} className="dashboard-brand-icon shrink-0" />
                 <CardTitle className="font-serif text-base">{t('dash.aiStatus')}</CardTitle>
               </div>
               <Link
                 to="/analysis"
-                className="flex items-center gap-0.5 text-xs text-primary hover:underline"
+                className="dashboard-detail-link flex shrink-0 items-center gap-0.5 text-xs hover:underline"
               >
                 {t('dash.viewAll')}
                 <ChevronDown size={12} className="-rotate-90" />
               </Link>
             </div>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="dashboard-ai-content space-y-4">
             {agentRunsLoading ? (
               <div className="space-y-3">
                 <div className="flex gap-3">
@@ -523,49 +532,49 @@ export default function DashboardPage() {
               </div>
             ) : (
               <>
-                <div className="grid grid-cols-3 gap-2">
-                  <div className="rounded-md border border-border bg-muted/30 p-2 text-center">
-                    <div className="flex items-center justify-center gap-1 text-xs text-muted-foreground">
-                      <Loader2 size={11} className="animate-spin text-primary" />
+                <div className="dashboard-ai-stats">
+                  <div className="dashboard-ai-stat">
+                    <div className="dashboard-ai-stat-label">
+                      <Loader2 size={12} className={cn('dashboard-brand-icon shrink-0', runStats.running > 0 && 'animate-spin')} />
                       {t('dash.inProgress')}
                     </div>
                     <div className="mt-0.5 font-mono text-lg font-semibold tabular-nums text-foreground">
                       {runStats.running}
                     </div>
                   </div>
-                  <div className="rounded-md border border-border bg-muted/30 p-2 text-center">
-                    <div className="flex items-center justify-center gap-1 text-xs text-muted-foreground">
-                      <Eye size={11} className="text-amber-500" />
+                  <div className="dashboard-ai-stat">
+                    <div className="dashboard-ai-stat-label">
+                      <Eye size={12} className="shrink-0 text-warning" />
                       {t('dash.awaitingDecision')}
                     </div>
-                    <div className="mt-0.5 font-mono text-lg font-semibold tabular-nums text-amber-600">
+                    <div className="mt-0.5 font-mono text-lg font-semibold tabular-nums text-warning">
                       {runStats.awaiting}
                     </div>
                   </div>
-                  <div className="rounded-md border border-border bg-muted/30 p-2 text-center">
-                    <div className="flex items-center justify-center gap-1 text-xs text-muted-foreground">
-                      <CheckCircle2 size={11} className="text-emerald-500" />
+                  <div className="dashboard-ai-stat">
+                    <div className="dashboard-ai-stat-label">
+                      <CheckCircle2 size={12} className="shrink-0 text-success" />
                       {t('dash.completed')}
                     </div>
-                    <div className="mt-0.5 font-mono text-lg font-semibold tabular-nums text-emerald-600">
+                    <div className="mt-0.5 font-mono text-lg font-semibold tabular-nums text-success">
                       {runStats.completed}
                     </div>
                   </div>
                 </div>
 
-                <div className="rounded-md border border-border p-3">
+                <div className="dashboard-ai-result">
                   <div className="mb-1.5 text-xs text-muted-foreground">{t('dash.recentCompleted')}</div>
                   {latestCompletedRun?.rating ? (
-                    <div className="flex items-center justify-between">
-                      <div className="font-medium text-foreground">
+                    <div className="dashboard-latest-result">
+                      <div className="dashboard-latest-company font-medium text-foreground">
                         {latestCompletedRun.ticker}
                         {latestCompletedRun.tickerName && (
-                          <span className="ml-1.5 text-xs text-muted-foreground">
+                          <span className="block text-xs font-normal text-muted-foreground">
                             {latestCompletedRun.tickerName}
                           </span>
                         )}
                       </div>
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
                         <RatingBadge
                           rating={latestCompletedRun.rating.rating}
                           size="sm"
@@ -581,23 +590,23 @@ export default function DashboardPage() {
                   )}
                 </div>
 
-                <div className="rounded-md border border-border p-3">
+                <div className="dashboard-ai-risk">
                   <div className="mb-1.5 text-xs text-muted-foreground">{t('dash.riskAlerts')}</div>
                   {riskGateLoading ? (
                     <div className="flex items-center gap-2">
                       <Skeleton className="h-4 w-32" />
                     </div>
                   ) : hardRuleFailures > 0 ? (
-                    <div className="flex items-center gap-2">
-                      <AlertTriangle size={14} className="text-amber-500" />
-                      <span className="text-sm font-medium text-amber-700">
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle size={14} className="mt-0.5 shrink-0 text-warning" />
+                      <span className="text-sm font-medium text-warning">
                         {t('ui.dashboard.hardRulesFailed', { count: hardRuleFailures })}
                       </span>
                     </div>
                   ) : (
-                    <div className="flex items-center gap-2">
-                      <CheckCircle2 size={14} className="text-emerald-500" />
-                      <span className="text-sm font-medium text-emerald-700">
+                    <div className="flex items-start gap-2">
+                      <CheckCircle2 size={14} className="mt-0.5 shrink-0 text-success" />
+                      <span className="text-sm font-medium text-success">
                         {t('dash.allPassed')}
                       </span>
                     </div>
@@ -608,7 +617,7 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
-        <Card className="lg:col-span-2">
+        <Card className="dashboard-panel dashboard-performance-card">
           <CardHeader className="pb-3">
             <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
               <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
@@ -642,7 +651,7 @@ export default function DashboardPage() {
             </div>
           ) : (
             <div className="space-y-5">
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
+              <div className="dashboard-performance-summary grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
                 <div>
                   <div className="text-xs text-muted-foreground">{t('ui.dashboard.dailyPlForCurrency', { currency: baseCurrency })}</div>
                   <div
@@ -690,7 +699,7 @@ export default function DashboardPage() {
               </div>
               <DailyPlChart data={dailyPl} baseCurrency={baseCurrency} />
               <div className="border-t border-border pt-4">
-                <div className="mb-2 flex items-center justify-between">
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                   <h3 className="text-sm font-medium">{t('dash.plBreakdown')}</h3>
                   <span className="text-xs text-muted-foreground">
                     {t('dash.sortedByPl', { count: holdings.length })}
@@ -709,8 +718,8 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      <Card>
-        <CardHeader className="flex-row items-center justify-between pb-3">
+      <Card className="dashboard-panel">
+        <CardHeader className="flex-row flex-wrap items-center justify-between gap-2 pb-3">
           <CardTitle className="font-serif text-lg">{t('dash.byMarket')}</CardTitle>
           <span className="text-xs text-muted-foreground">
             {t('dash.sortedByMv', { count: sortedMarkets.length })}
@@ -814,7 +823,6 @@ export default function DashboardPage() {
                         {mktHoldings.map((h) => {
                           const current = Number(h.currentPrice) || 0;
                           const buy = Number(h.buyPrice) || 0;
-                          const pl = current - buy;
                           const pct = buy > 0 ? ((current - buy) / buy) * 100 : 0;
                           const company = displayCompany(h.company, h.ticker);
                           return (
@@ -855,8 +863,8 @@ export default function DashboardPage() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader className="flex-row items-center justify-between pb-3">
+      <Card className="dashboard-panel">
+        <CardHeader className="flex-row flex-wrap items-center justify-between gap-2 pb-3">
           <CardTitle className="font-serif text-lg">{t('dash.cashDetail')}</CardTitle>
           <span className="text-xs text-muted-foreground">{t('dash.currencies', { count: dashboard?.cashByCurrency ? Object.keys(dashboard.cashByCurrency).length : 0 })}</span>
         </CardHeader>
@@ -872,10 +880,10 @@ export default function DashboardPage() {
               {Object.entries(dashboard.cashByCurrency).map(([cur, bal]) => (
                 <div
                   key={cur}
-                  className="flex items-center justify-between rounded-md border border-border bg-muted/30 px-3 py-2"
+                  className="flex min-w-0 flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-muted/30 px-3 py-2"
                 >
                   <span className="text-sm font-medium text-foreground">{cur}</span>
-                  <span className="font-mono text-sm tabular-nums">
+                  <span className="break-all font-mono text-sm tabular-nums">
                     {formatCurrencyWithCode(bal, cur)}
                   </span>
                 </div>

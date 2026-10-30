@@ -422,7 +422,7 @@ export default function HoldingsTable({
             {(sortedCurrencies.length > 0 || hasCash) && (
               <div className="px-4 py-3 border-t text-xs text-muted-foreground flex flex-wrap gap-x-4 gap-y-1">
                 {sortedCurrencies.length > 0 && (
-                  <span className="flex items-center gap-1.5">
+                  <span className="flex flex-wrap items-center gap-1.5">
                     <span className="font-medium">{t('ui.holdings.subtotal')}</span>
                     {sortedCurrencies.map((cur, i) => (
                       <span key={cur} className="font-mono-nums">
@@ -434,7 +434,7 @@ export default function HoldingsTable({
                   </span>
                 )}
                 {hasCash && (
-                  <span className="flex items-center gap-1.5">
+                  <span className="flex flex-wrap items-center gap-1.5">
                     <span className="font-medium">{t('ui.holdings.cash')}</span>
                     {Object.keys(cashByCurrency)
                       .sort()

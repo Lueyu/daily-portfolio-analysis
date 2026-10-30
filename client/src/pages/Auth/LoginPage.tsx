@@ -13,6 +13,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { apiLogin } from '@/api';
 import { tokenStore } from '@/api/http';
+import { AuthShell } from './AuthShell';
 
 function errorMessage(error: unknown): string {
   const e = error as { response?: { data?: { message?: string } }; message?: string };
@@ -50,53 +51,34 @@ function LoginPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background p-4 text-foreground safe-top safe-bottom">
-      <div className="w-full max-w-sm">
-        <div className="rounded-xl border border-border bg-card p-8 shadow-lg">
-          <div className="flex flex-col items-center text-center">
-            <img src="/logo.svg" alt="Squabble" className="h-16 w-16" />
-            <h1 className="mt-4 font-serif text-2xl font-semibold tracking-wide text-foreground">
-              {t('layout.appName')}
-            </h1>
-            <p className="mt-1 text-sm text-muted-foreground">{t('auth.tagline')}</p>
-          </div>
-
-          <form className="mt-8 space-y-4" onSubmit={handleSubmit}>
-            <div className="space-y-2">
-              <Label htmlFor="username">{t('auth.username')}</Label>
-              <Input id="username" autoComplete="username" placeholder="demo" value={username} onChange={(e) => setUsername(e.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="password">{t('auth.password')}</Label>
-              <Input id="password" type="password" autoComplete="current-password" placeholder="••••••" value={password} onChange={(e) => setPassword(e.target.value)} />
-            </div>
-            <Button type="submit" className="w-full" disabled={submitting}>
-              {submitting ? t('auth.loggingIn') : t('auth.login')}
-            </Button>
-          </form>
-
-          {IS_DEMO_HINT && (
-            <button type="button" onClick={() => { setUsername('demo'); setPassword('demo1234'); }} className="mt-4 w-full text-center text-xs text-muted-foreground hover:text-foreground">
-              {t('auth.demoHint')}
-            </button>
-          )}
-
-          <div className="mt-6 text-center text-sm text-muted-foreground">
-            {t('auth.noAccount')}
-            <Link to="/register" className="ml-1 font-medium text-foreground underline-offset-4 hover:underline">
-              {t('auth.register')}
-            </Link>
-          </div>
+    <AuthShell title={t('auth.loginTitle')} subtitle={t('auth.welcomeBack')}>
+      <form className="mt-8 space-y-4" onSubmit={handleSubmit}>
+        <div className="space-y-2">
+          <Label htmlFor="username">{t('auth.username')}</Label>
+          <Input id="username" autoComplete="username" placeholder="demo" value={username} onChange={(e) => setUsername(e.target.value)} />
         </div>
+        <div className="space-y-2">
+          <Label htmlFor="password">{t('auth.password')}</Label>
+          <Input id="password" type="password" autoComplete="current-password" placeholder="••••••" value={password} onChange={(e) => setPassword(e.target.value)} />
+        </div>
+        <Button type="submit" className="w-full" disabled={submitting}>
+          {submitting ? t('auth.loggingIn') : t('auth.login')}
+        </Button>
+      </form>
 
-        <p className="mt-4 px-2 text-center text-xs leading-relaxed text-muted-foreground">
-          {t('auth.privacyLine')}
-          <a href="https://github.com/Lueyu/squabble/blob/main/docs/privacy.md" target="_blank" rel="noreferrer" className="ml-1 underline underline-offset-2">
-            {t('auth.privacyLink')}
-          </a>
-        </p>
+      {IS_DEMO_HINT && (
+        <button type="button" onClick={() => { setUsername('demo'); setPassword('demo1234'); }} className="mt-4 w-full text-center text-xs text-muted-foreground hover:text-foreground">
+          {t('auth.demoHint')}
+        </button>
+      )}
+
+      <div className="mt-6 text-center text-sm text-muted-foreground">
+        {t('auth.noAccount')}
+        <Link to="/register" className="ml-1 font-medium text-foreground underline-offset-4 hover:underline">
+          {t('auth.register')}
+        </Link>
       </div>
-    </div>
+    </AuthShell>
   );
 }
 

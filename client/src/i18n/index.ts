@@ -11,6 +11,8 @@ import zhCN from './zh-CN.json';
 import en from './en.json';
 import uiZhCN from './ui.zh-CN.json';
 import uiEn from './ui.en.json';
+import appearanceZhCN from './appearance.zh-CN.json';
+import appearanceEn from './appearance.en.json';
 
 export const SUPPORTED_LANGS = ['zh-CN', 'en'] as const;
 export type AppLang = (typeof SUPPORTED_LANGS)[number];
@@ -20,8 +22,12 @@ const LANG_KEY = 'sq-lang';
 /** Detect the initial language: stored -> browser -> zh-CN. */
 function detectLang(): AppLang {
   if (typeof window === 'undefined') return 'zh-CN';
-  const stored = localStorage.getItem(LANG_KEY);
-  if (stored === 'en' || stored === 'zh-CN') return stored;
+  try {
+    const stored = window.localStorage.getItem(LANG_KEY);
+    if (stored === 'en' || stored === 'zh-CN') return stored;
+  } catch {
+    // Browser privacy settings may block storage; language detection still works.
+  }
   const nav = navigator.language.toLowerCase();
   if (nav.startsWith('zh')) return 'zh-CN';
   if (nav.startsWith('en')) return 'en';
@@ -31,14 +37,18 @@ function detectLang(): AppLang {
 /** Switch the language (also persists). */
 export function setLanguage(lang: AppLang): void {
   i18n.changeLanguage(lang);
-  localStorage.setItem(LANG_KEY, lang);
+  try {
+    window.localStorage.setItem(LANG_KEY, lang);
+  } catch {
+    // The selected language remains available for the current session.
+  }
   document.documentElement.lang = lang;
 }
 
 i18n.use(initReactI18next).init({
   resources: {
-    'zh-CN': { translation: { ...zhCN, ui: uiZhCN } },
-    en: { translation: { ...en, ui: uiEn } },
+    'zh-CN': { translation: { ...zhCN, ui: uiZhCN, appearance: appearanceZhCN } },
+    en: { translation: { ...en, ui: uiEn, appearance: appearanceEn } },
   },
   lng: detectLang(),
   fallbackLng: 'zh-CN',

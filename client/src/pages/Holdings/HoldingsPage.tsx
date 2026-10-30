@@ -302,7 +302,7 @@ export default function HoldingsPage() {
             <Briefcase className="size-6 text-primary" />
             {t('holdings.title')}
           </h1>
-          <p className="text-sm text-muted-foreground mt-1 flex items-center flex-wrap gap-1.5">
+          <div className="text-sm text-muted-foreground mt-1 flex items-center flex-wrap gap-1.5">
             <MarketStatusBadges
               marketStatus={marketStatus}
               marketErrors={marketErrors}
@@ -322,7 +322,7 @@ export default function HoldingsPage() {
             >
               {formatCurrencyWithCode(totalPl, displayCurrency)}
             </span>
-          </p>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <Button

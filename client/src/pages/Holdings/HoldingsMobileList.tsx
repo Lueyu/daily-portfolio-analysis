@@ -25,7 +25,7 @@ import {
 } from '@/utils/format';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+import { Badge, badgeVariants } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   Empty,
@@ -165,72 +165,78 @@ export default function HoldingsMobileList({
     <div className="md:hidden space-y-3">
       {holdings.map((h) => (
         <Card key={h.id} className="overflow-hidden">
-          <button
-            className="w-full text-left"
-            onClick={() => setExpanded(expanded === h.id ? null : h.id)}
-          >
-            <CardContent className="p-4">
-              <div className="flex items-start justify-between">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono-nums font-bold text-primary text-lg">
+          <CardContent className="p-4">
+            <button
+              type="button"
+              id={`holding-trigger-${h.id}`}
+              className="w-full rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              aria-label={`${h.ticker} · ${t('ui.holdings.viewDetails')}`}
+              aria-expanded={expanded === h.id}
+              aria-controls={`holding-details-${h.id}`}
+              onClick={() => setExpanded(expanded === h.id ? null : h.id)}
+            >
+              <span className="flex flex-wrap items-start justify-between gap-3">
+                <span className="min-w-0 flex-1 basis-32">
+                  <span className="flex flex-wrap items-center gap-2">
+                    <span className="break-all font-mono-nums font-bold text-primary text-lg">
                       {h.ticker}
                     </span>
                     {h.rating && (
-                      <Badge
+                      <span
                         className={cn(
+                          badgeVariants({ variant: 'outline' }),
                           ratingColor(h.rating),
                           'text-[10px]'
                         )}
-                        variant="outline"
                       >
                         {h.rating}
-                      </Badge>
+                      </span>
                     )}
-                  </div>
-                  <div className="text-sm text-muted-foreground mt-0.5 truncate max-w-[200px]">
+                  </span>
+                  <span className="block text-sm text-muted-foreground mt-0.5 truncate">
                     {h.company ?? '—'}
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div className="font-mono-nums text-xl font-semibold">
+                  </span>
+                </span>
+                <span className="min-w-0 max-w-full text-right">
+                  <span className="block break-all font-mono-nums text-xl font-semibold">
                     {formatPriceWithCurrency(h.currentPrice, h.currency)}
-                  </div>
-                  <div
+                  </span>
+                  <span
                     className={cn(
-                      'font-mono-nums text-sm font-medium',
+                      'block font-mono-nums text-sm font-medium',
                       plClass(h.returnPct)
                     )}
                   >
                     {formatPercent(h.returnPct)}
-                  </div>
-                </div>
-              </div>
+                  </span>
+                </span>
+              </span>
+            </button>
 
               <div className="grid grid-cols-2 gap-x-4 gap-y-2 mt-3 text-sm">
-                <div className="flex justify-between">
+                <div className="flex min-w-0 flex-col gap-1">
                     <span className="text-muted-foreground">{t('holdings.shares')}</span>
-                  <span className="font-mono-nums">
+                  <span className="break-all font-mono-nums">
                     {formatShares(h.shares)}
                   </span>
                 </div>
-                  <div className="flex justify-between">
+                  <div className="flex min-w-0 flex-col gap-1">
                     <span className="text-muted-foreground">{t('ui.holdings.marketValue')}</span>
-                    <span className="font-mono-nums">
+                    <span className="break-all font-mono-nums">
                       {formatCurrencyWithCurrency(h.marketValue, h.currency)}
                     </span>
                   </div>
-                  <div className="flex justify-between">
+                  <div className="flex min-w-0 flex-col gap-1">
                     <span className="text-muted-foreground">{t('ui.holdings.cost')}</span>
-                    <span className="font-mono-nums">
+                    <span className="break-all font-mono-nums">
                       {formatCurrencyWithCurrency(h.cost, h.currency)}
                     </span>
                   </div>
-                  <div className="flex justify-between">
+                  <div className="flex min-w-0 flex-col gap-1">
                     <span className="text-muted-foreground">{t('ui.holdings.pl')}</span>
                     <span
                       className={cn(
-                        'font-mono-nums font-medium',
+                        'break-all font-mono-nums font-medium',
                         plClass(h.pl)
                       )}
                     >
@@ -239,15 +245,20 @@ export default function HoldingsMobileList({
                   </div>
               </div>
 
-              {expanded === h.id && (
-                <div className="mt-3 pt-3 border-t space-y-2 text-sm">
-                  <div className="flex justify-between">
+                <div
+                  id={`holding-details-${h.id}`}
+                  role="region"
+                  aria-labelledby={`holding-trigger-${h.id}`}
+                  hidden={expanded !== h.id}
+                  className="mt-3 pt-3 border-t space-y-2 text-sm"
+                >
+                  <div className="flex flex-wrap justify-between gap-2">
                     <span className="text-muted-foreground">{t('holdings.buyPrice')}</span>
                     <span className="font-mono-nums">
                       {formatPriceWithCurrency(h.buyPrice, h.currency)}
                     </span>
                   </div>
-                  <div className="flex justify-between">
+                  <div className="flex flex-wrap justify-between gap-2">
                     <span className="text-muted-foreground">{t('ui.holdings.actions')}</span>
                     <span>
                       {h.action ? (
@@ -263,10 +274,10 @@ export default function HoldingsMobileList({
                     </span>
                   </div>
                   {hasAnyAiRating && (
-                  <div className="flex justify-between items-center">
+                  <div className="flex flex-wrap justify-between items-center gap-2">
                     <span className="text-muted-foreground">{t('ui.holdings.aiRating')}</span>
                     {aiRatings?.[h.ticker] ? (
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex flex-wrap items-center gap-1.5">
                         <RatingBadge
                           rating={aiRatings[h.ticker].rating}
                           size="sm"
@@ -279,8 +290,8 @@ export default function HoldingsMobileList({
                           variant="ghost"
                           size="icon"
                           className="size-6"
-                          onClick={(e) => {
-                            e.stopPropagation();
+                          aria-label={`${t('ui.holdings.aiRating')} · ${h.ticker}`}
+                          onClick={() => {
                             onViewAiAnalysis?.(h.ticker, aiRatings[h.ticker].runId);
                           }}
                         >
@@ -292,16 +303,15 @@ export default function HoldingsMobileList({
                     )}
                   </div>
                   )}
-                  <div className="flex justify-between">
+                  <div className="flex flex-wrap justify-between gap-2">
                     <span className="text-muted-foreground">{t('ui.holdings.group')}</span>
-                    <span className="text-xs">{groupName(h.groupId)}</span>
+                    <span className="min-w-0 break-words text-xs">{groupName(h.groupId)}</span>
                   </div>
                   <Button
                     size="sm"
                     variant="outline"
                     className="w-full mt-2"
-                    onClick={(e) => {
-                      e.stopPropagation();
+                    onClick={() => {
                       onDetail(h);
                     }}
                   >
@@ -309,9 +319,7 @@ export default function HoldingsMobileList({
                     <ChevronRight className="size-4" />
                   </Button>
                 </div>
-              )}
-            </CardContent>
-          </button>
+          </CardContent>
         </Card>
       ))}
     </div>

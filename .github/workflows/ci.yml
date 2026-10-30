@@ -28,6 +28,9 @@ jobs:
       - name: Run server tests
         run: npm run test:server
 
+      - name: Run client tests
+        run: npm run test:client
+
   agent:
     name: Agent tests
     runs-on: ubuntu-latest
