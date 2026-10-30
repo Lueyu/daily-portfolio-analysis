@@ -34,6 +34,7 @@ import {
   EmptyDescription,
 } from '@/components/ui/empty';
 import { useTranslation } from 'react-i18next';
+import { displayCompanyName } from '@/utils/company-name';
 
 /** Props for {@link DailyPnLBreakdown}. */
 interface DailyPnLBreakdownProps {
@@ -45,20 +46,6 @@ interface DailyPnLBreakdownProps {
   baseCurrency: Currency;
   /** Shows a placeholder while quotes are still warming up. */
   loading?: boolean;
-}
-
-/**
- * Pick a display company name, returning empty string when it duplicates the ticker.
- */
-function displayCompany(
-  company: string | null | undefined,
-  ticker: string,
-): string {
-  const name = (company ?? '').trim();
-  if (!name) return '';
-  const base = (s: string): string => s.split('.')[0].toUpperCase();
-  if (base(name) === base(ticker)) return '';
-  return name;
 }
 
 /** Market labels for the row badges (built inside the component for i18n). */
@@ -80,7 +67,8 @@ export default function DailyPnLBreakdown({
   baseCurrency,
   loading,
 }: DailyPnLBreakdownProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const language = i18n.resolvedLanguage || i18n.language;
   const [showAll, setShowAll] = useState(false);
 
   const rows = useMemo(() => {
@@ -95,7 +83,7 @@ export default function DailyPnLBreakdown({
         const dailyPl = shares * change;
         return {
           ticker: h.ticker,
-          company: displayCompany(h.company, h.ticker),
+          company: displayCompanyName(h.company, h.ticker, language),
           market: h.market,
           currency: h.currency,
           shares,
@@ -117,7 +105,7 @@ export default function DailyPnLBreakdown({
       ...r,
       contribution: totalAbs > 0 ? (r.dailyPl / totalAbs) * 100 : 0,
     }));
-  }, [holdings, quotes]);
+  }, [holdings, quotes, language]);
 
   const hasQuotes = Object.keys(quotes).length > 0;
 

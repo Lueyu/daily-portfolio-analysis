@@ -2,7 +2,7 @@
   "nav": {
     "dashboard": "Dashboard", "holdings": "Holdings", "import": "Import",
     "watchlist": "Watchlist", "analysis": "Daily Analysis", "paper": "AI Paper Trading",
-    "journal": "Journal", "transactions": "Transactions", "rules": "Strategy Rules",
+    "journal": "Trade Review", "transactions": "Transactions", "rules": "Strategy Rules",
     "notifications": "Notifications"
   },
   "layout": {
@@ -10,7 +10,7 @@
     "logout": "Sign Out", "switchAccount": "Switch Account",
     "trading": "Trading", "closed": "Closed",
     "marketHours": "US 21:30–04:00 · HK 09:30–16:00 · CN 09:30–15:00 (Beijing time); Green up, Red down",
-    "refreshQuotes": "Refresh quotes", "unknownUser": "Unknown User"
+    "refreshQuotes": "Refresh quotes", "unknownUser": "Unknown User", "demoUser": "Demo User"
   },
   "auth": {
     "login": "Sign In", "register": "Create one", "username": "Username",
@@ -165,9 +165,9 @@
     "loadClosedFailed": "Failed to load closed positions", "loadPlFailed": "Failed to load realized P&L"
   },
   "journal": {
-    "title": "Investment Journal", "loadFailed": "Failed to load journal",
+    "title": "Trade Review", "loadFailed": "Failed to load trade reviews",
     "loadNavFailed": "Failed to load NAV", "editFailed": "Save failed, please retry",
-    "loading": "Loading...", "saved": "Journal saved", "nav": "NAV($)",
+    "loading": "Loading...", "saved": "Review saved", "nav": "NAV($)",
     "dailyPl": "Daily P&L", "plLabel": "P&L($)", "accountNav": "Account NAV",
     "marketSummary": "Market Summary", "portfolioSummary": "Portfolio Summary",
     "actions": "Actions", "plan": "Tomorrow's Plan", "lessons": "Lessons"
