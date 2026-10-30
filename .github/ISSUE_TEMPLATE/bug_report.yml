@@ -31,13 +31,14 @@ body:
       label: How are you running the app?
       options:
         - Docker demo (docker compose)
-        - Official cloud mode (npm run dev)
-        - Full offline mode (dev-local-full.ps1)
-        - Building from source
+        - Single-server deployment (deploy/compose.public.yml)
+        - Running from source (npm run dev)
+        - Someone else's hosted instance
     validations:
       required: true
   - type: textarea
     id: logs
     attributes:
       label: Relevant logs / screenshots
+      description: Remove passwords, API keys, session tokens and personal portfolio details before sharing.
       render: shell

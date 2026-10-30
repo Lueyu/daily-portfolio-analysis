@@ -1,65 +1,129 @@
-# Privacy — 吵股 Squabble 自托管数据说明
+# Privacy and data flow
 
-This page documents, in plain language, exactly what data the app collects and
-what leaves your machine. It is written so you can verify every claim against
-the source code — the project is open source precisely so you don't have to
-take our word for it.
+[简体中文](privacy.zh-CN.md) · [Security](../SECURITY.md) · [Self-hosting](self-hosting.md)
 
-## TL;DR
+Squabble lets you run a portfolio workspace on infrastructure you control. That
+control comes from **who operates your instance**, not from a promise that the
+server cannot read your data.
 
-- **不收手机号、不收邮箱验证、不收真实姓名** — 注册只需要一个用户名和密码。
-- **零埋点、零统计上报、零错误上报** — 没有任何 analytics SDK。
-- **数据全部落在你自己的数据库里** — 自托管部署，备份与删除完全自主。
-- 未配置模型时，免费基础分析在本地执行规则，不向大模型发送数据；公开股票及股指行情请求仍会出网，无需个人 API key。配置后还可请求大模型、Finnhub 美股研究数据和你主动配置的通知渠道；截图识别属于可选的大模型请求。
+This guide describes the current repository's behavior. It is a technical trust
+guide, not a privacy notice for every website running Squabble or a claim of
+legal compliance. The project is in public beta; the gaps below matter when
+deciding where to keep real portfolio records.
 
-## What we collect
+## Who can access your data?
 
-| Item | Collected? | Notes |
-|---|---|---|
-| Phone number | ❌ Never | — |
-| Email | Optional | 仅用于接收通知推送，非必需，不验证 |
-| Real name / identity | ❌ Never | — |
-| Telemetry / analytics | ❌ None | 无埋点、无统计、无错误上报 |
-| Holdings & transactions | ✅ In your own DB | 只存在你部署的 PostgreSQL 里 |
-| Analysis reports & execution traces | ✅ In your own DB | 保存启动时的中英文语言、证据、风险检查与执行步骤；AI 模式还保存模型输出的论点和审查摘要，不读取隐藏推理 token。基础报告明确标记为规则分析 |
-| Agent preferences & prompts | ✅ In your own DB | 版本化配置；自定义 prompt 在候选信号审核时发给你配置的 LLM |
-| User-supplied LLM / Finnhub API keys | ✅ Encrypted in your own DB | 各账号独立保存；设置接口只返回配置状态及遮盖提示，不返回明文。Docker 在独立持久卷自动生成加密密钥；源码部署可用私有 `SETTINGS_ENCRYPTION_KEY` 或私有 `JWT_SECRET`，已知演示密钥不可用于保存 API key。更换加密密钥后须重新填写 |
-| Paper orders & real-execution notes | ✅ In your own DB | 模拟交易与自报的真实成交记录分表存储；不会自动改写真实交易流水 |
-| Password | ✅ bcrypt 哈希 | 明文密码不落库、不记日志 |
-| Recovery code | ✅ SHA-256 哈希 | 注册或重置时只在当前页面显示一次；请离线保存。丢失密码和恢复码后无法自助找回 |
+| How you use Squabble | What that means |
+|---|---|
+| **You self-host** | Records live in your instance's PostgreSQL database and any backups you create. The repository maintainers do not receive them through a bundled central collection service or gain access merely because you installed the app. Your hosting provider and anyone with server, database, or backup access remain part of the trust boundary. |
+| **Someone else hosts it for you** | That operator receives, stores, and processes your account and portfolio records on their infrastructure. The operator can access the database and server secrets. Account separation in the app does not prevent infrastructure administrators from reading data. |
+| **You use an external integration** | Relevant data also reaches the selected AI, financial-data, notification, or agent service. Their handling of it is outside this repository's control. |
 
-> 账号体系已落地：自建「用户名 + 密码」登录（`server/modules/auth`），JWT 会话，
-> 无 cookie、无 CSRF 面。注册可通过 `REGISTER_ENABLED=false` 关闭。
-> 浏览器会把会话令牌保存在本地存储。请勿在不受信任的公共电脑上登录；
-> 账号恢复会撤销旧会话。
+**Saved API-key encryption is not zero knowledge.** The server holds the
+decryption key and decrypts credentials to use them. An operator with access to
+both the database and server secrets can do the same. Portfolio records are not
+end-to-end encrypted.
 
-## What leaves your machine
+## What is stored, and where?
 
-The main outbound request categories are:
+“Instance database” below means your database when self-hosting, or the
+operator's database when using their instance.
 
-1. **LLM 推理请求** — 运行已配置模型的 AI 分析时，相关行情、组合上下文与研究提示词会发送给你配置的大模型厂商（火山方舟 / DeepSeek / OpenRouter / 任意 OpenAI 兼容端点）；若你没有个人配置而部署者设置了 `DOUBAO_API_KEY`，则使用部署者的接口。两者均未配置时，站内生成免费基础报告，不调用 LLM。个人配置优先于部署环境；删除后恢复环境模型，或无模型时的基础模式。已配置模型失败会报错，不静默降级。Agent Builder 的自定义 prompt 仅在你填写并启用 AI 审核后随候选信号发送；显式规则不需要 LLM。模型连接测试也会发送一条小请求，可能产生服务商用量；基础模式检查不发送模型请求。厂商如何处理请求由其隐私条款决定。
-2. **行情与金融数据请求** — 服务端向 Tencent、Sina、Yahoo 等公开源查询股票及股指报价；公开源可能延迟、不可用，也不使用你的个人 API key。市场情绪分数在本地按股指涨跌估算，不是官方情绪指数；界面保留数据来源、交易日期和不可用状态。未配置金融 API 时，连接测试通过公共源读取示例股票。若保存 Finnhub key，美股研究会向 Finnhub 查询可用的公司基础指标与新闻；连接测试也会使用已保存的 key，可能计入 API 用量。Finnhub 公司新闻接口只覆盖北美公司；服务商套餐、标的与字段覆盖可能各不相同。删除 Finnhub 配置后恢复公共源；缺失数据会明确标记，不能当作事实引用。
-3. **通知推送** — 仅当你主动配置了通知渠道（Webhook / Bark / Server酱 / SMTP / Telegram）时，才会向相应服务发送事件消息。Agent Builder 的提案通知可包含标的、方向、模拟数量和理由；关闭提案通知或停用渠道即可停止这类消息。
-4. **截图识别（可选功能）** — 仅当你主动上传券商截图并配置了自己的多模态模型时，截图才会发给所选模型服务。详见 [import.md](import.md)。
+| Data | Storage and handling |
+|---|---|
+| Account | Username, display name, bcrypt password hash, SHA-256 recovery-code hash, session version, and timestamps in the instance database. Registration requires no phone number, real name, or verified email. Optional notification recipients may include an email address. |
+| Portfolio workspace | Holdings, cash accounts, transactions, watchlists, journals, snapshots, imported rows and import history in the instance database. Free-text fields can contain personal information you enter. |
+| Research and automation | Reports, evidence, model-generated arguments and summaries, risk checks, execution steps, run events, strategy rules, and Agent Builder preferences/prompts in the instance database. Reports distinguish basic rules from AI analysis. |
+| Paper trading | Paper accounts, positions, orders, trades, proposals, and manually recorded execution notes in the instance database. Paper records use separate tables from real holdings and transactions. |
+| Saved LLM and Finnhub credentials | Encrypted with AES-256-GCM in the instance database. Settings responses expose status and a masked suffix, not the full saved key. The server decrypts the key when making a provider request. |
+| Notification configuration | Destinations, webhook URLs, bot tokens, SMTP credentials, and other channel settings in the instance database. **These fields do not currently use the LLM/Finnhub credential-encryption mechanism** and are returned to the owning user's channel settings. |
+| Browser storage | Access and refresh tokens, interface preferences, and screenshot-recognition provider settings, including its API key, in browser local storage. The screenshot-recognition key is separate from the saved analysis key. |
+| Screenshot recognition | The image and recognition credentials pass through the instance server to the selected vision endpoint. The current extraction handler does not persist those inputs to the database; confirmed imported rows and import history are stored. |
+| Operational data | The application writes browser-console and server logs. Authentication rate limiting keeps temporary IP-based counters in server memory. Operators, reverse proxies, hosts, and external providers may keep additional request or error logs. |
 
-以上为主要业务出网路径；请在部署前检查自己的反向代理、插件和新增集成。
+There is no bundled analytics SDK or central usage-reporting service in this
+repository. **That does not mean there are no logs, network requests, or
+third-party records.** A deployment can add its own monitoring.
 
-## Where your data lives
+## What leaves the instance?
 
-- 自托管部署（Docker 或源码）：所有数据在你自己的 PostgreSQL / Docker 卷里。
-- 模拟盘数据使用独立的数据表，与真实持仓记录完全隔离。
-- Agent Builder 的配置、模拟提案及手动成交回录也保存在本地数据库。回录不会自动写入真实持仓或交易流水。
-- 个人 LLM 和 Finnhub 密钥加密存储在本地数据库。浏览器保存后不再收到原始密钥；仅显示已配置状态和遮盖提示。服务端使用时解密并发往你配置的供应商。Docker 首次启动会在 `settings-secrets` 持久卷生成独立密钥，需与数据库一起备份；也可显式设置稳定的 `SETTINGS_ENCRYPTION_KEY`（至少 16 字符）。源码部署没有专用密钥时使用私有 `JWT_SECRET` 派生，公开的演示默认值不能用于保存 API key。轮换密钥后用户需重新填写；旧个人 LLM 密钥无法解密时，分析会停止并提示重新录入，不会自动改用部署者的模型。
-- 删除本地数据库/卷会删除本地副本；已经发给大模型或通知服务的数据须按相应服务政策处理。
+| Action | Recipient and information sent |
+|---|---|
+| Quotes, symbol search, and FX updates | Public market-data sources such as Tencent, Sina, and Yahoo receive symbols or search queries; Frankfurter receives currency queries. These services also see normal connection metadata. This traffic exists in basic mode, without a personal API key. Some public quote/search endpoints currently use HTTP. |
+| AI analysis | The resolved model endpoint receives research prompts, evidence, and selected portfolio context, which can include holdings, quantity, cost, market value, and portfolio weight. It receives the provider key needed to authenticate the request. |
+| Agent Builder AI review | When enabled, the model receives the custom prompt and candidate-signal context. Explicit rule evaluation itself does not require an LLM. |
+| Finnhub research | When configured, Finnhub receives the API key and company/symbol queries for available research data. |
+| Screenshot recognition | The chosen vision endpoint receives the full submitted image, extraction prompt, and recognition API key through the instance server. Crop unrelated names, account numbers, and balances before submitting. |
+| Notifications | Enabled Webhook, Bark, ServerChan, SMTP, or Telegram channels receive event messages and required routing/authentication information. Proposal messages may include the symbol, direction, paper quantity, and rationale. A channel test also sends a message. |
+| Connected agents | An agent you give a session token can receive data exposed by its permitted tools. Any external agent or model it uses has its own data handling. The optional legacy gateway is a separate operator-controlled integration. |
 
-## How we count users
+Model and financial connection tests can also make provider requests and incur
+usage. Check the selected provider's own retention and data-use terms; this app
+cannot set them or retract data already delivered.
 
-不做用户统计。桌面版下载量直接使用 GitHub Releases 的下载计数（GitHub 官方统计，与用户身份无关）。
+### Basic mode and the operator's model key
 
-## Verification
+Analysis uses your saved personal LLM configuration first. If you have no
+personal configuration and the operator sets `DOUBAO_API_KEY`, it uses that
+server-provided model. If neither is configured, basic reports run rules on the
+instance server without an LLM call; quotes and FX can still use the network.
 
-You don't have to trust this page:
+**Deleting your personal model configuration can reactivate the operator's
+model.** It is not an “all AI off” switch. The current app has no separate
+per-user consent control for that fallback. Check the active configuration in
+API Settings before running analysis. A broken saved key stops analysis and
+asks for re-entry; it does not silently switch to the operator's model.
 
-- 搜索代码库中的 `fetch(`/`axios` 调用即可枚举全部出网请求。
-- 数据库结构见 [`server/database/schema.ts`](../server/database/schema.ts)，不存在任何遥测表。
-- 本文档若有与代码不符之处，欢迎提 issue —— 这被视为 bug。
+## Controls available today
+
+- **API Settings:** view the active integration source; replace or remove saved
+  LLM/Finnhub settings. Removing Finnhub returns research to public sources.
+  Revoking a key at its provider is a separate action.
+- **Notifications and agents:** disable or delete notification channels; pause
+  Agent Builder or disable its AI review/proposal notifications; revoke agent
+  sessions you no longer use.
+- **Account recovery:** save the one-time recovery code offline. Recovery resets
+  the password, replaces the code, and revokes earlier account and agent
+  sessions. Generating a new code with your password replaces the old code and
+  revokes earlier account sessions. There is no email-based recovery flow.
+- **This browser:** sign out to clear session tokens. Clear the site's browser
+  storage to remove locally saved recognition credentials and preferences;
+  signing out alone does not clear all of them.
+- **Your own deployment:** control database access, backups, logs, registration,
+  and integration environment variables. Back up the settings-encryption key
+  securely alongside the database; changing or losing it makes existing saved
+  provider keys unreadable until users re-enter them.
+
+## Retention and current gaps
+
+The project does **not** implement a general retention schedule or automatic
+expiry for portfolio records, reports, logs, and backups. Their lifetime depends
+on the instance and its operator. Deleting a live record or saved setting does
+not remove copies in backups, logs, or external providers.
+
+Complete self-service account erasure and account-wide data export are not yet
+available. A comprehensive administrator-access audit and privacy-consent UI
+are also not complete. Existing analysis run events are not an audit of every
+administrator or database access. Do not assume a hosted instance offers these
+controls because this guide describes them as gaps.
+
+If you operate an instance for other people, publish a **separate, truthful
+instance privacy notice** before inviting them. Describe who operates it, an
+actual contact route, where records and backups live, your logging and retention
+practices, enabled providers and fallback model, and how you handle export or
+deletion requests. Do not copy self-hosting language that says users alone hold
+the database. This repository does not identify an official hosted service or
+supply operator-specific contact details or terms.
+
+## Check the implementation
+
+Start with the [database schema](../server/database/schema.ts),
+[authentication](../server/modules/auth/auth.service.ts),
+[provider settings](../server/modules/settings/settings.service.ts),
+[credential encryption](../server/modules/settings/settings-security.ts),
+[model calls](../server/modules/multi-agent/llm.service.ts),
+[screenshot recognition](../server/modules/import/ocr.service.ts), and
+[notification delivery](../server/modules/notifications/notification.service.ts).
+Review deployment configuration and dependencies as well as application calls
+when checking outbound traffic. Report sensitive discrepancies through the
+[security reporting route](../SECURITY.md).
