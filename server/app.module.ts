@@ -39,6 +39,7 @@ import { McpModule } from './modules/mcp/mcp.module';
 import { SettingsModule } from './modules/settings/settings.module';
 import { HealthModule } from './modules/health/health.module';
 import { LlmBudgetModule } from './modules/llm-budget/llm-budget.module';
+import { SystemUpdateModule } from './modules/system-update/system-update.module';
 
 /**
  * Root Nest module. Aggregates feature modules and installs the global
@@ -52,6 +53,7 @@ import { LlmBudgetModule } from './modules/llm-budget/llm-budget.module';
     SettingsModule,
     LlmBudgetModule,
     HealthModule,
+    SystemUpdateModule,
 
     // ====== @route-section: business-modules START ======
     HoldingsModule,

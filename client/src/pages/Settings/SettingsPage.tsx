@@ -54,6 +54,7 @@ import { RecoveryCodeCard } from './RecoveryCodeCard';
 import ModelConnectionsPanel from './ModelConnectionsPanel';
 import BudgetPanel from './BudgetPanel';
 import LocalAgentsPanel from './LocalAgentsPanel';
+import SystemUpdateCard from './SystemUpdateCard';
 
 interface LlmDraft {
   baseUrl: string;
@@ -291,6 +292,7 @@ export default function SettingsPage() {
 
       <AppearanceSettingsCard />
       <RecoveryCodeCard />
+      <SystemUpdateCard />
       <ModelConnectionsPanel />
       <BudgetPanel />
       <LocalAgentsPanel />

@@ -23,8 +23,11 @@ services:
       retries: 20
 
   app:
-    build: .
+    image: ${SQUABBLE_APP_IMAGE:-ghcr.io/lueyu/squabble:latest}
     restart: unless-stopped
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"
+      com.centurylinklabs.watchtower.scope: ${SQUABBLE_UPDATE_SCOPE:-squabble-local}
     environment:
       NODE_ENV: production
       SERVER_HOST: 0.0.0.0
@@ -38,6 +41,8 @@ services:
       REGISTER_ENABLED: "first-user"
       # Optional: enable the /openapi/agent-gateway for the Python agent.
       AGENT_GATEWAY_ENABLED: "false"
+      SQUABBLE_UPDATE_MODE: ${SQUABBLE_UPDATE_MODE:-docker}
+      SQUABBLE_UPDATE_BACKUP_DIR: /app/.backups
       # AGENT_GATEWAY_TOKEN: "dev-agent-token-change-me"
       # Optional: LLM key for running real multi-agent analyses.
       # DOUBAO_API_KEY: ""
@@ -45,10 +50,33 @@ services:
       - "127.0.0.1:${HOST_APP_PORT:-3000}:3000"
     volumes:
       - settings-secrets:/app/.secrets
+      - update-backups:/app/.backups
     depends_on:
       db:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  updater:
+    image: containrrr/watchtower:1.6.0
+    restart: unless-stopped
+    command: ["--http-api-update", "--label-enable", "--scope", "${SQUABBLE_UPDATE_SCOPE:-squabble-local}"]
+    environment:
+      WATCHTOWER_HTTP_API_TOKEN: /run/secrets/update-token
+      DOCKER_API_VERSION: "1.44"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - settings-secrets:/run/secrets:ro
+    depends_on:
+      app:
+        condition: service_healthy
+    labels:
+      com.centurylinklabs.watchtower.enable: "false"
 
 volumes:
   dpa-data:
   settings-secrets:
+  update-backups:

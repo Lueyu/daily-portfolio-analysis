@@ -22,6 +22,9 @@ try {
     process.env.SETTINGS_ENCRYPTION_KEY,
     '/app/.secrets/settings.key',
   );
+  if (process.env.SQUABBLE_UPDATE_MODE === 'docker') {
+    ensureJwtSecret('', '/app/.secrets/update-token');
+  }
 } catch (error) {
   process.stderr.write(`Cannot start Squabble: ${error.message}\n`);
   process.exit(1);

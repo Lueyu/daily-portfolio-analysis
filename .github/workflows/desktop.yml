@@ -191,6 +191,12 @@ jobs:
           name: squabble-${{ matrix.platform }}-${{ matrix.arch }}
           path: ${{ matrix.artifactPattern }}
           if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: matrix.platform == 'windows'
+        with:
+          name: squabble-windows-update-metadata
+          path: output/installers/latest.yml
+          if-no-files-found: error
       - name: Remove standard Windows test account
         if: always() && matrix.platform == 'windows'
         continue-on-error: true
@@ -199,9 +205,49 @@ jobs:
           $account = Get-LocalUser -Name 'squabbleci' -ErrorAction SilentlyContinue
           if ($account) { Remove-LocalUser -Name 'squabbleci' }
 
+  web-image:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify release version
+        run: node -e "if ('v' + require('./package.json').version !== process.env.GITHUB_REF_NAME) process.exit(1)"
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/lueyu/squabble:latest
+            ghcr.io/lueyu/squabble:${{ github.ref_name }}
+      - name: Verify image can be pulled without credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          anonymous_config="$(mktemp -d)"
+          for attempt in 1 2 3 4 5; do
+            if DOCKER_CONFIG="$anonymous_config" docker manifest inspect "ghcr.io/lueyu/squabble:$GITHUB_REF_NAME" >/dev/null; then
+              exit 0
+            fi
+            sleep 10
+          done
+          echo 'Container image is not publicly readable.' >&2
+          exit 1
+
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: build
+    needs: [build, web-image]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -218,8 +264,8 @@ jobs:
         run: |
           set -euo pipefail
           shopt -s nullglob
-          files=(release-files/*.exe release-files/*.dmg)
-          test "${#files[@]}" -eq 3
+          files=(release-files/*.exe release-files/*.dmg release-files/latest.yml)
+          test "${#files[@]}" -eq 4
           if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" "${files[@]}" --repo "$GITHUB_REPOSITORY" --clobber
           else

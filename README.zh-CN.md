@@ -47,7 +47,7 @@
 ```bash
 git clone https://github.com/Lueyu/squabble.git
 cd squabble
-docker compose up -d --build
+docker compose up -d
 ```
 
 打开 **http://localhost:3000**，注册第一个账号。

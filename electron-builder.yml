@@ -1,6 +1,10 @@
 appId: com.squabble.desktop
 productName: Squabble
 asar: false
+publish:
+  provider: github
+  owner: Lueyu
+  repo: squabble
 directories:
   output: output/installers
 files:
