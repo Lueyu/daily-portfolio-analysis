@@ -171,6 +171,12 @@ test('desktop recovers a private PostgreSQL cluster after its owner is force kil
   const child = spawn(process.execPath, ['--import', 'tsx', resolve('desktop/crash-child.helper.ts'), directory], {
     cwd: resolve('.'), stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true,
   });
+  const childExited = new Promise<void>((done) => {
+    child.once('exit', () => done());
+    child.once('error', () => done());
+  });
+  let childError: Error | undefined;
+  child.once('error', (error) => { childError = error; });
   let stderr = '';
   child.stderr?.on('data', (chunk: Buffer) => { stderr += chunk.toString(); });
   let recovered: Awaited<ReturnType<typeof runtime.startDesktopDatabase>> | undefined;
@@ -178,18 +184,15 @@ test('desktop recovers a private PostgreSQL cluster after its owner is force kil
     const ready = join(directory, 'ready');
     for (let attempt = 0; attempt < 600; attempt += 1) {
       try { await stat(ready); break; } catch { /* startup in progress */ }
-      if (child.exitCode !== null) throw new Error(`Crash child exited early: ${stderr}`);
+      if (childError) throw childError;
+      if (child.exitCode !== null || child.signalCode !== null) throw new Error(`Crash child exited early: ${stderr}`);
       await new Promise<void>((done) => setTimeout(done, 100));
     }
     await stat(ready);
     const oldPostmaster = Number((await readFile(join(paths.databaseDir, 'postmaster.pid'), 'utf8')).split('\n')[0]);
     assert.ok(oldPostmaster > 0);
-    if (process.platform === 'win32') {
-      await promisify(execFile)('taskkill', ['/PID', String(child.pid), '/F'], { windowsHide: true });
-    } else {
-      child.kill('SIGKILL');
-    }
-    await new Promise<void>((done) => child.once('exit', () => done()));
+    assert.equal(child.kill('SIGKILL'), true);
+    await childExited;
     assert.ok((await stat(join(paths.databaseDir, 'postmaster.pid'))).isFile());
 
     const secrets = await runtime.loadOrCreateSecrets(paths.secretsFile);
@@ -204,7 +207,7 @@ test('desktop recovers a private PostgreSQL cluster after its owner is force kil
     }
   } finally {
     await recovered?.stop();
-    if (child.exitCode === null) child.kill('SIGKILL');
+    if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
     await stopTestCluster(directory);
     await removeTestDirectory(directory);
   }
@@ -218,13 +221,20 @@ test('desktop reclaims an active private PostgreSQL cluster before starting anot
   const child = spawn(process.execPath, ['--import', 'tsx', resolve('desktop/crash-child.helper.ts'), directory], {
     cwd: resolve('.'), stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true,
   });
+  const childExited = new Promise<void>((done) => {
+    child.once('exit', () => done());
+    child.once('error', () => done());
+  });
+  let childError: Error | undefined;
+  child.once('error', (error) => { childError = error; });
   let stderr = '';
   child.stderr?.on('data', (chunk: Buffer) => { stderr += chunk.toString(); });
   let recovered: Awaited<ReturnType<typeof runtime.startDesktopDatabase>> | undefined;
   try {
     for (let attempt = 0; attempt < 600; attempt += 1) {
       try { await stat(join(directory, 'ready')); break; } catch { /* startup in progress */ }
-      if (child.exitCode !== null) throw new Error(`Orphan owner exited early: ${stderr}`);
+      if (childError) throw childError;
+      if (child.exitCode !== null || child.signalCode !== null) throw new Error(`Orphan owner exited early: ${stderr}`);
       await new Promise<void>((done) => setTimeout(done, 100));
     }
     await stat(join(directory, 'ready'));
@@ -239,7 +249,8 @@ test('desktop reclaims an active private PostgreSQL cluster before starting anot
       await client.end();
     }
   } finally {
-    if (child.exitCode === null) child.kill('SIGKILL');
+    if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
+    await Promise.race([childExited, new Promise<void>((done) => setTimeout(done, 5_000))]);
     await recovered?.stop();
     await stopTestCluster(directory);
     await removeTestDirectory(directory);
