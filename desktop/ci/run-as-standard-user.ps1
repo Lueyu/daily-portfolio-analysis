@@ -54,6 +54,10 @@ switch ($Scenario) {
     }
     $environment.APPDATA = Join-Path $profile 'AppData/Roaming'
     $environment.LOCALAPPDATA = Join-Path $profile 'AppData/Local'
+    $environment.USERPROFILE = $profile
+    $environment.HOMEDRIVE = Split-Path -Path $profile -Qualifier
+    $environment.HOMEPATH = $profile.Substring($environment.HOMEDRIVE.Length)
+    $environment.HOME = $profile
     $dataRoot = Join-Path $testRoot 'packaged-data'
     New-Item -ItemType Directory -Path $dataRoot -Force | Out-Null
     $environment.SQUABBLE_DESKTOP_DATA_DIR = $dataRoot
@@ -81,6 +85,24 @@ $options = @{
   PassThru = $true
 }
 if ($arguments.Count) { $options.ArgumentList = $arguments }
+if ($Scenario -eq 'packaged-smoke') {
+  $probeOptions = $options.Clone()
+  $probeOptions.ArgumentList = @('--disable-gpu', '--no-sandbox', '--version')
+  $probeOptions.RedirectStandardOutput = Join-Path $testRoot 'packaged-version.stdout.log'
+  $probeOptions.RedirectStandardError = Join-Path $testRoot 'packaged-version.stderr.log'
+  $probe = Start-Process @probeOptions
+  if (-not $probe.WaitForExit(15000)) {
+    Stop-Process -Id $probe.Id -Force
+    throw 'Standard-user packaged Electron --version probe timed out'
+  }
+  foreach ($logFile in @($probeOptions.RedirectStandardOutput, $probeOptions.RedirectStandardError)) {
+    if (Test-Path -LiteralPath $logFile) { Get-Content -LiteralPath $logFile }
+  }
+  Write-Output "Standard-user packaged Electron --version exit: $($probe.ExitCode)"
+  if ($probe.ExitCode -ne 0) {
+    throw "Standard-user packaged Electron --version probe exited with code $($probe.ExitCode)"
+  }
+}
 $application = Start-Process @options
 $timeoutMs = switch ($Scenario) {
   'tests' { 180000 }
@@ -98,6 +120,12 @@ if ($Scenario -eq 'packaged-smoke' -and $application.ExitCode -ne 0) {
   Write-Output "Packaged marker exists: $(Test-Path -LiteralPath $marker -PathType Leaf)"
   if (Test-Path -LiteralPath $marker -PathType Leaf) {
     Write-Output "Packaged marker: $(Get-Content -LiteralPath $marker -Raw)"
+  }
+  $stageFile = Join-Path $dataRoot 'packaged-smoke-stage.log'
+  if (Test-Path -LiteralPath $stageFile -PathType Leaf) {
+    Write-Output "Packaged startup stages: $(Get-Content -LiteralPath $stageFile -Raw)"
+  } else {
+    Write-Output 'Packaged startup stage log does not exist'
   }
   Write-Output "PostgreSQL PID file exists: $(Test-Path -LiteralPath (Join-Path $dataRoot 'postgres/postmaster.pid'))"
   $secretsFile = Join-Path $dataRoot 'secrets.json'

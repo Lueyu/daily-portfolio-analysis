@@ -1,4 +1,4 @@
-import { createWriteStream } from 'node:fs';
+import { appendFileSync, createWriteStream } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
 import { app, BrowserWindow, dialog, session, shell, utilityProcess } from 'electron';
@@ -19,6 +19,16 @@ let database: DesktopDatabase | null = null;
 let backendLog: ReturnType<typeof createWriteStream> | null = null;
 let quitting = false;
 let quitAllowed = false;
+
+function markSmokeStage(stage: string): void {
+  const root = process.env.SQUABBLE_DESKTOP_DATA_DIR;
+  if (process.env.SQUABBLE_DESKTOP_SMOKE !== '1' || !root || !isAbsolute(root)) return;
+  try {
+    appendFileSync(join(root, 'packaged-smoke-stage.log'), `${stage}\n`, { mode: 0o600 });
+  } catch {
+    // Diagnostics must never change application startup.
+  }
+}
 
 async function stopBackend(): Promise<void> {
   if (!backend) return;
@@ -54,12 +64,15 @@ function externalLink(value: string, ownOrigin: string): void {
 }
 
 async function startDesktop(): Promise<void> {
+  markSmokeStage('start-desktop');
   const override = process.env.SQUABBLE_DESKTOP_DATA_DIR;
   if (override && !isAbsolute(override)) throw new Error('Desktop data directory must be absolute');
   const dataRoot = override ?? app.getPath('userData');
   const paths = desktopPaths(app.getAppPath(), dataRoot);
   const secrets = await loadOrCreateSecrets(paths.secretsFile);
+  markSmokeStage('before-database');
   database = await startDesktopDatabase(paths, secrets);
+  markSmokeStage('after-database');
   const port = await loadOrCreateServerPort(paths.serverPortFile);
   const origin = `http://127.0.0.1:${port}`;
   const environment = nestEnvironment(paths, secrets, database.connectionUrl, port);
@@ -83,6 +96,7 @@ async function startDesktop(): Promise<void> {
     waitForHealth(origin, 45_000),
     new Promise<never>((_resolve, reject) => backend?.once('exit', () => reject(new Error('Local server exited during startup')))),
   ]);
+  markSmokeStage('server-healthy');
 
   if (process.env.SQUABBLE_DESKTOP_SMOKE === '1') {
     const response = await fetch(`${origin}/api/auth/registration-status`);
@@ -92,6 +106,7 @@ async function startDesktop(): Promise<void> {
     await writeFile(join(dataRoot, 'packaged-smoke.json'), JSON.stringify({
       healthy: true, registrationOpen: true, defaultDataRoot: app.getPath('userData'),
     }));
+    markSmokeStage('smoke-marker-written');
     app.quit();
     return;
   }
@@ -126,9 +141,13 @@ async function startDesktop(): Promise<void> {
   await window.loadURL(origin);
 }
 
+markSmokeStage('module-loaded');
 app.setName('Squabble');
 
-if (!app.requestSingleInstanceLock()) {
+markSmokeStage('before-single-instance-lock');
+const singleInstance = app.requestSingleInstanceLock();
+markSmokeStage(`single-instance-lock-${singleInstance ? 'acquired' : 'denied'}`);
+if (!singleInstance) {
   app.quit();
 } else {
   app.on('second-instance', () => {
@@ -144,7 +163,12 @@ if (!app.requestSingleInstanceLock()) {
       app.quit();
     });
   });
-  void app.whenReady().then(startDesktop).catch(async (error: unknown) => {
+  markSmokeStage('before-when-ready');
+  void app.whenReady().then(() => {
+    markSmokeStage('after-when-ready');
+    return startDesktop();
+  }).catch(async (error: unknown) => {
+    markSmokeStage('startup-error');
     dialog.showErrorBox('Squabble could not start', error instanceof Error ? error.message : String(error));
     await stopServices();
     app.quit();
