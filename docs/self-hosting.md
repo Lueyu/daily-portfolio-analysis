@@ -30,6 +30,12 @@ On Windows, launch Squabble normally rather than choosing **Run as administrator
 The bundled PostgreSQL server refuses to run under an elevated administrator
 process.
 
+The Windows setup wizard lets you choose Simplified Chinese or English when it
+opens. Extracting the bundled database and app files can make the progress bar
+pause. If it remains unchanged for a long time, check whether the installer is
+still writing to disk and retry after closing any running Squabble app.
+Reinstalling does not automatically remove the application data directory.
+
 On first launch, create your account and save the one-time recovery code
 offline. The desktop app starts with no demo account or sample holdings. Add
 holdings manually or [import a CSV](import.md). Account recovery uses the
