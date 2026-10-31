@@ -21,6 +21,8 @@ import marketOverviewZhCN from './market.zh-CN.json';
 import marketOverviewEn from './market.en.json';
 import councilZhCN from './council.zh-CN.json';
 import councilEn from './council.en.json';
+import updatesZhCN from './updates.zh-CN.json';
+import updatesEn from './updates.en.json';
 
 export const SUPPORTED_LANGS = ['zh-CN', 'en'] as const;
 export type AppLang = (typeof SUPPORTED_LANGS)[number];
@@ -55,8 +57,8 @@ export function setLanguage(lang: AppLang): void {
 
 i18n.use(initReactI18next).init({
   resources: {
-    'zh-CN': { translation: { ...zhCN, ui: uiZhCN, appearance: appearanceZhCN, analysisFlow: analysisFlowZhCN, integrations: integrationsZhCN, marketOverview: marketOverviewZhCN, council: councilZhCN } },
-    en: { translation: { ...en, ui: uiEn, appearance: appearanceEn, analysisFlow: analysisFlowEn, integrations: integrationsEn, marketOverview: marketOverviewEn, council: councilEn } },
+    'zh-CN': { translation: { ...zhCN, ui: uiZhCN, appearance: appearanceZhCN, analysisFlow: analysisFlowZhCN, integrations: integrationsZhCN, marketOverview: marketOverviewZhCN, council: councilZhCN, updates: updatesZhCN } },
+    en: { translation: { ...en, ui: uiEn, appearance: appearanceEn, analysisFlow: analysisFlowEn, integrations: integrationsEn, marketOverview: marketOverviewEn, council: councilEn, updates: updatesEn } },
   },
   lng: detectLang(),
   fallbackLng: 'zh-CN',

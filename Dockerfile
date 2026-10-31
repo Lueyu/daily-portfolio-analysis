@@ -21,6 +21,8 @@ RUN npm run build:web
 # ---------- Runtime stage ----------
 FROM ${BASE_REGISTRY}/node:22-alpine
 WORKDIR /app
+LABEL org.opencontainers.image.source="https://github.com/Lueyu/squabble"
+RUN apk add --no-cache postgresql16-client
 ENV NODE_ENV=production \
     SERVER_HOST=0.0.0.0 \
     SERVER_PORT=3000

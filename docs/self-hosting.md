@@ -23,18 +23,23 @@ x64 `.exe` installer or a macOS `.dmg` for Intel (x64) or Apple silicon
 and database; Docker, Node.js and Python are not required. The macOS builds
 are unsigned when no signing certificate is configured, so macOS may warn or
 block opening them. Check the source of any installer before choosing to open
-it. No automatic update service is provided; install a newer release manually
-when you choose to upgrade.
+it.
 
 On Windows, launch Squabble normally rather than choosing **Run as administrator**.
 The bundled PostgreSQL server refuses to run under an elevated administrator
 process.
 
-Use **Help → Check for Updates** in the desktop app to query the latest stable
-GitHub release. If one is available, the app shows its version and release notes
-and opens the installer download for your system when you choose. Quit Squabble
-before installing it manually. This check does not download or install updates
-in the background, and it does not change the local data directory.
+The Windows app checks for a stable GitHub release after startup. You can also
+use **Help → Check for Updates**. Choose whether to download a new version,
+then restart to install it. Squabble stops its local backend and database first
+and keeps the data directory. Version 2.1.0 and earlier need one manual install
+of 2.2.0 or later to gain this feature. If Windows code signing is not
+configured, Windows may show an unverified publisher warning; check the
+installer source.
+
+On macOS, **Help → Check for Updates** still opens the release page for a manual
+install. **TODO:** enable in-app macOS updates after Apple signing,
+notarization and ZIP update artifacts are configured.
 
 The Windows setup wizard lets you choose Simplified Chinese or English when it
 opens. Extracting the bundled database and app files can make the progress bar
@@ -91,12 +96,12 @@ Then run these commands in PowerShell or Terminal:
 ```sh
 git clone https://github.com/Lueyu/squabble.git
 cd squabble
-docker compose up -d --build
+docker compose up -d
 docker compose ps
 ```
 
-The first build downloads and compiles dependencies and may take several
-minutes. Open [http://localhost:3000](http://localhost:3000). The clean stack
+The first start downloads the prebuilt app image from GitHub Container Registry
+and may take several minutes. Open [http://localhost:3000](http://localhost:3000). The clean stack
 starts with an empty database, no demo account and stable generated JWT and
 settings-encryption keys. Create your account, save the one-time recovery code
 offline, then add holdings or import a CSV. Registration closes automatically
@@ -119,6 +124,32 @@ deletes data and generated keys.
 |---|---|
 | Accounts, holdings, reports and encrypted provider credentials | `squabble-local_dpa-data` (`/var/lib/postgresql/data` in `db`) |
 | Generated JWT and settings keys | `squabble-local_settings-secrets` (`/app/.secrets` in `app`) |
+| Backups made before click-to-update | `squabble-local_update-backups` (`/app/.backups` in `app`) |
+
+The default web stack uses a prebuilt image. For an existing source installation,
+run `git pull --ff-only` and `docker compose up -d` once from the same checkout
+and with the same Compose project name. The database and secrets volumes remain
+attached. After that, the first registered account can use **Settings →
+Software updates → Update now**. Squabble saves a PostgreSQL dump and secret
+files before its internal updater replaces only the app container. The database
+container is left alone. The updater does not poll or install on a schedule,
+and an ordinary `docker compose up -d` does not pull a newer app image.
+After restarting, confirm the new version, holdings and login.
+
+The updater needs access to the local Docker socket, which grants it permission
+to manage Docker containers. It publishes no host port and uses a random token
+stored in the secrets volume. Run this mode only on a trusted local machine.
+
+Pre-update backups live in the `update-backups` volume. List them with
+`docker compose exec app ls /app/.backups`, then copy one out with
+`docker compose cp app:/app/.backups/<backup-directory> ./backups/`.
+Keep a protected copy outside this computer. If keys are supplied through
+`.env` rather than generated files, back up those values separately.
+
+To build from source instead, use
+`docker compose -f docker-compose.yml -f docker-compose.source.yml up -d --build`.
+The page update button is disabled in source-build mode; pull new code and rebuild
+to update. Never use `docker compose down -v` for updates or troubleshooting.
 
 ### Optional fictional demo
 
@@ -203,7 +234,7 @@ After a backup, update with:
 
 ```sh
 git pull --ff-only
-docker compose up -d --build
+docker compose up -d
 docker compose ps
 ```
 

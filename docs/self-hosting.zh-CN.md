@@ -11,11 +11,13 @@
 
 ## 桌面应用
 
-当版本发布桌面安装包后，从 [Squabble Releases](https://github.com/Lueyu/squabble/releases) 下载与你系统匹配的文件：Windows x64 `.exe` 安装包，或适用于 macOS Intel（x64）／Apple 芯片（arm64）的 `.dmg`。安装并打开吵股。桌面应用会启动自己的本地后端和数据库，不要求 Docker、Node.js 或 Python。如果没有配置签名证书，macOS 构建未经签名，系统可能警告或阻止打开；决定打开前请核对安装包来源。应用不提供自动更新服务，你可以自行安装较新的发布版本。
+从 [Squabble Releases](https://github.com/Lueyu/squabble/releases) 下载与你系统匹配的文件：Windows x64 `.exe` 安装包，或适用于 macOS Intel（x64）／Apple 芯片（arm64）的 `.dmg`。安装并打开吵股。桌面应用会启动自己的本地后端和数据库，不要求 Docker、Node.js 或 Python。如果没有配置签名证书，macOS 构建未经签名，系统可能警告或阻止打开；决定打开前请核对安装包来源。
 
 Windows 上请正常启动吵股，不要选择“以管理员身份运行”；内置 PostgreSQL 会拒绝在提升权限的管理员进程下启动。
 
-桌面应用的“帮助 → 检查更新”会在你点击时查询 GitHub 最新正式版。若有新版本，界面显示版本和更新说明，并提供适合当前系统的安装包下载链接；下载后请退出吵股，再手动安装。此功能不会在后台下载或自动安装，也不会改变本地数据目录。
+Windows 版会在启动后检查 GitHub 最新正式版，也可使用“帮助 → 检查更新”。发现新版本后，你可以选择下载、稍后再更新；下载完成后选择重启安装。安装前本地后端和数据库会正常停止，数据目录保留。`2.1.0` 及更旧安装包没有此功能，需要手动安装一次 `2.2.0` 或更新版。未配置 Windows 代码签名证书时，系统可能显示未验证的发布者，请核对安装包来源。
+
+macOS 版仍通过“帮助 → 检查更新”打开发布页面并手动安装。**TODO：**配置 Apple 应用签名、公证和 ZIP 更新产物后再启用 macOS 应用内自动更新。
 
 Windows 安装向导启动时可选择简体中文或 English。安装包需要解压内置数据库和应用文件，进度条可能短暂停留；如果长时间没有变化，请先检查安装程序是否仍在写入磁盘，并关闭已运行的吵股后重试。重新安装不会自动删除应用数据目录。
 
@@ -49,11 +51,11 @@ docker info
 ```sh
 git clone https://github.com/Lueyu/squabble.git
 cd squabble
-docker compose up -d --build
+docker compose up -d
 docker compose ps
 ```
 
-首次构建会下载并编译依赖，可能需要几分钟。打开 [http://localhost:3000](http://localhost:3000)。干净安装使用空白数据库，没有演示账号，并自动生成稳定的 JWT 和设置加密密钥。创建账号、离线保存一次性恢复码，然后添加持仓或导入 CSV。首个账号创建后，注册入口会自动关闭。应用只绑定本机的 `127.0.0.1:3000`，PostgreSQL 不对主机发布端口。[健康检查](http://localhost:3000/api/health)应返回 `{"status":"ok"}`；页面尚未就绪时运行 `docker compose logs --tail=100 app db`。
+首次启动会从 GitHub Container Registry 下载预构建应用镜像，可能需要几分钟。打开 [http://localhost:3000](http://localhost:3000)。干净安装使用空白数据库，没有演示账号，并自动生成稳定的 JWT 和设置加密密钥。创建账号、离线保存一次性恢复码，然后添加持仓或导入 CSV。首个账号创建后，注册入口会自动关闭。应用只绑定本机的 `127.0.0.1:3000`，PostgreSQL 不对主机发布端口。[健康检查](http://localhost:3000/api/health)应返回 `{"status":"ok"}`；页面尚未就绪时运行 `docker compose logs --tail=100 app db`。
 
 根目录 Compose 的默认项目名为 `squabble-local`。终端或 `.env` 中已有的 `COMPOSE_PROJECT_NAME`，以及 `-p` 参数，都会覆盖该名称。旧演示升级前请运行 `docker compose config`，确认输出是 `name: squabble-local`；否则先清除覆盖值，或在**每条**干净实例命令中显式使用 `-p squabble-local`。不要把干净实例命名为旧演示项目 `squabble`，以免碰到旧数据卷。后续维护请保持相同的项目名与仓库路径，以便 Docker 找到已有卷。不要用 `docker compose down -v` 排查或升级；它会删除数据和自动生成的密钥。
 
@@ -61,6 +63,15 @@ docker compose ps
 |---|---|
 | 账号、持仓、报告及加密后的供应商凭证 | `squabble-local_dpa-data`（`db` 容器内 `/var/lib/postgresql/data`） |
 | 自动生成的 JWT 与设置密钥 | `squabble-local_settings-secrets`（`app` 容器内 `/app/.secrets`） |
+| 点击更新前自动创建的备份 | `squabble-local_update-backups`（`app` 容器内 `/app/.backups`） |
+
+默认网页应用使用预构建镜像。首次升级旧版源码安装时，在原仓库目录执行 `git pull --ff-only` 和 `docker compose up -d`；保持原来的 Compose 项目名，原有数据库与密钥卷会继续使用。此后，首个注册账号可在“设置 → 软件更新”查看新版本并点击“立即更新”。应用先保存 PostgreSQL 转储和密钥，再由仅在 Docker 内部可访问的更新组件替换应用容器；数据库容器不会被替换。更新组件不会定时检查或自动安装；平常执行 `docker compose up -d` 也不会自行拉取更新。升级后检查页面是否显示新版本，以及持仓和登录是否正常。
+
+更新组件需要访问本机 Docker socket，因此有管理 Docker 容器的权限；它不向主机开放端口，并使用仅保存在密钥卷中的随机令牌。请只在可信任的本机运行该模式。
+
+更新前的备份保存在 `update-backups` 卷。可通过 `docker compose exec app ls /app/.backups` 查看，再用 `docker compose cp app:/app/.backups/<备份目录名> ./backups/` 取出。建议定期把备份复制到电脑之外的受保护位置；如果密钥来自 `.env` 而不是自动生成文件，还要单独备份 `.env` 中的值。
+
+如需从源码构建而非下载镜像，可执行 `docker compose -f docker-compose.yml -f docker-compose.source.yml up -d --build`。源码构建模式不会显示网页内更新按钮；以后更新源码请拉取新代码并重新构建。不要在更新或排障时运行 `docker compose down -v`。
 
 ### 可选的虚构演示
 
@@ -115,7 +126,7 @@ docker compose exec -T db psql -U postgres -d portfolio_restore_check -c "SELECT
 
 ```sh
 git pull --ff-only
-docker compose up -d --build
+docker compose up -d
 docker compose ps
 ```
 

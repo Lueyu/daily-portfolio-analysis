@@ -12,7 +12,8 @@ import {
   waitForHealth,
 } from './runtime.mjs';
 import type { DesktopDatabase } from './runtime.mjs';
-import { checkForUpdate } from './update-check.mjs';
+import { checkForUpdate, isNewerVersion } from './update-check.mjs';
+import { isAutomaticUpdateSupported } from './auto-update.mjs';
 
 let window: BrowserWindow | null = null;
 let backend: UtilityProcess | null = null;
@@ -22,11 +23,54 @@ let quitting = false;
 let quitAllowed = false;
 let checkingForUpdate = false;
 
-async function showUpdateCheck(): Promise<void> {
+async function showWindowsUpdateCheck(chinese: boolean, silent: boolean): Promise<void> {
+  // Eager loading electron-updater stalls packaged startup before the app is ready.
+  const { autoUpdater } = await import('electron-updater');
+  autoUpdater.autoDownload = false;
+  autoUpdater.autoInstallOnAppQuit = false;
+  const result = await autoUpdater.checkForUpdates();
+  const version = result?.updateInfo.version;
+  if (!version || !isNewerVersion(version, app.getVersion())) {
+    if (!silent) await dialog.showMessageBox({ type: 'info', title: 'Squabble',
+      message: chinese ? '已是最新版本' : 'Squabble is up to date',
+      detail: chinese ? `当前版本：${app.getVersion()}` : `Current version: ${app.getVersion()}` });
+    return;
+  }
+  const choice = await dialog.showMessageBox({ type: 'info', title: 'Squabble',
+    message: chinese ? `发现新版本 ${version}` : `Version ${version} is available`,
+    detail: chinese ? '下载后可以立即重启安装，数据会保留。' : 'Download and restart to install. Your data will be kept.',
+    buttons: chinese ? ['下载更新', '稍后'] : ['Download update', 'Later'],
+    defaultId: 0, cancelId: 1 });
+  if (choice.response !== 0) return;
+  const progress = (_event: { percent: number }) => window?.setProgressBar(_event.percent / 100);
+  autoUpdater.on('download-progress', progress);
+  try {
+    await autoUpdater.downloadUpdate();
+  } finally {
+    autoUpdater.off('download-progress', progress);
+    window?.setProgressBar(-1);
+  }
+  const install = await dialog.showMessageBox({ type: 'info', title: 'Squabble',
+    message: chinese ? '更新已下载' : 'Update downloaded',
+    detail: chinese ? '现在重启 Squabble 以完成安装？' : 'Restart Squabble now to finish installing?',
+    buttons: chinese ? ['重启并安装', '稍后'] : ['Restart and install', 'Later'],
+    defaultId: 0, cancelId: 1 });
+  if (install.response === 0) {
+    await stopServices();
+    quitAllowed = true;
+    autoUpdater.quitAndInstall(false, true);
+  }
+}
+
+async function showUpdateCheck(silent = false): Promise<void> {
   if (checkingForUpdate) return;
   checkingForUpdate = true;
   const chinese = app.getLocale().toLowerCase().startsWith('zh');
   try {
+    if (isAutomaticUpdateSupported(process.platform, process.arch, app.isPackaged)) {
+      await showWindowsUpdateCheck(chinese, silent);
+      return;
+    }
     const update = await checkForUpdate(app.getVersion(), process.platform, process.arch);
     if (!update) {
       await dialog.showMessageBox({ type: 'info', title: 'Squabble',
@@ -42,7 +86,7 @@ async function showUpdateCheck(): Promise<void> {
     });
     if (choice.response === 0) await shell.openExternal(update.downloadUrl);
   } catch {
-    await dialog.showMessageBox({ type: 'warning', title: 'Squabble',
+    if (!silent) await dialog.showMessageBox({ type: 'warning', title: 'Squabble',
       message: chinese ? '检查更新失败' : 'Could not check for updates',
       detail: chinese ? '请检查网络连接，或前往 GitHub Releases 页面查看。'
         : 'Check your connection or visit Squabble Releases on GitHub.' });
@@ -146,6 +190,10 @@ async function startDesktop(): Promise<void> {
   markSmokeStage('server-healthy');
 
   if (process.env.SQUABBLE_DESKTOP_SMOKE === '1') {
+    if (isAutomaticUpdateSupported(process.platform, process.arch, app.isPackaged)) {
+      await import('electron-updater');
+      markSmokeStage('updater-loaded');
+    }
     const response = await fetch(`${origin}/api/auth/registration-status`);
     if (!response.ok || (await response.json() as { registrationOpen?: boolean }).registrationOpen !== true) {
       throw new Error('Packaged desktop first-run registration is unavailable');
@@ -186,6 +234,10 @@ async function startDesktop(): Promise<void> {
   });
   window.once('ready-to-show', () => window?.show());
   await window.loadURL(origin);
+  if (isAutomaticUpdateSupported(process.platform, process.arch, app.isPackaged)) {
+    setTimeout(() => { if (!quitting) void showUpdateCheck(true); }, 20_000).unref();
+    setInterval(() => { if (!quitting) void showUpdateCheck(true); }, 6 * 60 * 60_000).unref();
+  }
 }
 
 markSmokeStage('module-loaded');

@@ -47,7 +47,7 @@ You need [Git](https://git-scm.com/downloads) and [Docker Desktop](https://docs.
 ```bash
 git clone https://github.com/Lueyu/squabble.git
 cd squabble
-docker compose up -d --build
+docker compose up -d
 ```
 
 Open **http://localhost:3000**. Create your first account.

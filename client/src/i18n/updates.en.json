@@ -1,0 +1,16 @@
+{
+  "title": "Software updates",
+  "description": "The local Docker app updates only when you click Update now. A database and secrets backup is created first; the service briefly restarts.",
+  "current": "Current version: {{version}}",
+  "available": "Version {{version}} is available",
+  "upToDate": "Squabble is up to date",
+  "checkFailed": "Could not check for a new release",
+  "checkAgain": "Check again",
+  "working": "Backing up and updating. Waiting for the service to restart…",
+  "backedUp": "Backup complete. Update started.",
+  "complete": "Update complete",
+  "startFailed": "Could not start the update. Check the service and connection.",
+  "failed": "Update did not finish. Check the updater container logs.",
+  "updateNow": "Update now",
+  "releaseNotes": "Release notes"
+}

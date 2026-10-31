@@ -18,7 +18,7 @@ For pull requests, see [CONTRIBUTING.md](../CONTRIBUTING.md).
 
 | Mode | How to start | Database | Best for |
 |---|---|---|---|
-| Clean local Docker | `docker compose up -d --build` | containerized PostgreSQL, no demo seed | Use a local account and empty workspace |
+| Clean local Docker | `docker compose -f docker-compose.yml -f docker-compose.source.yml up -d --build` | containerized PostgreSQL, no demo seed | Use a local account and empty workspace |
 | Optional fictional demo | `docker compose -f docker-compose.demo.yml up -d --build` | separate PostgreSQL volume with demo seed | Explore fictional examples on port 3001 |
 | Source: full stack | `npm run dev` | via `DATABASE_URL` (local PostgreSQL) | Everyday development |
 | Source: backend only | `npm run dev:server` | same | API work |

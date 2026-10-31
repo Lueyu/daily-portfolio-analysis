@@ -1,0 +1,16 @@
+{
+  "title": "软件更新",
+  "description": "仅在点击“立即更新”后更新本地 Docker 应用。更新前会备份数据库和密钥，服务会短暂重启。",
+  "current": "当前版本：{{version}}",
+  "available": "可更新至 {{version}}",
+  "upToDate": "当前已是最新版本",
+  "checkFailed": "暂时无法查询最新版本",
+  "checkAgain": "重新检查",
+  "working": "正在备份并更新，请等待服务重启…",
+  "backedUp": "备份已完成，更新已开始",
+  "complete": "更新完成",
+  "startFailed": "无法开始更新，请检查服务和网络连接",
+  "failed": "更新未完成，请检查更新组件日志",
+  "updateNow": "立即更新",
+  "releaseNotes": "查看版本说明"
+}

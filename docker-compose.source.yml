@@ -1,0 +1,8 @@
+services:
+  app:
+    build: .
+    image: squabble-local-source:dev
+    environment:
+      SQUABBLE_UPDATE_MODE: "off"
+  updater:
+    profiles: [managed-updates]
