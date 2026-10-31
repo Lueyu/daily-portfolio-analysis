@@ -277,6 +277,10 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish release before promoting the web image
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false --latest=false
       - name: Promote tested web image to stable
         run: docker buildx imagetools create --tag ghcr.io/lueyu/squabble:stable "ghcr.io/lueyu/squabble:$GITHUB_REF_NAME"
       - name: Verify stable image can be pulled without credentials
@@ -285,7 +289,7 @@ jobs:
           set -euo pipefail
           anonymous_config="$(mktemp -d)"
           DOCKER_CONFIG="$anonymous_config" docker manifest inspect ghcr.io/lueyu/squabble:stable >/dev/null
-      - name: Publish release
+      - name: Mark release latest
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false
+        run: gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --latest
