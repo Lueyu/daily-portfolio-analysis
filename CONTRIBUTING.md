@@ -3,7 +3,7 @@
 Help make personal investing tools easier to understand and safer to try.
 Useful contributions include clearer onboarding, verified research data,
 paper-trading rules, privacy controls, translations and bug fixes.
-Start with the [local demo](docs/self-hosting.md), then use the
+Start with the [local setup guide](docs/self-hosting.md), then use the
 [development guide](docs/development.md) if you want to change the app.
 
 ## Project layout
@@ -16,10 +16,11 @@ requests:
 | `client/` | React SPA (pages, components, hooks, api wrappers) |
 | `server/` | NestJS backend (modules, first-party auth, platform layer in `server/common/platform/`) |
 | `shared/` | Types shared by front-end and backend |
-| `agent/` | Standalone Python agent service |
+| `agent/` | Optional Python agent CLI |
 | `docs/`, `README*` | Documentation |
-| `scripts/db/` | Schema + demo seed used by docker compose |
-| `Dockerfile`, `docker-compose.yml`, `deploy/`, `.github/` | Local demo, public deployment & CI |
+| `scripts/db/` | Base schema, opt-in fictional demo seed and migrations |
+| `desktop/` | Electron launcher, private PostgreSQL lifecycle and desktop checks |
+| `Dockerfile`, `docker-compose*.yml`, `.github/` | Clean local web stack, opt-in demo and installer CI |
 
 The project was originally developed on the Miaoda (aPaaS) cloud; that
 coupling has been fully removed, so there is no mirror/sync workflow anymore.
@@ -31,6 +32,8 @@ npm ci               # install the versions in package-lock.json
 npm run lint         # eslint + typecheck + stylelint
 npm run test:server  # offline server tests
 npm run test:client  # client behavior tests
+npm run test:desktop # desktop lifecycle tests (Windows/macOS)
+npm run test:a2a     # optional local agent bridge tests
 ```
 
 These checks must pass for application changes. For documentation changes,
@@ -61,9 +64,10 @@ uv run pytest -q     # offline test suite, no live network access
 
 ## Reporting bugs
 
-Open an issue with the **Bug report** template. The Docker demo
-(`docker compose up --build`, login demo/demo1234) is the fastest way to
-reproduce — mention whether the bug also happens there.
+Open an issue with the **Bug report** template. The opt-in Docker demo
+(`docker compose -f docker-compose.demo.yml up -d --build`, then log in at
+`http://localhost:3001` with `demo` / `demo1234`) is useful for reproduction.
+Mention whether the bug also happens with a clean local account or desktop app.
 
 ## Feature requests
 

@@ -1,6 +1,8 @@
 # 本地 Agent 投研团队 · Local agent research teams
 
-Squabble 可以通过 **A2A 1.0 的 JSON-RPC 接口**把研究交给独立 Agent。网页负责分派成员任务、传递讨论上下文、接收进度和报告；Agent 使用自己的搜索和研究能力完成任务。现有「模型 API · 内置研究」也可以继续使用，团队成员可分别选择执行方式。
+Squabble 可以通过 **A2A 1.0 的 JSON-RPC 接口**把研究交给独立 Agent。应用负责分派成员任务、传递讨论上下文、接收进度和报告；Agent 使用自己的搜索和研究能力完成任务。现有「模型 API · 内置研究」也可以继续使用，团队成员可分别选择执行方式。
+
+本指南以受支持的**本地 Docker Compose 安装**为例。桌面安装包不捆绑 Codex CLI 或本桥接服务；如要接入它们，需单独安装 Node.js、Codex CLI 并配置受信的本机连接。以下 Compose 命令不能用于桌面安装包。
 
 本地 Agent 指的是执行程序在你的电脑上运行。Codex 通常仍通过供应商云端推理，使用现有 Codex 登录凭证；它不是自动离线的大模型，也不使用网页中保存的 DeepSeek Key。仓库提供的桥接服务使用只读沙箱、独立任务目录和原生搜索，不继承用户自定义 MCP 与规则配置。完整运行参数见 [Bridge README](../agent-bridge/README.md)。
 
@@ -17,7 +19,7 @@ codex login status
 
 ## 2. 创建连接配置并启动桥接服务
 
-下面以 **Docker Desktop 运行 Web 应用，Windows 本机运行 Codex** 为例。在项目根目录的 PowerShell 执行，把占位值替换为刚才复制的账号 ID：
+下面以 **Docker Desktop 运行干净的本地 Compose 应用，Windows 本机运行 Codex** 为例。在项目根目录的 PowerShell 执行，把占位值替换为刚才复制的账号 ID：
 
 ```powershell
 $agentOwnerId = '替换为网页显示的完整账号ID'
@@ -125,11 +127,11 @@ npx tsx agent-bridge/main.ts
 
 如果你已有其他 A2A Agent，只需在连接表中注册它的 Agent Card 地址、认证密钥和账号授权。当前客户端要求 **A2A 1.0 + JSON-RPC**，不会把 0.3 格式当作 1.0。原始 Ollama/LM Studio 的模型接口不是 A2A Agent；需要由支持任务执行和工具的 Agent 运行时提供 A2A 服务。
 
-## 云端部署的连接边界
+## 其他网络中的连接边界
 
-云服务器上的 `localhost` 指向云服务器，无法直接访问你的个人电脑。`host.docker.internal` 也只指向运行 Docker 的那台宿主机。当前版本没有实现公网客户端的自动配对或反向隧道。
+另一台电脑上的 `localhost` 指向它自己，无法直接访问你的个人电脑。`host.docker.internal` 也只指向运行 Docker 的那台宿主机。当前版本没有实现跨设备的自动配对或反向隧道。公网服务器部署不是受支持的安装方式。
 
-云端使用时，可以把 Agent 运行在同一受信服务器，或由运营者先建立受认证的私有网络连接，再把服务器可达的 Agent Card 地址写入连接表。公开服务不要把运营者自己的付费 Agent 授权给所有陌生账号；`owners` 应列出实际允许使用的账号。
+如果你自行在其他受信网络中运行 Agent，先建立受认证的私有连接，再把应用可达的 Agent Card 地址写入连接表。不要把自己的付费 Agent 授权给陌生账号；`owners` 应列出实际允许使用的账号。
 
 ## English quick reference
 
@@ -138,7 +140,7 @@ Squabble uses **A2A 1.0 JSON-RPC** to assign work to independent agents and coll
 1. Install dependencies with `npm ci`. Verify that the native Codex CLI is installed and logged in.
 2. Set `SQUABBLE_A2A_TOKEN` to a private random value of at least 32 characters and `SQUABBLE_CODEX_BINARY` to the native executable. Start `npx tsx agent-bridge/main.ts`. See [bridge configuration](../agent-bridge/README.md).
 3. Create an operator-owned JSON registry using the schema above. `owners` contains exact account IDs, available in **Settings → Local research agents**. Configure `A2A_AGENTS_FILE` in the Squabble server; Docker also needs a read-only registry mount.
-4. Use `127.0.0.1` for a server running directly on the same host. For Docker Desktop, use `host.docker.internal` and set the bridge's advertised URL to the same origin as its card URL. A hosted server cannot reach a user's laptop without a separate authenticated network connection.
+4. Use `127.0.0.1` for a backend running directly on the same host. For Docker Desktop, use `host.docker.internal` and set the bridge's advertised URL to the same origin as its card URL. Another computer cannot reach your laptop through either address; it needs a separate authenticated network connection. Public server deployment is not a supported Squabble installation path.
 5. Test the connection in Settings, turn off the Squabble research budget, and choose a local agent for each team member. Autonomous agents manage their own internal token usage, which standard A2A does not let Squabble enforce. Missing usage is shown as unknown.
 
 The integration is inspired by Clowder's separation of agent orchestration and CLI execution. Clowder's internal A2A delivery design is distinct from the standard protocol used here: [Clowder architecture](https://github.com/zts212653/clowder-ai/blob/main/docs/architecture/a2a-protocol.md), [A2A specification](https://a2a-protocol.org/v1.0.1/specification/), [official TypeScript SDK](https://github.com/a2aproject/a2a-js).

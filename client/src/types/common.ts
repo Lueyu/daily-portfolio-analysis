@@ -45,18 +45,3 @@ export type IFileAttachment = {
   /** Path/key of the file inside the bucket. */
   file_path: string;
 };
-
-/**
- * Runtime-injected auth/session fields exposed on `window` by the host
- * container (aPaaS gateway). Read-only once the app boots.
- */
-declare global {
-  interface Window {
-    /** Current authenticated user id. */
-    userId?: string;
-    /** Session bearer token. */
-    token?: string;
-    /** CSRF token required by mutating requests. */
-    csrfToken?: string;
-  }
-}

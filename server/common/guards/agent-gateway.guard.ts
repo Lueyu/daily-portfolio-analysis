@@ -3,16 +3,12 @@
  *
  * Service-to-service authentication for the Python analysis agent.
  *
- * The browser-facing API authenticates a human session through the platform
- * gateway (`@NeedLogin()` + the `x-larkgw-suda-webuser` header). The Python agent
- * is not a browser: it has no cookie session and calls the backend over HTTP from
- * another process. It instead proves its identity with a shared secret sent in
- * the `x-agent-token` header.
+ * The browser-facing API authenticates a human session with a bearer JWT.
+ * The optional Python agent calls the backend from another process and proves
+ * its identity with a shared secret sent in the `x-agent-token` header.
  *
  * Routes under `/openapi/agent-gateway/*` are the only routes that accept this
- * credential; the browser CSRF double-token guard is intentionally not applied to
- * the `/openapi` prefix (the platform exempts it), because a service caller does
- * not carry cookies.
+ * credential. Browser authentication and this service credential are separate.
  *
  * Configuration (env):
  *  - AGENT_GATEWAY_ENABLED        Must be exactly "true" to enable the gateway.

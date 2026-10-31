@@ -5,6 +5,7 @@ ARG BASE_REGISTRY=library
 FROM ${BASE_REGISTRY}/node:22-alpine AS build
 WORKDIR /app
 ENV NODE_OPTIONS=--max-old-space-size=4096
+ENV ELECTRON_SKIP_BINARY_DOWNLOAD=1
 
 COPY package.json package-lock.json .npmrc ./
 # The prepare lifecycle script references this file; it must exist before npm ci.
@@ -12,10 +13,10 @@ COPY scripts/setup-git-hooks.js scripts/
 RUN npm ci
 
 COPY . .
-# npm run build = nest build (dist/server) + vite build (dist/client).
+# The container runs the web stack; the desktop installer is built separately.
 ARG VITE_PUBLIC_DEPLOYMENT=false
 ENV VITE_PUBLIC_DEPLOYMENT=${VITE_PUBLIC_DEPLOYMENT}
-RUN npm run build
+RUN npm run build:web
 
 # ---------- Runtime stage ----------
 FROM ${BASE_REGISTRY}/node:22-alpine
@@ -41,7 +42,7 @@ COPY scripts/db/11_research_tools.sql ./scripts/db/11_research_tools.sql
 COPY scripts/db/12_council_dialogue.sql ./scripts/db/12_council_dialogue.sql
 COPY scripts/db/13_budget_toggle.sql ./scripts/db/13_budget_toggle.sql
 COPY scripts/db/14_a2a_agents.sql ./scripts/db/14_a2a_agents.sql
-COPY scripts/ensure-settings-key.cjs scripts/start-app.cjs ./scripts/
+COPY scripts/ensure-settings-key.cjs scripts/ensure-jwt-secret.cjs scripts/start-app.cjs ./scripts/
 
 # Views and static assets are resolved from process.cwd()/dist/client
 # (server/main.ts), so the working directory must stay /app.

@@ -1,7 +1,7 @@
 # Development Guide
 
 This guide is for changing Squabble's code. To use the product, start with
-the [Docker demo](self-hosting.md) or [server deployment](public-deployment.md).
+the [desktop app or clean local Docker installation](self-hosting.md).
 For pull requests, see [CONTRIBUTING.md](../CONTRIBUTING.md).
 
 ## Requirements
@@ -18,7 +18,8 @@ For pull requests, see [CONTRIBUTING.md](../CONTRIBUTING.md).
 
 | Mode | How to start | Database | Best for |
 |---|---|---|---|
-| **Docker demo** | `docker compose up -d --build` | containerized PostgreSQL + demo seed | Explore without a model key; first build time varies |
+| Clean local Docker | `docker compose up -d --build` | containerized PostgreSQL, no demo seed | Use a local account and empty workspace |
+| Optional fictional demo | `docker compose -f docker-compose.demo.yml up -d --build` | separate PostgreSQL volume with demo seed | Explore fictional examples on port 3001 |
 | Source: full stack | `npm run dev` | via `DATABASE_URL` (local PostgreSQL) | Everyday development |
 | Source: backend only | `npm run dev:server` | same | API work |
 | Source: client only | `npm run dev:client` | proxies `/api` to :3000 | UI work |
@@ -59,25 +60,23 @@ Logs are under `logs/`; inspect them if startup fails. The individual
 `dev:server` and `dev:client` commands do not use that supervisor; provide the
 required environment variables in their shell when running them separately.
 
-The supervisor still attempts a legacy `fullstack-cli action-plugin init`
-step. If that CLI is absent, its initialization warning is non-blocking;
-the backend and frontend continue starting.
-
-The app applies additive migrations `03` through `09` on startup. They do not
-create the base schema. The root demo Compose database has no published host
-port, so it is not reachable at `localhost:5432` without an explicit local
-port mapping.
+The app applies additive migrations `03` through `14` on startup. They do not
+create the base schema. Neither Docker configuration publishes PostgreSQL on
+the host, so a source development server cannot reach it at `localhost:5432`
+without an explicit local port mapping.
 
 ## Lint, types, tests
 
 ```bash
 npm run lint          # eslint + stylelint + full typecheck (also runs in CI)
 npm run test:server   # Nest service/rule tests; database suites need the variables below
-npm run test:client   # appearance store, cross-tab sync and startup preferences
+npm run test:client   # client state and component behavior
+npm run test:desktop  # bundled database, lifecycle and loopback security checks
+npm run test:a2a      # optional local agent bridge tests
 npm run type:check    # typecheck only
 ```
 
-Database integration suites use `BUDGET_TEST_DATABASE_URL` and `COUNCIL_TEST_DATABASE_URL`. Set both to a **disposable test database** initialized with `01_schema.sql` and additive migrations `03`–`09`; do not point them at personal or production data. Without these variables, database cases are explicitly skipped. CI provisions PostgreSQL and runs them, including concurrent reservations, user isolation, discussion revisions, and atomic paper execution.
+Database integration suites use `BUDGET_TEST_DATABASE_URL`, `COUNCIL_TEST_DATABASE_URL`, and `AUTH_TEST_DATABASE_URL`. Set them to a **disposable test database** initialized with `01_schema.sql` and additive migrations `03`–`14`; do not point them at personal or production data. Without these variables, database cases are explicitly skipped. CI provisions PostgreSQL and runs them, including concurrent reservations, user isolation, first-account registration, discussion revisions, and atomic paper execution.
 
 Agent service:
 
@@ -90,6 +89,10 @@ uv run pytest -q      # offline suite, no live network access
 CI (`.github/workflows/ci.yml`) runs on pushes to `main` and pull requests
 targeting `main`: webapp lint, typecheck and server/client tests; Python agent
 tests; and a Docker image build.
+
+The separate desktop workflow builds Windows x64, macOS x64, and macOS arm64
+installers. It runs the desktop tests and verifies a fresh packaged app can
+start its own database and API before publishing version-tagged installers.
 
 ## Python Agent (`agent/`)
 
@@ -134,12 +137,10 @@ upgrades when changing the schema, preserving existing user data.
 
 ## Platform migration notes
 
-The webapp was originally developed on the Miaoda (aPaaS) cloud and inherited
-`@lark-apaas/*` packages for hosting, auth and database injection. That
-runtime dependencies have been replaced: auth is the first-party
-username+password system in `server/modules/auth`, and the database layer is
-a direct Drizzle connection (`server/common/platform`). The development
-supervisor still contains the optional legacy initialization step noted above.
-The old env vars (`SUDA_DATABASE_URL`, `LOCAL_DEV_USER_ID`, `DISABLE_CSRF`)
-are gone; the current set is documented in
-[self-hosting.md](self-hosting.md).
+The webapp was originally developed on the Miaoda (aPaaS) cloud. Runtime
+authentication is now the first-party username/password system in
+`server/modules/auth`, and the database layer is a direct Drizzle connection
+in `server/common/platform`. The development supervisor still contains the
+optional legacy initialization step noted above. Use the environment values
+shown in this guide for source development; the supported end-user paths are
+described in [local installation](self-hosting.md).

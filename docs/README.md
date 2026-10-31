@@ -1,14 +1,14 @@
 # Squabble documentation · 文档导航
 
-Start with the guide for what you want to do. You do not need the Python agent
-or a model key to try the web application.
+Choose one of the two supported local installation paths. You do not need the
+Python agent or a model key to start using Squabble.
 
-按你的目标选择入口。体验 Web 应用不需要安装 Python Agent，也不需要模型 Key。
+从两种受支持的本地安装方式中选择。开始使用吵股不需要安装 Python Agent，也不需要模型 Key。
 
 | Goal / 目标 | English | 简体中文 |
 |---|---|---|
-| Explore on your computer / 本地体验与排错 | [Local setup](self-hosting.md) | [本地部署](self-hosting.zh-CN.md) |
-| Run on your server / 单机服务器、域名与 HTTPS | [Server deployment](public-deployment.md) | [服务器部署](public-deployment.zh-CN.md) |
+| Install the Windows or macOS desktop app / 安装桌面应用 | [Desktop installation](self-hosting.md#desktop-app) | [桌面应用](self-hosting.zh-CN.md#桌面应用) |
+| Run clean local Docker Compose / 本地 Docker Compose 干净安装 | [Local setup](self-hosting.md#docker-compose) | [本地安装](self-hosting.zh-CN.md#docker-compose) |
 | Understand data handling / 数据存在哪里、谁能访问 | [Privacy and data flow](privacy.md) | [数据与隐私](privacy.zh-CN.md) |
 
 For using the product / 功能使用：
@@ -27,7 +27,9 @@ For contributors / 参与开发：
 - [Contributing](../CONTRIBUTING.md): changes, translations and issue reports.
 - [Security](../SECURITY.md): private vulnerability reporting and deployment boundaries.
 
-The documentation describes the repository's current behavior. A website
-operated by someone else needs its own privacy notice and support contact.
+Squabble does not operate a hosted service or support public server
+deployment. The [retired server guide](public-deployment.md) explains that
+boundary. An independently operated website needs its own privacy notice and
+support contact.
 
-这些文档说明仓库当前的实现；他人运营的网站需要提供自己的隐私说明与支持渠道。
+吵股不运营托管服务，也不提供受支持的公网服务器部署；详见[原服务器指南说明](public-deployment.zh-CN.md)。第三方自行运营的网站需要提供自己的隐私说明与支持渠道。

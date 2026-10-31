@@ -30,6 +30,7 @@ import ImportPage from './pages/Import/ImportPage';
 import LoginPage from './pages/Auth/LoginPage';
 import RegisterPage from './pages/Auth/RegisterPage';
 import RecoverPage from './pages/Auth/RecoverPage';
+import PrivacyPage from './pages/Privacy/PrivacyPage';
 import NotFound from './pages/NotFound/NotFound';
 
 /**
@@ -53,6 +54,7 @@ const RoutesComponent = () => {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
       <Route path="/recover" element={<RecoverPage />} />
+      <Route path="/privacy" element={<PrivacyPage />} />
       <Route element={<Layout />}>
         <Route index element={<DashboardPage />} />
         <Route path="holdings" element={<HoldingsPage />} />

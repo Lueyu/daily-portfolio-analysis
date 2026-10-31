@@ -1,9 +1,11 @@
 # Architecture
 
-Squabble's working application is a React web client, a NestJS backend and
-PostgreSQL. The backend runs the built-in analysis pipeline, portfolio APIs,
-paper trading and notifications. Python is not required to run the web app or
-generate its reports.
+Squabble's application is a React client, a NestJS backend and PostgreSQL.
+The backend runs the built-in analysis pipeline, portfolio APIs, paper trading
+and notifications. The supported installation paths are a standalone Windows
+or macOS desktop app and a clean local Docker Compose stack. Python is not
+required for either path or for built-in reports. Squabble does not operate a
+hosted service.
 
 For setup, see [self-hosting](self-hosting.md). For the product overview, see
 the [README](../README.md).
@@ -12,7 +14,7 @@ the [README](../README.md).
 
 ```mermaid
 flowchart LR
-    Browser[React web client] -->|HTTP API| Backend[NestJS backend]
+    UI[React UI in browser or Electron] -->|local HTTP API| Backend[NestJS backend]
     Backend --> Database[(PostgreSQL)]
     Backend --> Quotes[Public quote and FX providers]
     Backend -->|Optional company metrics and news| Finnhub[Finnhub]
@@ -22,10 +24,9 @@ flowchart LR
 ```
 
 - **Client:** React, TypeScript, Vite, React Query and shared API types. The
-  responsive web UI provides portfolios, analysis, imports, paper trading,
+  responsive UI provides portfolios, analysis, imports, paper trading,
   Agent Builder and settings. It supports Chinese/English and four visual
-  themes. There is currently no PWA manifest/service worker or native desktop
-  installer in this repository.
+  themes. There is no PWA manifest or service worker.
 - **Backend:** NestJS modules own the API and business logic. The web client
   calls the deployment's API; quote fetching is performed by the backend,
   rather than by a browser-held Finnhub token.
@@ -37,9 +38,14 @@ flowchart LR
   index data; the FX module fetches and stores exchange rates. Provider
   coverage, availability and freshness vary.
 
-The local Docker setup runs the app and PostgreSQL. The production build
-serves the client through NestJS; development runs the Vite client and NestJS
-server separately.
+The local Docker setup runs the app and PostgreSQL without demo records. The
+separate opt-in demo Compose file seeds fictional records. The desktop app
+starts a bundled local backend and database and keeps mutable data under the
+operating system's Squabble application data directory. The production web
+build serves the client through NestJS;
+development runs the Vite client and NestJS server separately. Both local
+installation paths can make outbound requests for public quotes and FX data,
+or to explicitly configured model, research and notification providers.
 
 ## Accounts, ownership and credentials
 
@@ -159,7 +165,9 @@ pipeline to Python.
 | `shared/api.interface.ts` | Shared request/response and domain types |
 | `scripts/db/` | Base schema, fictional demo data and additive schema updates |
 | `agent/` | Optional Python CLI and its offline tests |
-| `docker-compose.yml`, `deploy/` | Local demo and public deployment configuration |
+| `desktop/` | Electron shell and local backend/database lifecycle for desktop installers |
+| `docker-compose.yml`, `docker-compose.demo.yml` | Clean local and opt-in fictional demo installations |
+| `deploy/` | Earlier public beta deployment files; public server operation is no longer a supported installation path |
 
 The main data groups are portfolio records, analysis runs/evidence/reports,
 strategy rules, accounts and sessions, paper-trading records, builder
@@ -169,7 +177,7 @@ using a fixed table count as an architectural contract.
 
 Fresh databases need `scripts/db/01_schema.sql`. Demo data is in the separate
 `02_demo_seed.sql`. The current database provider applies the additive
-`03_agent_builder.sql` through `06_account_recovery.sql` files during startup;
+`03_agent_builder.sql` through `14_a2a_agents.sql` files during startup;
 that process does not create the base portfolio schema on an empty database.
 Keep the SQL and Drizzle definitions aligned. There is currently no
 `gen:db-schema` npm command in this repository.

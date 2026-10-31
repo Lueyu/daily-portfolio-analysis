@@ -1,3 +1,5 @@
+name: squabble-local
+
 services:
   db:
     # Override for firewalled networks, e.g. via .env:
@@ -9,10 +11,8 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: portfolio
     volumes:
-      # Schema + fictional demo dataset, applied in lexical order on first
-      # start (postgres entrypoint initdb).
+      # The base schema is applied only when this local database is first created.
       - ./scripts/db/01_schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
-      - ./scripts/db/02_demo_seed.sql:/docker-entrypoint-initdb.d/02_demo_seed.sql:ro
       - ./scripts/db/03_agent_builder.sql:/docker-entrypoint-initdb.d/03_agent_builder.sql:ro
       - ./scripts/db/04_user_api_settings.sql:/docker-entrypoint-initdb.d/04_user_api_settings.sql:ro
       - dpa-data:/var/lib/postgresql/data
@@ -31,21 +31,18 @@ services:
       SERVER_PORT: 3000
       # Direct PostgreSQL connection (first-party, no platform layer).
       DATABASE_URL: "postgres://postgres:postgres@db:5432/portfolio"
-      # JWT signing secret for the first-party auth system. CHANGE THIS for
-      # any deployment beyond a local demo.
-      JWT_SECRET: ${JWT_SECRET:-change-me-in-production-0123456789abcdef}
-      # Optional separate key for encrypted provider credentials. Keep it
-      # stable; changing it requires users to re-enter their API keys.
+      # Empty values are generated once in the persistent secrets volume.
+      JWT_SECRET: ${JWT_SECRET:-}
       SETTINGS_ENCRYPTION_KEY: ${SETTINGS_ENCRYPTION_KEY:-}
-      # Registration toggle; set to "false" for private deployments.
-      REGISTER_ENABLED: "true"
+      # Registration closes automatically after the first account is created.
+      REGISTER_ENABLED: "first-user"
       # Optional: enable the /openapi/agent-gateway for the Python agent.
       AGENT_GATEWAY_ENABLED: "false"
       # AGENT_GATEWAY_TOKEN: "dev-agent-token-change-me"
       # Optional: LLM key for running real multi-agent analyses.
       # DOUBAO_API_KEY: ""
     ports:
-      - "3000:3000"
+      - "127.0.0.1:${HOST_APP_PORT:-3000}:3000"
     volumes:
       - settings-secrets:/app/.secrets
     depends_on:

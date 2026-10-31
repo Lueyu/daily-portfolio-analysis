@@ -2,7 +2,7 @@
  * @file pages/Auth/RegisterPage.tsx
  * @description Registration page. Bilingual via react-i18next.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
@@ -10,7 +10,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { apiRegister } from '@/api';
+import { apiRegister, fetchRegistrationStatus } from '@/api';
 import { tokenStore } from '@/api/http';
 import { AuthShell } from './AuthShell';
 
@@ -28,6 +28,16 @@ function RegisterPage() {
   const [confirm, setConfirm] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [recoveryCode, setRecoveryCode] = useState('');
+  const [registrationOpen, setRegistrationOpen] = useState<boolean | null>(null);
+  const [registrationStatusError, setRegistrationStatusError] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    fetchRegistrationStatus()
+      .then((status) => { if (active) setRegistrationOpen(status.registrationOpen); })
+      .catch(() => { if (active) setRegistrationStatusError(true); });
+    return () => { active = false; };
+  }, []);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -55,7 +65,23 @@ function RegisterPage() {
 
   return (
     <AuthShell title={t('auth.registerTitle')} subtitle={t('auth.registerTagline')}>
-      {recoveryCode ? (
+      {registrationOpen === null ? (
+        <div className="mt-8 space-y-3 text-sm text-muted-foreground">
+          <p>{t(registrationStatusError ? 'auth.registrationStatusUnavailable' : 'auth.checkingRegistration')}</p>
+          {registrationStatusError && (
+            <button type="button" onClick={() => window.location.reload()} className="font-medium text-foreground underline underline-offset-4">
+              {t('auth.retry')}
+            </button>
+          )}
+        </div>
+      ) : registrationOpen === false && !recoveryCode ? (
+        <div className="mt-8 space-y-5 text-sm">
+          <p>{t('auth.registrationClosed')}</p>
+          <Link to="/login" className="font-medium underline underline-offset-4">
+            {t('auth.login')}
+          </Link>
+        </div>
+      ) : recoveryCode ? (
         <div className="mt-8 space-y-5">
           <p className="text-sm leading-relaxed">{t('auth.recoveryCodeExplanation')}</p>
           <div className="rounded-xl border border-border bg-muted p-4 font-mono text-sm break-all select-all" aria-label={t('auth.recoveryCodeLabel')}>{recoveryCode}</div>

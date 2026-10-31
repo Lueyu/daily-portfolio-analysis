@@ -4,9 +4,11 @@
 
 **Research-team connections and tools:** separately saved model keys receive the same server-side encryption as the default key. Each selected provider receives that member's bounded research context, including relevant user notes and previous replies. Optional DeepSeek web search sends a ticker and a bounded research query; it has a separate request-usage ledger. SEC requests contain public issuer identifiers. Team configuration, messages, cited evidence and reports are stored in your instance. See [data-source boundaries](research-data.md).
 
-Squabble lets you run a portfolio workspace on infrastructure you control. That
-control comes from **who operates your instance**, not from a promise that the
-server cannot read your data.
+Squabble supports a local Docker Compose installation and a standalone Windows
+or macOS desktop installation. Both keep the application database under your
+control. Squabble does not operate a hosted account service. Local installation
+does **not** mean offline operation: public quotes and currency rates use
+external providers even when you have not configured an AI key.
 
 This guide describes the current repository's behavior. It is a technical trust
 guide, not a privacy notice for every website running Squabble or a claim of
@@ -17,9 +19,14 @@ deciding where to keep real portfolio records.
 
 | How you use Squabble | What that means |
 |---|---|
-| **You self-host** | Records live in your instance's PostgreSQL database and any backups you create. The repository maintainers do not receive them through a bundled central collection service or gain access merely because you installed the app. Your hosting provider and anyone with server, database, or backup access remain part of the trust boundary. |
-| **Someone else hosts it for you** | That operator receives, stores, and processes your account and portfolio records on their infrastructure. The operator can access the database and server secrets. Account separation in the app does not prevent infrastructure administrators from reading data. |
+| **Local Docker Compose** | Records live in the PostgreSQL Docker volume and any backups you make. The repository maintainers do not receive them through a bundled central collection service. Anyone with access to your computer, Docker volumes, or backups is part of the trust boundary. |
+| **Desktop app** | Records and application secrets live in Squabble's application data directory on your computer. On Windows this is normally `%APPDATA%\Squabble`; on macOS it is normally `~/Library/Application Support/Squabble`. Anyone with access to that directory or its backups is part of the trust boundary. |
 | **You use an external integration** | Relevant data also reaches the selected AI, financial-data, notification, or agent service. Their handling of it is outside this repository's control. |
+
+Squabble does not provide a hosted account or sync service. If a third party
+independently operates an instance, that operator controls its database and
+secrets and can access stored records. Account separation in the app does not
+prevent infrastructure administrators from reading data.
 
 **Saved API-key encryption is not zero knowledge.** The server holds the
 decryption key and decrypts credentials to use them. An operator with access to
@@ -28,8 +35,8 @@ end-to-end encrypted.
 
 ## What is stored, and where?
 
-“Instance database” below means your database when self-hosting, or the
-operator's database when using their instance.
+“Instance database” below means the database in your Docker installation or
+desktop application.
 
 | Data | Storage and handling |
 |---|---|
@@ -41,7 +48,7 @@ operator's database when using their instance.
 | Paper trading | Paper accounts, positions, orders, trades, proposals, and manually recorded execution notes in the instance database. Paper records use separate tables from real holdings and transactions. |
 | Saved LLM and Finnhub credentials | Encrypted with AES-256-GCM in the instance database. Settings responses expose status and a masked suffix, not the full saved key. The server decrypts the key when making a provider request. |
 | Notification configuration | Destinations, webhook URLs, bot tokens, SMTP credentials, and other channel settings in the instance database. **These fields do not currently use the LLM/Finnhub credential-encryption mechanism** and are returned to the owning user's channel settings. |
-| Browser storage | Access and refresh tokens, interface preferences, and screenshot-recognition provider settings, including its API key, in browser local storage. The screenshot-recognition key is separate from the saved analysis key. |
+| Browser or desktop webview storage | Access and refresh tokens, interface preferences, and screenshot-recognition provider settings, including its API key, in local storage. In the desktop app, this storage belongs to Squabble's application data directory. The screenshot-recognition key is separate from the saved analysis key. |
 | Screenshot recognition | The image and recognition credentials pass through the instance server to the selected vision endpoint. The current extraction handler does not persist those inputs to the database; confirmed imported rows and import history are stored. |
 | Operational data | The application writes browser-console and server logs. Authentication rate limiting keeps temporary IP-based counters in server memory. Operators, reverse proxies, hosts, and external providers may keep additional request or error logs. |
 
@@ -94,13 +101,16 @@ asks for re-entry; it does not silently switch to the operator's model.
   the password, replaces the code, and revokes earlier account and agent
   sessions. Generating a new code with your password replaces the old code and
   revokes earlier account sessions. There is no email-based recovery flow.
-- **This browser:** sign out to clear session tokens. Clear the site's browser
-  storage to remove locally saved recognition credentials and preferences;
-  signing out alone does not clear all of them.
-- **Your own deployment:** control database access, backups, logs, registration,
-  and integration environment variables. Back up the settings-encryption key
-  securely alongside the database; changing or losing it makes existing saved
-  provider keys unreadable until users re-enter them.
+- **This browser or desktop app:** sign out to clear session tokens. Clear the
+  site's browser storage or the desktop app's webview storage to remove locally
+  saved recognition credentials and preferences; signing out alone does not
+  clear all of them.
+- **Your own installation:** control access to the database, application data,
+  backups, logs and integration settings. For Docker Compose, back up the
+  PostgreSQL volume and the settings-encryption key together. For desktop,
+  quit the app before copying its application data directory. Changing or
+  losing the settings key makes existing saved provider keys unreadable until
+  users re-enter them.
 
 ## Retention and current gaps
 
@@ -112,8 +122,8 @@ not remove copies in backups, logs, or external providers.
 Complete self-service account erasure and account-wide data export are not yet
 available. A comprehensive administrator-access audit and privacy-consent UI
 are also not complete. Existing analysis run events are not an audit of every
-administrator or database access. Do not assume a hosted instance offers these
-controls because this guide describes them as gaps.
+administrator or database access. Do not assume an independently hosted
+instance offers these controls because this guide describes them as gaps.
 
 If you operate an instance for other people, publish a **separate, truthful
 instance privacy notice** before inviting them. Describe who operates it, an

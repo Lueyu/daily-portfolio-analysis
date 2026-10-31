@@ -7,8 +7,8 @@
  * fill for notification routing and is never required or validated against
  * anything.
  *
- * Registration can be closed via REGISTER_ENABLED=false for private
- * deployments.
+ * Registration can be closed via REGISTER_ENABLED=false, or limited to the
+ * first account via REGISTER_ENABLED=first-user.
  */
 import {
   BadRequestException,
@@ -20,13 +20,14 @@ import {
 } from '@nestjs/common';
 import bcrypt from 'bcryptjs';
 import { createHash, randomBytes } from 'node:crypto';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import {
   DRIZZLE_DATABASE,
   type PostgresJsDatabase,
 } from '../../common/platform/database.provider';
 import { agentSessions, users } from '../../database/schema';
 import { signAccessToken, signRefreshToken, verifyRefreshToken } from './jwt';
+import type { RegistrationStatus } from '@shared/api.interface';
 
 /** Shape returned by register/login/refresh. */
 export interface AuthResult {
@@ -63,37 +64,56 @@ export class AuthService {
     @Inject(DRIZZLE_DATABASE) private readonly db: PostgresJsDatabase,
   ) {}
 
-  /** Create an account and issue tokens. Registration may be disabled by env. */
+  /** Public registration availability for the login and registration pages. */
+  async getRegistrationStatus(): Promise<RegistrationStatus> {
+    const mode = process.env.REGISTER_ENABLED;
+    if (mode === 'false') return { registrationOpen: false };
+    if (mode !== 'first-user') return { registrationOpen: true };
+    const [existing] = await this.db.select({ id: users.id }).from(users).limit(1);
+    return { registrationOpen: !existing };
+  }
+
+  /** Create an account and issue tokens. First-user mode serializes the one open slot. */
   async register(input: {
     username: string;
     password: string;
     displayName?: string;
   }): Promise<AuthResult> {
-    if (process.env.REGISTER_ENABLED === 'false') {
+    const mode = process.env.REGISTER_ENABLED;
+    if (mode === 'false') {
       throw new BadRequestException('Registration is disabled on this instance');
     }
     const username = normalizeUsername(input.username);
     validatePassword(input.password);
 
-    const [existing] = await this.db
-      .select({ id: users.id })
-      .from(users)
-      .where(eq(users.username, username));
-    if (existing) {
-      throw new ConflictException('Username is already taken');
+    if (mode !== 'first-user') {
+      const [existing] = await this.db
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.username, username));
+      if (existing) {
+        throw new ConflictException('Username is already taken');
+      }
     }
 
     const passwordHash = await bcrypt.hash(input.password, 10);
     const recoveryCode = randomBytes(24).toString('hex');
-    const [created] = await this.db
-      .insert(users)
-      .values({
-        username,
-        passwordHash,
-        recoveryCodeHash: recoveryHash(recoveryCode),
-        displayName: input.displayName?.trim() || username,
+    const values = {
+      username,
+      passwordHash,
+      recoveryCodeHash: recoveryHash(recoveryCode),
+      displayName: input.displayName?.trim() || username,
+    };
+    const selection = { id: users.id, username: users.username, displayName: users.displayName, sessionVersion: users.sessionVersion };
+    const created = mode === 'first-user'
+      ? await this.db.transaction(async (tx) => {
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('squabble-first-user-registration'))`);
+        const [existing] = await tx.select({ id: users.id }).from(users).limit(1);
+        if (existing) throw new BadRequestException('Registration is closed after the first account');
+        const [user] = await tx.insert(users).values(values).returning(selection);
+        return user;
       })
-      .returning({ id: users.id, username: users.username, displayName: users.displayName, sessionVersion: users.sessionVersion });
+      : (await this.db.insert(users).values(values).returning(selection))[0];
 
     return { ...this.issueTokens(created), recoveryCode };
   }

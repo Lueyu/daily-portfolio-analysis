@@ -13,6 +13,7 @@ import { join } from 'path';
 import { __express as hbsExpressEngine } from 'hbs';
 
 import type { NestExpressApplication } from '@nestjs/platform-express';
+import type { RequestHandler } from 'express';
 import { AppModule } from './app.module';
 import { staticAssets } from './common/platform/static-assets.middleware';
 
@@ -29,7 +30,17 @@ async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     abortOnError: process.env.NODE_ENV !== 'development',
   });
+  app.enableShutdownHooks();
   if (process.env.TRUST_PROXY === 'true') app.set('trust proxy', 1);
+
+  if (process.env.SQUABBLE_DESKTOP_ORIGIN) {
+    // The desktop shell serves the SPA on a private loopback origin. Reject
+    // DNS-rebound hosts and cross-origin browser requests before any routes.
+    const { desktopRequestGuard } = await import('../desktop/loopback.cjs') as {
+      desktopRequestGuard: (origin: string) => RequestHandler;
+    };
+    app.use(desktopRequestGuard(process.env.SQUABBLE_DESKTOP_ORIGIN));
+  }
 
   // JSON bodies up to 1MB (deep reports can be large); urlencoded for parity.
   app.useBodyParser('json', { limit: '1mb' });

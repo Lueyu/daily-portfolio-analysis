@@ -1,4 +1,5 @@
 const { ensureSettingsKey } = require('./ensure-settings-key.cjs');
+const { ensureJwtSecret } = require('./ensure-jwt-secret.cjs');
 
 process.umask(0o077);
 if (process.env.PUBLIC_DEPLOYMENT === 'true') {
@@ -13,6 +14,10 @@ if (process.env.PUBLIC_DEPLOYMENT === 'true') {
   }
 }
 try {
+  process.env.JWT_SECRET = ensureJwtSecret(
+    process.env.JWT_SECRET,
+    '/app/.secrets/jwt.key',
+  );
   process.env.SETTINGS_ENCRYPTION_KEY = ensureSettingsKey(
     process.env.SETTINGS_ENCRYPTION_KEY,
     '/app/.secrets/settings.key',
