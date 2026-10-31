@@ -30,6 +30,12 @@ On Windows, launch Squabble normally rather than choosing **Run as administrator
 The bundled PostgreSQL server refuses to run under an elevated administrator
 process.
 
+Use **Help → Check for Updates** in the desktop app to query the latest stable
+GitHub release. If one is available, the app shows its version and release notes
+and opens the installer download for your system when you choose. Quit Squabble
+before installing it manually. This check does not download or install updates
+in the background, and it does not change the local data directory.
+
 On first launch, create your account and save the one-time recovery code
 offline. The desktop app starts with no demo account or sample holdings. Add
 holdings manually or [import a CSV](import.md). Account recovery uses the

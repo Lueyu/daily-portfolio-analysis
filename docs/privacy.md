@@ -10,6 +10,11 @@ control. Squabble does not operate a hosted account service. Local installation
 does **not** mean offline operation: public quotes and currency rates use
 external providers even when you have not configured an AI key.
 
+The desktop app requests the GitHub Releases API only when you choose **Help →
+Check for Updates**. The request includes the installed version in its
+User-Agent, and GitHub receives normal network metadata such as your IP
+address. It does not upload portfolio records or database contents.
+
 This guide describes the current repository's behavior. It is a technical trust
 guide, not a privacy notice for every website running Squabble or a claim of
 legal compliance. The project is in public beta; the gaps below matter when

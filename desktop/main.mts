@@ -1,8 +1,8 @@
 import { appendFileSync, createWriteStream } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
-import { app, BrowserWindow, dialog, session, shell, utilityProcess } from 'electron';
-import type { UtilityProcess } from 'electron';
+import { app, BrowserWindow, dialog, Menu, session, shell, utilityProcess } from 'electron';
+import type { MenuItemConstructorOptions, UtilityProcess } from 'electron';
 import {
   desktopPaths,
   loadOrCreateSecrets,
@@ -12,6 +12,7 @@ import {
   waitForHealth,
 } from './runtime.mjs';
 import type { DesktopDatabase } from './runtime.mjs';
+import { checkForUpdate } from './update-check.mjs';
 
 let window: BrowserWindow | null = null;
 let backend: UtilityProcess | null = null;
@@ -19,6 +20,52 @@ let database: DesktopDatabase | null = null;
 let backendLog: ReturnType<typeof createWriteStream> | null = null;
 let quitting = false;
 let quitAllowed = false;
+let checkingForUpdate = false;
+
+async function showUpdateCheck(): Promise<void> {
+  if (checkingForUpdate) return;
+  checkingForUpdate = true;
+  const chinese = app.getLocale().toLowerCase().startsWith('zh');
+  try {
+    const update = await checkForUpdate(app.getVersion(), process.platform, process.arch);
+    if (!update) {
+      await dialog.showMessageBox({ type: 'info', title: 'Squabble',
+        message: chinese ? '已是最新版本' : 'Squabble is up to date',
+        detail: chinese ? `当前版本：${app.getVersion()}` : `Current version: ${app.getVersion()}` });
+      return;
+    }
+    const choice = await dialog.showMessageBox({ type: 'info', title: 'Squabble',
+      message: chinese ? `发现新版本 ${update.version}` : `Version ${update.version} is available`,
+      detail: update.notes || (chinese ? '查看发布页面了解更新内容。' : 'See the release page for details.'),
+      buttons: chinese ? ['打开下载页面', '稍后'] : ['Open download page', 'Later'],
+      defaultId: 0, cancelId: 1,
+    });
+    if (choice.response === 0) await shell.openExternal(update.downloadUrl);
+  } catch {
+    await dialog.showMessageBox({ type: 'warning', title: 'Squabble',
+      message: chinese ? '检查更新失败' : 'Could not check for updates',
+      detail: chinese ? '请检查网络连接，或前往 GitHub Releases 页面查看。'
+        : 'Check your connection or visit Squabble Releases on GitHub.' });
+  } finally {
+    checkingForUpdate = false;
+  }
+}
+
+function installApplicationMenu(): void {
+  const chinese = app.getLocale().toLowerCase().startsWith('zh');
+  const template: MenuItemConstructorOptions[] = [
+    ...(process.platform === 'darwin' ? [{ role: 'appMenu' as const }] : [
+      { label: chinese ? '文件' : 'File', submenu: [{ role: 'quit' as const }] },
+    ]),
+    { role: 'editMenu' },
+    { role: 'viewMenu' },
+    { role: 'windowMenu' },
+    { label: chinese ? '帮助' : 'Help', submenu: [
+      { label: chinese ? '检查更新…' : 'Check for Updates…', click: () => { void showUpdateCheck(); } },
+    ] },
+  ];
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
 
 function markSmokeStage(stage: string): void {
   const root = process.env.SQUABBLE_DESKTOP_DATA_DIR;
@@ -166,6 +213,7 @@ if (!singleInstance) {
   markSmokeStage('before-when-ready');
   void app.whenReady().then(() => {
     markSmokeStage('after-when-ready');
+    installApplicationMenu();
     return startDesktop();
   }).catch(async (error: unknown) => {
     markSmokeStage('startup-error');
