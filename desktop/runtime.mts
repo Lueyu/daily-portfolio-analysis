@@ -295,10 +295,30 @@ export interface DesktopDatabase {
   stop(): Promise<void>;
 }
 
+export function formatDatabaseStartupError(
+  error: unknown,
+  postgresOutput: string,
+  secrets: DesktopSecrets,
+  exitCode?: number | null,
+): Error {
+  const reason = error === undefined ? 'PostgreSQL process exited before readiness'
+    : error instanceof Error ? error.message : String(error);
+  const code = exitCode == null ? '' : ` (exit code ${exitCode})`;
+  const output = postgresOutput.trim().slice(-4_000) || '(no PostgreSQL output captured)';
+  let message = `Desktop database startup failed: ${reason}${code}\nPostgreSQL output:\n${output}`;
+  for (const secret of Object.values(secrets)) message = message.replaceAll(secret, '[redacted]');
+  return new Error(message, { cause: error });
+}
+
 export async function startDesktopDatabase(paths: DesktopPaths, secrets: DesktopSecrets): Promise<DesktopDatabase> {
   await mkdir(paths.logsDir, { recursive: true, mode: 0o700 });
   const log = createWriteStream(join(paths.logsDir, 'postgres.log'), { flags: 'a', mode: 0o600 });
   log.on('error', () => undefined);
+  let recentOutput = '';
+  const writeLog = (message: string): void => {
+    recentOutput = (recentOutput + message).slice(-8_000);
+    log.write(message);
+  };
   const port: number = await allocateLoopbackPort();
   const database = new EmbeddedPostgres({
     databaseDir: paths.databaseDir,
@@ -310,8 +330,8 @@ export async function startDesktopDatabase(paths: DesktopPaths, secrets: Desktop
     autoRehydrateSymlinks: false,
     initdbFlags: ['--encoding=UTF8'],
     postgresFlags: ['-c', 'listen_addresses=127.0.0.1', '-c', 'unix_socket_directories='],
-    onLog: (message: string) => { log.write(message); },
-    onError: (error: unknown) => { log.write(`${String(error)}\n`); },
+    onLog: writeLog,
+    onError: (error: unknown) => { writeLog(`${String(error)}\n`); },
   });
   let started = false;
   const stop = async (): Promise<void> => {
@@ -342,8 +362,13 @@ export async function startDesktopDatabase(paths: DesktopPaths, secrets: Desktop
     const connectionUrl = `postgres://squabble:${encodeURIComponent(secrets.databasePassword)}@127.0.0.1:${port}/portfolio`;
     return { database, connectionUrl, stop };
   } catch (error) {
+    const postgresProcess = Reflect.get(database, 'process') as { exitCode?: number | null } | undefined;
+    const exitCode = postgresProcess?.exitCode;
     if (started) await stop();
-    else log.end();
-    throw error;
+    else {
+      Reflect.set(database, 'process', undefined);
+      log.end();
+    }
+    throw formatDatabaseStartupError(error, recentOutput, secrets, exitCode);
   }
 }

@@ -85,6 +85,20 @@ test('desktop rejects damaged secrets instead of rotating the database password'
   }
 });
 
+test('desktop startup errors retain PostgreSQL diagnostics without exposing secrets', async () => {
+  const runtime = await runtimePromise;
+  assert.ok(runtime?.formatDatabaseStartupError);
+  const secrets = {
+    databasePassword: 'a'.repeat(64), jwtSecret: 'b'.repeat(64), settingsEncryptionKey: 'c'.repeat(64),
+  };
+  const failure = runtime.formatDatabaseStartupError(undefined,
+    `FATAL: missing library\npassword=${secrets.databasePassword}\n`, secrets, 2);
+  assert.match(failure.message, /PostgreSQL process exited before readiness/u);
+  assert.match(failure.message, /FATAL: missing library/u);
+  assert.match(failure.message, /exit code 2/u);
+  for (const secret of Object.values(secrets)) assert.ok(!failure.message.includes(secret));
+});
+
 test('desktop server environment binds both services to loopback and enables first-user registration', async () => {
   const runtime = await runtimePromise;
   assert.ok(runtime?.nestEnvironment);
