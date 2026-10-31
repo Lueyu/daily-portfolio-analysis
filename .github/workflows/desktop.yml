@@ -229,7 +229,6 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ghcr.io/lueyu/squabble:latest
             ghcr.io/lueyu/squabble:${{ github.ref_name }}
       - name: Verify image can be pulled without credentials
         shell: bash
@@ -242,7 +241,7 @@ jobs:
             fi
             sleep 10
           done
-          echo 'Container image is not publicly readable.' >&2
+          echo 'Container image is not publicly readable. Set the squabble package visibility to Public in GitHub package settings, then rerun this workflow.' >&2
           exit 1
 
   release:
@@ -251,13 +250,14 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      packages: write
     steps:
       - uses: actions/download-artifact@v4
         with:
           pattern: squabble-*
           path: release-files
           merge-multiple: true
-      - name: Publish successful installers
+      - name: Stage release with successful installers
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -269,5 +269,23 @@ jobs:
           if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" "${files[@]}" --repo "$GITHUB_REPOSITORY" --clobber
           else
-            gh release create "$GITHUB_REF_NAME" "${files[@]}" --repo "$GITHUB_REPOSITORY" --title "Squabble $GITHUB_REF_NAME" --generate-notes
+            gh release create "$GITHUB_REF_NAME" "${files[@]}" --repo "$GITHUB_REPOSITORY" --title "Squabble $GITHUB_REF_NAME" --generate-notes --draft
           fi
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Promote tested web image to stable
+        run: docker buildx imagetools create --tag ghcr.io/lueyu/squabble:stable "ghcr.io/lueyu/squabble:$GITHUB_REF_NAME"
+      - name: Verify stable image can be pulled without credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          anonymous_config="$(mktemp -d)"
+          DOCKER_CONFIG="$anonymous_config" docker manifest inspect ghcr.io/lueyu/squabble:stable >/dev/null
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false

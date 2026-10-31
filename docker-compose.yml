@@ -23,11 +23,12 @@ services:
       retries: 20
 
   app:
-    image: ${SQUABBLE_APP_IMAGE:-ghcr.io/lueyu/squabble:latest}
+    image: ${SQUABBLE_APP_IMAGE:-ghcr.io/lueyu/squabble:stable}
+    pull_policy: missing
     restart: unless-stopped
     labels:
       com.centurylinklabs.watchtower.enable: "true"
-      com.centurylinklabs.watchtower.scope: ${SQUABBLE_UPDATE_SCOPE:-squabble-local}
+      com.centurylinklabs.watchtower.scope: ${COMPOSE_PROJECT_NAME:-squabble-local}
     environment:
       NODE_ENV: production
       SERVER_HOST: 0.0.0.0
@@ -63,7 +64,7 @@ services:
   updater:
     image: containrrr/watchtower:1.6.0
     restart: unless-stopped
-    command: ["--http-api-update", "--label-enable", "--scope", "${SQUABBLE_UPDATE_SCOPE:-squabble-local}"]
+    command: ["--http-api-update", "--label-enable", "--scope", "${COMPOSE_PROJECT_NAME:-squabble-local}"]
     environment:
       WATCHTOWER_HTTP_API_TOKEN: /run/secrets/update-token
       DOCKER_API_VERSION: "1.44"

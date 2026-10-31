@@ -65,7 +65,7 @@ docker compose ps
 | 自动生成的 JWT 与设置密钥 | `squabble-local_settings-secrets`（`app` 容器内 `/app/.secrets`） |
 | 点击更新前自动创建的备份 | `squabble-local_update-backups`（`app` 容器内 `/app/.backups`） |
 
-默认网页应用使用预构建镜像。首次升级旧版源码安装时，在原仓库目录执行 `git pull --ff-only` 和 `docker compose up -d`；保持原来的 Compose 项目名，原有数据库与密钥卷会继续使用。此后，首个注册账号可在“设置 → 软件更新”查看新版本并点击“立即更新”。应用先保存 PostgreSQL 转储和密钥，再由仅在 Docker 内部可访问的更新组件替换应用容器；数据库容器不会被替换。更新组件不会定时检查或自动安装。升级后检查页面是否显示新版本，以及持仓和登录是否正常。
+默认网页应用使用预构建镜像。首次升级旧版源码安装时，在原仓库目录执行 `git pull --ff-only` 和 `docker compose up -d`；保持原来的 Compose 项目名，原有数据库与密钥卷会继续使用。此后，首个注册账号可在“设置 → 软件更新”查看新版本并点击“立即更新”。应用先保存 PostgreSQL 转储和密钥，再由仅在 Docker 内部可访问的更新组件替换应用容器；数据库容器不会被替换。更新组件不会定时检查或自动安装；平常执行 `docker compose up -d` 也不会自行拉取更新。升级后检查页面是否显示新版本，以及持仓和登录是否正常。
 
 更新组件需要访问本机 Docker socket，因此有管理 Docker 容器的权限；它不向主机开放端口，并使用仅保存在密钥卷中的随机令牌。请只在可信任的本机运行该模式。
 

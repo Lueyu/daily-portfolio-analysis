@@ -132,7 +132,8 @@ and with the same Compose project name. The database and secrets volumes remain
 attached. After that, the first registered account can use **Settings →
 Software updates → Update now**. Squabble saves a PostgreSQL dump and secret
 files before its internal updater replaces only the app container. The database
-container is left alone. The updater does not poll or install on a schedule.
+container is left alone. The updater does not poll or install on a schedule,
+and an ordinary `docker compose up -d` does not pull a newer app image.
 After restarting, confirm the new version, holdings and login.
 
 The updater needs access to the local Docker socket, which grants it permission
