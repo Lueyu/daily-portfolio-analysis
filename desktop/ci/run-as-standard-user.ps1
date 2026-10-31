@@ -44,10 +44,23 @@ switch ($Scenario) {
   }
   'packaged-smoke' {
     $executable = Join-Path $workspace 'output/installers/win-unpacked/Squabble.exe'
+    # This CI account has no interactive desktop. The shipped app uses its normal sandbox.
+    $arguments = @('--disable-gpu', '--no-sandbox', '--enable-logging=file')
+    $account = Get-LocalUser -Name $userName
+    $profileKey = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\$($account.SID.Value)"
+    $profile = [Environment]::ExpandEnvironmentVariables((Get-ItemProperty -LiteralPath $profileKey).ProfileImagePath)
+    if (-not (Test-Path -LiteralPath $profile -PathType Container)) {
+      throw "Standard Windows user profile was not loaded: $profile"
+    }
+    $environment.APPDATA = Join-Path $profile 'AppData/Roaming'
+    $environment.LOCALAPPDATA = Join-Path $profile 'AppData/Local'
     $dataRoot = Join-Path $testRoot 'packaged-data'
     New-Item -ItemType Directory -Path $dataRoot -Force | Out-Null
     $environment.SQUABBLE_DESKTOP_DATA_DIR = $dataRoot
     $environment.SQUABBLE_DESKTOP_SMOKE = '1'
+    $environment.ELECTRON_ENABLE_LOGGING = '1'
+    $environment.ELECTRON_ENABLE_STACK_DUMPING = '1'
+    $environment.ELECTRON_LOG_FILE = Join-Path $testRoot 'electron.log'
   }
 }
 if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) {
@@ -80,6 +93,48 @@ if (-not $application.WaitForExit($timeoutMs)) {
 }
 if (Test-Path -LiteralPath $stdout) { Get-Content -LiteralPath $stdout }
 if (Test-Path -LiteralPath $stderr) { Get-Content -LiteralPath $stderr }
+if ($Scenario -eq 'packaged-smoke' -and $application.ExitCode -ne 0) {
+  $marker = Join-Path $dataRoot 'packaged-smoke.json'
+  Write-Output "Packaged marker exists: $(Test-Path -LiteralPath $marker -PathType Leaf)"
+  if (Test-Path -LiteralPath $marker -PathType Leaf) {
+    Write-Output "Packaged marker: $(Get-Content -LiteralPath $marker -Raw)"
+  }
+  Write-Output "PostgreSQL PID file exists: $(Test-Path -LiteralPath (Join-Path $dataRoot 'postgres/postmaster.pid'))"
+  $secretsFile = Join-Path $dataRoot 'secrets.json'
+  $privateSecrets = if (Test-Path -LiteralPath $secretsFile) {
+    $values = Get-Content -LiteralPath $secretsFile -Raw | ConvertFrom-Json
+    @($values.databasePassword, $values.jwtSecret, $values.settingsEncryptionKey)
+  } else { @() }
+  foreach ($name in @('backend.log', 'postgres.log')) {
+    $logFile = Join-Path $dataRoot "logs/$name"
+    if (Test-Path -LiteralPath $logFile) {
+      Write-Output "Last 40 lines of $name (secrets redacted):"
+      foreach ($line in (Get-Content -LiteralPath $logFile -Tail 40)) {
+        foreach ($secret in $privateSecrets) {
+          if ($secret) { $line = $line.Replace($secret, '[redacted]') }
+        }
+        Write-Output $line
+      }
+    }
+  }
+  $electronLog = Join-Path $testRoot 'electron.log'
+  if (Test-Path -LiteralPath $electronLog) {
+    Write-Output 'Last 60 lines of Electron log (secrets redacted):'
+    foreach ($line in (Get-Content -LiteralPath $electronLog -Tail 60)) {
+      foreach ($secret in $privateSecrets) {
+        if ($secret) { $line = $line.Replace($secret, '[redacted]') }
+      }
+      Write-Output $line
+    }
+  }
+  $userData = Join-Path $environment.APPDATA 'Squabble'
+  if (Test-Path -LiteralPath $userData) {
+    foreach ($filter in @('*.dmp', '*.log')) {
+      Get-ChildItem -LiteralPath $userData -Recurse -File -Filter $filter -ErrorAction SilentlyContinue |
+        ForEach-Object { Write-Output "Electron userData file: $($_.FullName) ($($_.Length) bytes)" }
+    }
+  }
+}
 if ($application.ExitCode -ne 0) {
   throw "Standard-user desktop $Scenario exited with code $($application.ExitCode)"
 }
