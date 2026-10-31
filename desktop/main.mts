@@ -190,6 +190,10 @@ async function startDesktop(): Promise<void> {
   markSmokeStage('server-healthy');
 
   if (process.env.SQUABBLE_DESKTOP_SMOKE === '1') {
+    if (isAutomaticUpdateSupported(process.platform, process.arch, app.isPackaged)) {
+      await import('electron-updater');
+      markSmokeStage('updater-loaded');
+    }
     const response = await fetch(`${origin}/api/auth/registration-status`);
     if (!response.ok || (await response.json() as { registrationOpen?: boolean }).registrationOpen !== true) {
       throw new Error('Packaged desktop first-run registration is unavailable');
