@@ -2,19 +2,21 @@ English | [简体中文](README.zh-CN.md)
 
 <div align="center">
 
-<img src="client/public/logo.svg" width="88" alt="Squabble" />
+<img src="client/public/logo.svg" width="88" alt="Squabble logo" />
 
-# Squabble · 吵股
+# Squabble
 
 **Let your AI argue. You decide.**
 
-An open-source investing workspace where a bull, a bear and a critic
-challenge your ideas — then you make the call.
+An open-source investing workspace.
+A bull, a bear and a critic challenge your ideas.
+Then you make the call.
 
-**US · HK · China A-shares** · **English / 中文** · **Self-hosted** · **Zero telemetry**
+**US · HK · China A-shares** · **English / Chinese** · **Self-hosted** · **Zero telemetry**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/Lueyu/squabble/actions/workflows/ci.yml/badge.svg)](https://github.com/Lueyu/squabble/actions/workflows/ci.yml)
+[![Desktop](https://img.shields.io/badge/Desktop-Windows%20%7C%20macOS-blue)](https://github.com/Lueyu/squabble/releases/latest)
 
 </div>
 
@@ -22,15 +24,25 @@ challenge your ideas — then you make the call.
 
 ## Why Squabble?
 
-Most portfolio trackers stop at *showing* numbers. Squabble argues about them.
+Most portfolio trackers show numbers. Squabble argues about them.
 
-- 🗣️ **Multi-agent research** — A bull and a bear debate over your holdings, a critic overturns the weak arguments, your risk rules run as hard gates, and a PM writes the final call into a 14-section report.
-- 🤖 **AI paper trading** — An isolated virtual account where your AI watches markets around the clock, trades on your research signals, and pushes a notification every time it fills. Connect Claude or ChatGPT via MCP with per-agent spending limits.
-- 🔒 **Your data stays yours** — Self-hosted, zero telemetry, username+password only. No phone number, no email verification.
+- **AI research reports.** A bull and a bear debate your holdings. A critic removes weak arguments. Your risk rules run as hard gates. The result is a 14-section report with both sides preserved.
+- **AI paper trading.** A virtual account. Your AI watches markets, trades on your research signals, and sends you a push notification on every fill. Connect Claude or ChatGPT through MCP. Set per-agent spending limits and approval modes.
+- **Your data stays yours.** Self-hosted. Zero telemetry. Only a username and password — no phone number, no email verification.
 
-## Quick Start
+## Install
 
-**Docker** (recommended, no API keys needed):
+### Desktop app (Windows / macOS)
+
+1. Go to the [Releases page](https://github.com/Lueyu/squabble/releases/latest).
+2. Download the installer for your system (`.exe` for Windows, `.dmg` for macOS).
+3. Run the installer. Everything is bundled — PostgreSQL, the server, and the app.
+
+After install, Squabble opens in its own window. Your data stays on your machine.
+
+### Web app (Docker)
+
+You need [Git](https://git-scm.com/downloads) and [Docker Desktop](https://docs.docker.com/get-docker/).
 
 ```bash
 git clone https://github.com/Lueyu/squabble.git
@@ -38,9 +50,13 @@ cd squabble
 docker compose up -d --build
 ```
 
-Open **http://localhost:3000** → sign in with `demo` / `demo1234`.
+Open **http://localhost:3000**. Create your first account.
 
-**From source** (for development):
+The database starts empty. To try a demo with fictional data, run `docker compose -f docker-compose.demo.yml up -d --build` instead.
+
+### From source (developers)
+
+You need Node.js 22+ and npm 10+.
 
 ```bash
 git clone https://github.com/Lueyu/squabble.git && cd squabble
@@ -50,34 +66,41 @@ npm run dev
 
 ## What it does
 
-| | |
+| Feature | Description |
 |---|---|
-| 📊 **Portfolio tracking** | US/HK/CN holdings, cash, P&L and net-value curves with USD/HKD/CNY conversion. |
-| 🗣️ **AI research reports** | Bull/bear debate → critic review → risk gates → 14-section report. Versioned, with the losing argument preserved. |
-| 🤖 **Paper trading** | Signal-driven bot with hard guardrails (daily-loss circuit breaker, per-order caps). Manual and MCP agent orders supported. |
-| 📸 **Portfolio import** | CSV with auto column mapping (5 broker presets) and screenshot OCR via your own multimodal key. |
-| 🔔 **Notifications** | Webhook / Bark / Server酱 / SMTP / Telegram — every fill, risk rejection and circuit breaker, pushed to you. |
+| **Portfolio tracking** | US/HK/CN holdings, cash, P&L and net-value curves. USD/HKD/CNY conversion built in. |
+| **AI research** | Bull-bear debate, critic review, risk gates. 14-section report. Versioned, with losing arguments kept. |
+| **Paper trading** | AI bot with hard risk limits (daily-loss breaker, per-order cap). Manual and MCP agent orders. |
+| **Portfolio import** | CSV with auto column mapping (5 broker presets). Screenshot OCR via your own AI key. |
+| **Notifications** | Webhook, Bark, ServerChan, SMTP, Telegram. Every fill and risk event, pushed to you. |
 
 ## Connect your AI assistant
 
-Squabble ships with an MCP server. Give Claude or ChatGPT your paper account:
+Squabble has a built-in MCP server. Give Claude or ChatGPT access to your paper account:
 
-1. Open **AI Paper Trading → AI Agents → Connect Agent**
-2. Copy the MCP URL and token into your assistant's MCP settings
-3. Ask it to *"check my portfolio"* or *"buy 100 shares of NVDA"*
+1. Open **AI Paper Trading → AI Agents → Connect Agent**.
+2. Copy the MCP URL and token into your assistant's MCP settings.
+3. Ask it to *"check my portfolio"* or *"buy 100 shares of NVDA"*.
 
-Each agent gets its own spending limit, read/trade permission and approval mode. Orders can auto-fill or wait for your tap.
+Each agent gets a spending limit, a read-only or trade permission, and an approval mode. Orders can auto-fill, or wait for your tap.
 
 ## Privacy
 
-Self-hosted, zero telemetry. The only outbound requests are ones you make with your own API keys. [Full breakdown →](docs/privacy.md)
+Self-hosted. Zero telemetry. The only outbound requests are the ones you make with your own API keys. [Full details →](docs/privacy.md)
 
 ## Docs
 
-[Setup & troubleshooting](docs/self-hosting.md) · [Server deployment](docs/public-deployment.md) · [Import guide](docs/import.md) · [Architecture](docs/architecture.md) · [Development](docs/development.md) · [Contributing](CONTRIBUTING.md)
+| Topic | Link |
+|---|---|
+| Local setup and troubleshooting | [docs/self-hosting.md](docs/self-hosting.md) |
+| Server deployment (HTTPS) | [docs/public-deployment.md](docs/public-deployment.md) |
+| Import your portfolio | [docs/import.md](docs/import.md) |
+| Architecture | [docs/architecture.md](docs/architecture.md) |
+| Development guide | [docs/development.md](docs/development.md) |
+| Contributing | [CONTRIBUTING.md](CONTRIBUTING.md) |
 
 ---
 
-吵股 (*chǎo gǔ*) sounds like "trading stocks" in Chinese, but 吵 means "argue." The bull and bear have opinions. You make the call.
+*Squabble* comes from the Chinese word for trading stocks (*chao gu*), but with *chao* meaning "argue." The bull and bear have opinions. You make the call.
 
-[MIT](LICENSE) · Research outputs are not investment advice; paper results do not predict real returns.
+[MIT](LICENSE) · Research outputs are not investment advice. Paper results do not predict real returns.

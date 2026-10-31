@@ -3,7 +3,7 @@
  * @description Login page for the first-party account system.
  * Bilingual (zh-CN / en) via react-i18next.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
@@ -11,7 +11,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { apiLogin } from '@/api';
+import { apiLogin, fetchRegistrationStatus } from '@/api';
 import { tokenStore } from '@/api/http';
 import { AuthShell } from './AuthShell';
 
@@ -20,8 +20,6 @@ function errorMessage(error: unknown): string {
   return e?.response?.data?.message ?? e?.message ?? '';
 }
 
-const IS_DEMO_HINT = import.meta.env.MODE === 'production' && import.meta.env.VITE_PUBLIC_DEPLOYMENT !== 'true';
-
 function LoginPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -29,7 +27,17 @@ function LoginPage() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [registrationOpen, setRegistrationOpen] = useState<boolean | null>(null);
+  const [registrationStatusError, setRegistrationStatusError] = useState(false);
   const from = location.state?.from?.pathname ?? '/';
+
+  useEffect(() => {
+    let active = true;
+    fetchRegistrationStatus()
+      .then((status) => { if (active) setRegistrationOpen(status.registrationOpen); })
+      .catch(() => { if (active) setRegistrationStatusError(true); });
+    return () => { active = false; };
+  }, []);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -67,18 +75,22 @@ function LoginPage() {
         </Button>
       </form>
 
-      {IS_DEMO_HINT && (
-        <button type="button" onClick={() => { setUsername('demo'); setPassword('demo1234'); }} className="mt-4 w-full text-center text-xs text-muted-foreground hover:text-foreground">
-          {t('auth.demoHint')}
-        </button>
+      {registrationOpen && (
+        <div className="mt-6 text-center text-sm text-muted-foreground">
+          {t('auth.noAccount')}
+          <Link to="/register" className="ml-1 font-medium text-foreground underline-offset-4 hover:underline">
+            {t('auth.register')}
+          </Link>
+        </div>
       )}
-
-      <div className="mt-6 text-center text-sm text-muted-foreground">
-        {t('auth.noAccount')}
-        <Link to="/register" className="ml-1 font-medium text-foreground underline-offset-4 hover:underline">
-          {t('auth.register')}
-        </Link>
-      </div>
+      {registrationStatusError && (
+        <p className="mt-6 text-center text-sm text-muted-foreground">
+          {t('auth.registrationStatusUnavailable')}{' '}
+          <button type="button" onClick={() => window.location.reload()} className="font-medium underline underline-offset-4">
+            {t('auth.retry')}
+          </button>
+        </p>
+      )}
     </AuthShell>
   );
 }

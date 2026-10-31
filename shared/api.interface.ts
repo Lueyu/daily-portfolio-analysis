@@ -966,6 +966,10 @@ export interface AuthTokens {
   recoveryCode?: string;
 }
 
+export interface RegistrationStatus {
+  registrationOpen: boolean;
+}
+
 export interface LoginDto {
   username: string;
   password: string;

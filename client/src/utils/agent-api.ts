@@ -2,11 +2,10 @@
  * @file utils/agent-api.ts
  * @brief Embedded multi-agent bridge exposed on `window.__pt`.
  *
- * When this SPA runs inside the Lark aPaaS container, external agent runtimes
- * (LLM workflows, scheduled jobs) need a stable, versioned surface to read/
- * write portfolio data without knowing backend URLs. `initAgentAPI` installs
- * that surface on `window.__pt`, merging over any pre-existing fields so it is
- * safe to call more than once.
+ * Local browser integrations can use this stable surface to read/write
+ * portfolio data without knowing backend URLs. `initAgentAPI` installs it
+ * on `window.__pt`, merging over any pre-existing fields so it is safe to
+ * call more than once.
  *
  * The methods here intentionally mirror backend `/api/agent/*` routes and are
  * called out-of-process; the UI itself should prefer the typed functions in

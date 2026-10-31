@@ -2,10 +2,9 @@
  * @file api/index.ts
  * @description Typed HTTP client for the portfolio backend.
  *
- * Every function here is a thin async wrapper around the aPaaS-provided
- * `http` instance, which already injects base URL, auth headers and
- * error handling. Callers receive `response.data` (or a derived list) and
- * handle errors locally.
+ * Every function here is a thin async wrapper around the local `http`
+ * instance, which attaches the current account's auth token and handles
+ * errors. Callers receive `response.data` (or a derived list).
  *
  * Backend surface covered:
  *  - Dashboard: overview, daily P/L series
@@ -764,6 +763,7 @@ export { logger };
 import type {
   AuthTokens,
   AuthProfile,
+  RegistrationStatus,
   LoginDto,
   RegisterDto,
   CreatePaperOrderDto,
@@ -797,6 +797,11 @@ export async function apiLogin(dto: LoginDto): Promise<AuthTokens> {
  */
 export async function apiRegister(dto: RegisterDto): Promise<AuthTokens> {
   const response = await http({ url: '/api/auth/register', method: 'POST', data: dto });
+  return response.data;
+}
+
+export async function fetchRegistrationStatus(): Promise<RegistrationStatus> {
+  const response = await http({ url: '/api/auth/registration-status', method: 'GET' });
   return response.data;
 }
 

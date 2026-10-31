@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Link } from 'react-router-dom';
 import { ShieldCheck } from 'lucide-react';
 import { AppearancePicker } from '@/components/AppearancePicker';
 import { Mascot } from '@/components/Mascot';
@@ -18,14 +19,12 @@ function AuthPrivacyNote({ className }: { className: string }) {
       <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
       <p>
         {t('auth.privacyLine')}{' '}
-        <a
-          href="https://github.com/Lueyu/squabble/blob/main/docs/privacy.md"
-          target="_blank"
-          rel="noreferrer"
+        <Link
+          to="/privacy"
           className="underline underline-offset-4 hover:text-foreground"
         >
           {t('auth.privacyLink')}
-        </a>
+        </Link>
       </p>
     </div>
   );

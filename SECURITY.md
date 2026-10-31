@@ -1,9 +1,9 @@
 # Security
 
 Squabble handles portfolio records and integration credentials. Treat the
-current release as a **public beta**: the controls described here are useful
-boundaries, not an assurance that every deployment is ready for unrestricted
-public use. See the [privacy and data-flow guide](docs/privacy.md)
+current release as a **local beta**: the controls described here are useful
+boundaries, not an assurance that an instance is ready for unrestricted
+public access. See the [privacy and data-flow guide](docs/privacy.md)
 ([简体中文](docs/privacy.zh-CN.md)) for what the server and providers can access.
 
 ## Report a vulnerability privately
@@ -29,8 +29,8 @@ to assess.
   imports, errors, backups, or provider requests.
 - **Server and browser security:** injection, unsafe rendering, server-side
   requests, unsafe uploads, and exploitable dependencies.
-- **Deployment defaults:** exposed services, sample credentials, proxy trust,
-  configuration checks, and boundaries between demo and public deployments.
+- **Installation defaults:** exposed services, sample credentials, local
+  account creation, and boundaries between clean and demo installations.
 
 Fictional demo records are intentional. A way to access or modify someone
 else's real records is still a security issue. An operator's configuration can
@@ -46,35 +46,28 @@ also matter to the report; include enough context to reproduce it.
 | Saved provider keys | LLM/Finnhub credentials use AES-256-GCM at rest. The server possesses the decryption secret. This is not end-to-end encryption or zero knowledge, and it does not encrypt all database fields. |
 | Other secrets | Notification configuration is stored without that application-layer encryption. Screenshot-recognition credentials are saved in browser local storage and sent through the server for recognition requests. |
 | Abuse protection | Authentication has an in-memory, per-process IP rate limiter. It is not a shared rate limiter for multiple replicas or a complete public-service abuse-control system. |
+| First account | The clean local stack and desktop app allow one account to be registered. The registration endpoint requires same-origin JSON on a loopback host to prevent a web page from claiming that account through a cross-site form. |
 | Auditability | Analysis run events exist. A comprehensive audit of administrator access, privacy-consent controls, account-wide export, and complete self-service account erasure are not yet available. |
 
-## Deploy with the right trust boundary
+## Run within the local trust boundary
 
-For an internet-facing instance, start with the
-[public deployment guide](docs/public-deployment.md)
-([简体中文](docs/public-deployment.zh-CN.md)) and its dedicated Compose file.
-The root Compose configuration is for a local demo and includes sample
-credentials and a demo dataset; publishing it unchanged is not a secure setup.
+The supported web stack binds its application port to `127.0.0.1` on the host,
+does not publish PostgreSQL, starts with an empty database, and generates stable
+JWT and settings-encryption keys in a persistent volume. The desktop app runs
+its backend and private PostgreSQL on loopback, with secrets and data under the
+user's application data directory. Back up the data and matching keys together;
+losing the settings key requires saved provider keys to be re-entered. See the
+[local setup and backup guide](docs/self-hosting.md).
 
-- Use independent private database, JWT, and settings-encryption secrets. Keep
-  secrets out of source control and logs. Protect and test backups, including
-  the encryption key; rotating or losing that key requires saved provider keys
-  to be re-entered.
-- Serve the browser over HTTPS, keep PostgreSQL and the application port off
-  the public network, and configure trusted proxies to match the actual setup.
-  The supplied public deployment assumes one application process behind its
-  reverse proxy.
-- Restrict registration to the audience you can support. Keep the legacy agent
-  gateway disabled unless needed, and grant connected agents only the access
-  they need. Keep dependencies and the host updated.
-- Review every enabled outbound integration and its credentials. The operator
-  model fallback can send analysis context to a provider even when a user has
-  not saved a personal key; a separate user consent gate is not implemented.
-- Set and communicate your own retention and log practices. The repository
-  does not implement a general deletion schedule or promise that proxies,
-  hosts, and providers keep no request logs.
+The separate `docker-compose.demo.yml` installs a fictional dataset and a
+known `demo` / `demo1234` account. Keep it on loopback and never store real
+records in it. Do not expose either local installation to the public network
+without independently designing authentication, HTTPS, operations, retention,
+and instance-specific privacy notice. Public server deployment is not a
+supported release path.
 
-If you host for others, you operate the database and hold the server's secrets.
-Publish instance-specific privacy information and a real contact route. This
-document neither establishes an official hosted service nor transfers an
-operator's responsibilities to repository maintainers.
+Keep the optional agent gateway disabled unless needed, grant connected agents
+only necessary access, and review every enabled provider request. A host-wide
+model key can send analysis context to a provider even when an account has not
+saved a personal key. The repository does not provide a general deletion
+schedule or control logs kept by external providers.

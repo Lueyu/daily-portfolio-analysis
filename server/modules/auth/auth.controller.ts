@@ -4,15 +4,30 @@
  * None of these routes are `@NeedLogin()`-decorated except `me`; the global
  * guard verifies the Bearer token and attaches `req.userContext` there.
  */
-import { Body, Controller, Get, Post, Req } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  ForbiddenException,
+  Get,
+  Post,
+  Req,
+  UnsupportedMediaTypeException,
+} from '@nestjs/common';
 import type { Request } from 'express';
 import { NeedLogin } from '../../common/platform/need-login.decorator';
 import { AuthService } from './auth.service';
 import { AuthRateLimiter } from './auth-rate-limiter';
+import type { RegistrationStatus } from '@shared/api.interface';
 
 @Controller('api/auth')
 export class AuthController {
   constructor(private readonly authService: AuthService, private readonly limiter: AuthRateLimiter) {}
+
+  /** Whether this instance currently accepts another account. */
+  @Get('registration-status')
+  async registrationStatus(): Promise<RegistrationStatus> {
+    return this.authService.getRegistrationStatus();
+  }
 
   /** Create an account. Disabled entirely when REGISTER_ENABLED=false. */
   @Post('register')
@@ -20,6 +35,38 @@ export class AuthController {
     @Req() request: Request,
     @Body() body: { username?: string; password?: string; displayName?: string },
   ) {
+    if (process.env.REGISTER_ENABLED === 'first-user') {
+      const contentType = request.headers['content-type'];
+      if (typeof contentType !== 'string' || !/^application\/json(?:\s*;|$)/iu.test(contentType)) {
+        throw new UnsupportedMediaTypeException('Registration requires a JSON request');
+      }
+      const host = request.headers.host;
+      let hostname: string;
+      try {
+        hostname = new URL(`http://${host}`).hostname;
+      } catch {
+        throw new ForbiddenException('Registration is available only on localhost');
+      }
+      if (!['localhost', '127.0.0.1', '[::1]'].includes(hostname)) {
+        throw new ForbiddenException('Registration is available only on localhost');
+      }
+      const origin = request.headers.origin;
+      if (origin) {
+        let originUrl: URL;
+        try {
+          originUrl = new URL(origin);
+        } catch {
+          throw new ForbiddenException('Cross-origin registration is not allowed');
+        }
+        if (originUrl.protocol !== 'http:' || originUrl.host !== host) {
+          throw new ForbiddenException('Cross-origin registration is not allowed');
+        }
+      }
+      const fetchSite = request.headers['sec-fetch-site'];
+      if (fetchSite && fetchSite !== 'same-origin' && fetchSite !== 'none') {
+        throw new ForbiddenException('Cross-origin registration is not allowed');
+      }
+    }
     this.limiter.consume(request, 'register');
     return this.authService.register({
       username: body.username ?? '',

@@ -1,0 +1,35 @@
+appId: com.squabble.desktop
+productName: Squabble
+asar: false
+directories:
+  output: output/installers
+files:
+  - dist/**/*
+  - scripts/db/**/*
+  - LICENSE
+  - package.json
+  - node_modules/**/*
+extraResources:
+  - from: desktop/notices/PostgreSQL-COPYRIGHT
+    to: notices/PostgreSQL-COPYRIGHT
+  - from: LICENSE
+    to: notices/Squabble-LICENSE
+  - from: node_modules/embedded-postgres/LICENSE.md
+    to: notices/embedded-postgres-LICENSE.md
+  - from: node_modules/@embedded-postgres
+    to: notices/embedded-postgres-platforms
+    filter:
+      - "*/LICENSE.md"
+win:
+  target: nsis
+  icon: client/public/logo.svg
+  artifactName: Squabble-${version}-win-${arch}-Setup.${ext}
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: false
+mac:
+  target: dmg
+  icon: client/public/logo.svg
+  artifactName: Squabble-${version}-mac-${arch}.${ext}
+  notarize: false

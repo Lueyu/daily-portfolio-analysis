@@ -1,0 +1,227 @@
+name: Desktop installers
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows x64
+            runner: windows-latest
+            platform: windows
+            arch: x64
+            nativePackage: windows-x64
+            executableSuffix: .exe
+            artifactPattern: output/installers/*.exe
+          - name: macOS x64
+            runner: macos-15-intel
+            platform: mac
+            arch: x64
+            nativePackage: darwin-x64
+            executableSuffix: ''
+            artifactPattern: output/installers/*.dmg
+          - name: macOS arm64
+            runner: macos-15
+            platform: mac
+            arch: arm64
+            nativePackage: darwin-arm64
+            executableSuffix: ''
+            artifactPattern: output/installers/*.dmg
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci --registry=https://registry.npmjs.org/
+      - name: Verify installed PostgreSQL binaries
+        shell: pwsh
+        run: |
+          $binaryRoot = Join-Path 'node_modules/@embedded-postgres/${{ matrix.nativePackage }}' 'native/bin'
+          foreach ($name in @('initdb', 'pg_ctl', 'postgres')) {
+            $binary = Join-Path $binaryRoot "$name${{ matrix.executableSuffix }}"
+            if (-not (Test-Path -LiteralPath $binary -PathType Leaf)) { throw "Missing native PostgreSQL binary: $binary" }
+          }
+      - name: Prepare standard Windows account for PostgreSQL tests
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          # GitHub's Windows runner is elevated; PostgreSQL refuses administrator tokens.
+          $userName = 'squabbleci'
+          $password = 'Aa1!' + [Convert]::ToBase64String([System.Security.Cryptography.RandomNumberGenerator]::GetBytes(32))
+          $securePassword = ConvertTo-SecureString $password -AsPlainText -Force
+          New-LocalUser -Name $userName -Password $securePassword -AccountNeverExpires -PasswordNeverExpires | Out-Null
+          $testRoot = Join-Path $env:PUBLIC "squabble-ci-$env:GITHUB_RUN_ID"
+          New-Item -ItemType Directory -Path $testRoot -Force | Out-Null
+          $principal = "$env:COMPUTERNAME\$userName"
+          & icacls.exe $env:GITHUB_WORKSPACE /grant "${principal}:(OI)(CI)RX" /T /Q | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'Could not grant repository read access to standard user' }
+          # embedded-postgres performs chmod on its executables at runtime.
+          $sourceBin = Join-Path $env:GITHUB_WORKSPACE 'node_modules/@embedded-postgres/windows-x64/native/bin'
+          & icacls.exe $sourceBin /grant "${principal}:(OI)(CI)M" /T /Q | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'Could not grant bundled PostgreSQL executable access to standard user' }
+          & icacls.exe $testRoot /grant "${principal}:(OI)(CI)M" /T /Q | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'Could not grant test data access to standard user' }
+          Write-Output "::add-mask::$password"
+          "SQUABBLE_CI_USER=$userName" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "SQUABBLE_CI_PASSWORD=$password" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "SQUABBLE_CI_TEMP=$testRoot" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Desktop runtime tests
+        if: matrix.platform == 'mac'
+        run: npm run test:desktop
+      - name: Desktop runtime tests as standard Windows user
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: ./desktop/ci/run-as-standard-user.ps1 -Scenario tests
+      - name: Compile application
+        run: npm run build
+      - name: First-run API smoke test
+        if: matrix.platform == 'mac'
+        run: npx tsx desktop/smoke.mts
+      - name: First-run API smoke test as standard Windows user
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: ./desktop/ci/run-as-standard-user.ps1 -Scenario source-smoke
+      - name: Build Windows installer
+        if: matrix.platform == 'windows'
+        env:
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+        run: npx electron-builder --config electron-builder.yml --win nsis --x64 --publish never
+      - name: Build macOS installer
+        if: matrix.platform == 'mac'
+        shell: pwsh
+        env:
+          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          $arguments = @('--config', 'electron-builder.yml', '--mac', 'dmg', '--${{ matrix.arch }}', '--publish', 'never')
+          if (-not $env:CSC_LINK -or -not $env:CSC_KEY_PASSWORD) {
+            $arguments += @('-c.mac.identity=null', '-c.mac.hardenedRuntime=false')
+          } elseif ($env:APPLE_ID -and $env:APPLE_APP_SPECIFIC_PASSWORD -and $env:APPLE_TEAM_ID) {
+            $arguments += '-c.mac.notarize=true'
+          }
+          npx electron-builder @arguments
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Verify packaged PostgreSQL and server
+        shell: pwsh
+        run: |
+          if ('${{ matrix.platform }}' -eq 'windows') {
+            $appRoot = 'output/installers/win-unpacked/resources/app'
+            $noticeRoot = 'output/installers/win-unpacked/resources/notices'
+          } else {
+            $bundle = Get-ChildItem 'output/installers' -Recurse -Directory -Filter 'Squabble.app' | Select-Object -First 1
+            if (-not $bundle) { throw 'Missing unpacked Squabble.app' }
+            $appRoot = Join-Path $bundle.FullName 'Contents/Resources/app'
+            $noticeRoot = Join-Path $bundle.FullName 'Contents/Resources/notices'
+          }
+          $binaryRoot = Join-Path $appRoot 'node_modules/@embedded-postgres/${{ matrix.nativePackage }}/native/bin'
+          $required = @(
+            (Join-Path $appRoot 'dist/desktop/main.mjs'),
+            (Join-Path $appRoot 'dist/server/main.js'),
+            (Join-Path $appRoot 'dist/client/index.html'),
+            (Join-Path $appRoot 'scripts/db/01_schema.sql'),
+            (Join-Path $noticeRoot 'Squabble-LICENSE'),
+            (Join-Path $noticeRoot 'PostgreSQL-COPYRIGHT'),
+            (Join-Path $binaryRoot 'initdb${{ matrix.executableSuffix }}'),
+            (Join-Path $binaryRoot 'pg_ctl${{ matrix.executableSuffix }}'),
+            (Join-Path $binaryRoot 'postgres${{ matrix.executableSuffix }}')
+          )
+          foreach ($path in $required) {
+            if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Missing packaged resource: $path" }
+          }
+      - name: Permit standard Windows user PostgreSQL executable mode checks
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          $nativeBin = 'output/installers/win-unpacked/resources/app/node_modules/@embedded-postgres/windows-x64/native/bin'
+          $principal = "$env:COMPUTERNAME\$env:SQUABBLE_CI_USER"
+          & icacls.exe $nativeBin /grant "${principal}:(OI)(CI)M" /T /Q | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'Could not grant packaged PostgreSQL executable access to standard user' }
+      - name: Start packaged application against fresh data
+        if: matrix.platform == 'mac'
+        shell: pwsh
+        run: |
+          $dataRoot = Join-Path $env:RUNNER_TEMP ('squabble-packaged-smoke-' + [guid]::NewGuid().ToString('N'))
+          New-Item -ItemType Directory -Path $dataRoot | Out-Null
+          $bundle = Get-ChildItem 'output/installers' -Recurse -Directory -Filter 'Squabble.app' | Select-Object -First 1
+          if (-not $bundle) { throw 'Missing unpacked Squabble.app' }
+          $executable = Join-Path $bundle.FullName 'Contents/MacOS/Squabble'
+          $environment = @{ SQUABBLE_DESKTOP_DATA_DIR = $dataRoot; SQUABBLE_DESKTOP_SMOKE = '1' }
+          $options = @{ FilePath = $executable; PassThru = $true; Environment = $environment }
+          $application = Start-Process @options
+          $application.WaitForExit(60000) | Out-Null
+          if (-not $application.HasExited) {
+            Stop-Process -Id $application.Id -Force
+            throw 'Packaged application did not exit after first-run smoke test'
+          }
+          $marker = Join-Path $dataRoot 'packaged-smoke.json'
+          if (-not (Test-Path -LiteralPath $marker -PathType Leaf)) {
+            $logFile = Join-Path $dataRoot 'logs/backend.log'
+            if (Test-Path -LiteralPath $logFile) { Get-Content -LiteralPath $logFile -Tail 40 }
+            throw 'Packaged application did not start its API'
+          }
+          $result = Get-Content -LiteralPath $marker -Raw | ConvertFrom-Json
+          if ($result.healthy -ne $true -or $result.registrationOpen -ne $true) { throw 'Packaged API returned an invalid first-run result' }
+          if ((Split-Path -Path $result.defaultDataRoot -Leaf) -ne 'Squabble') { throw 'Default user data directory does not use the product name' }
+          if (Test-Path -LiteralPath (Join-Path $dataRoot 'postgres/postmaster.pid')) { throw 'Packaged PostgreSQL did not stop cleanly' }
+      - name: Start packaged Windows application as standard user
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: ./desktop/ci/run-as-standard-user.ps1 -Scenario packaged-smoke
+      - uses: actions/upload-artifact@v4
+        with:
+          name: squabble-${{ matrix.platform }}-${{ matrix.arch }}
+          path: ${{ matrix.artifactPattern }}
+          if-no-files-found: error
+      - name: Remove standard Windows test account
+        if: always() && matrix.platform == 'windows'
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $account = Get-LocalUser -Name 'squabbleci' -ErrorAction SilentlyContinue
+          if ($account) { Remove-LocalUser -Name 'squabbleci' }
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: squabble-*
+          path: release-files
+          merge-multiple: true
+      - name: Publish successful installers
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(release-files/*.exe release-files/*.dmg)
+          test "${#files[@]}" -eq 3
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "${files[@]}" --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" "${files[@]}" --repo "$GITHUB_REPOSITORY" --title "Squabble $GITHUB_REF_NAME" --generate-notes
+          fi
