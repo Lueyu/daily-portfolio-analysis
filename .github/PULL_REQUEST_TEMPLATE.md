@@ -17,4 +17,7 @@
 - [ ] I added no secrets or personal data, including real holdings in demo data.
 - [ ] I updated Chinese and English UI text and docs where behavior changed.
 - [ ] I described how existing installations keep their data, if this changes storage or deployment.
-- [ ] I resolved review conversations and waited for the required CI checks before merging.
+
+Before merging: wait for all required CI checks, bring the PR up to date with
+`main`, resolve review conversations and follow the maintainer merge convention
+in [CONTRIBUTING.md](../CONTRIBUTING.md).

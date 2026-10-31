@@ -29,7 +29,9 @@ The GitHub branch rule and CI are authoritative if a copied skill becomes stale.
   **Docker image build**, **Windows x64**, **macOS x64**, **macOS arm64**.
   Keep the PR up to date with `main` and resolve review conversations.
 - A green CI run does not grant permission to bypass maintainer feedback.
-  GitHub currently does not require an approving review. Maintainers decide
-  when to merge and publish releases.
+  GitHub currently does not require an approving review. As a team convention,
+  let maintainers coordinate merges; collaborators with write access can merge
+  without an approval, so they must follow this convention. Maintainers
+  publish releases.
 - Never push, force push or delete `main`, or weaken a required check to get a
   PR through. If a check fails, fix the branch and let CI rerun.

@@ -38,9 +38,10 @@ coupling has been fully removed, so there is no mirror/sync workflow anymore.
    **Agent tests**, **Docker image build**, **Windows x64**, **macOS x64** and
    **macOS arm64**. The PR must be up to date with `main`. Documentation-only
    PRs run these checks too.
-4. Resolve review conversations before merging. Maintainers decide whether a
-   change is ready. GitHub does not currently require an approval; do not
-   interpret a green check as a substitute for addressing review feedback.
+4. Resolve review conversations before merging. Our team convention is for
+   maintainers to coordinate merge decisions. GitHub does not currently
+   require an approval, so collaborators with write access must honor this
+   convention; a green check does not replace addressing review feedback.
 5. Merge through the PR after the gates pass. Only maintainers publish release
    tags and change branch protection settings.
 
