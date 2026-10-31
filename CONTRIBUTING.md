@@ -5,6 +5,8 @@ Useful contributions include clearer onboarding, verified research data,
 paper-trading rules, privacy controls, translations and bug fixes.
 Start with the [local setup guide](docs/self-hosting.md), then use the
 [development guide](docs/development.md) if you want to change the app.
+If you use an AI coding agent, share the repository's
+[Squabble contributor skill](.agents/skills/squabble-contributor/SKILL.md) with it.
 
 ## Project layout
 
@@ -24,6 +26,28 @@ requests:
 
 The project was originally developed on the Miaoda (aPaaS) cloud; that
 coupling has been fully removed, so there is no mirror/sync workflow anymore.
+
+## How changes reach `main`
+
+1. Create a branch from the current `main` and open a pull request targeting
+   `main`. Direct pushes, force pushes and branch deletion are blocked.
+2. Keep one feature or fix in each PR. Explain the behavior change, how you
+   tested it, and any effect on existing local data, database migrations,
+   desktop installers or Docker deployments. Use the PR template.
+3. Wait for all six required GitHub checks to pass: **Lint & typecheck**,
+   **Agent tests**, **Docker image build**, **Windows x64**, **macOS x64** and
+   **macOS arm64**. The PR must be up to date with `main`. Documentation-only
+   PRs run these checks too.
+4. Resolve review conversations before merging. Maintainers decide whether a
+   change is ready. GitHub does not currently require an approval; do not
+   interpret a green check as a substitute for addressing review feedback.
+5. Merge through the PR after the gates pass. Only maintainers publish release
+   tags and change branch protection settings.
+
+The [branch protection rule](https://github.com/Lueyu/squabble/settings/branches)
+enforces the PR, checks and conversation gates, including for administrators.
+If a check fails, fix the cause on the PR branch and let CI rerun. Do not
+disable a check or push directly to `main` to get around a failure.
 
 ## Before you open a PR
 
