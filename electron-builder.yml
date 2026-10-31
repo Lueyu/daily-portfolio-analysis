@@ -27,7 +27,7 @@ win:
 nsis:
   oneClick: false
   perMachine: false
-  allowToChangeInstallationDirectory: true
+  allowToChangeInstallationDirectory: false
 mac:
   target: dmg
   icon: client/public/logo.svg

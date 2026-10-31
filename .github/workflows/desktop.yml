@@ -70,6 +70,10 @@ jobs:
           $principal = "$env:COMPUTERNAME\$userName"
           & icacls.exe $env:GITHUB_WORKSPACE /grant "${principal}:(OI)(CI)RX" /T /Q | Out-Null
           if ($LASTEXITCODE -ne 0) { throw 'Could not grant repository read access to standard user' }
+          # embedded-postgres performs chmod on its executables at runtime.
+          $sourceBin = Join-Path $env:GITHUB_WORKSPACE 'node_modules/@embedded-postgres/windows-x64/native/bin'
+          & icacls.exe $sourceBin /grant "${principal}:(OI)(CI)M" /T /Q | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'Could not grant bundled PostgreSQL executable access to standard user' }
           & icacls.exe $testRoot /grant "${principal}:(OI)(CI)M" /T /Q | Out-Null
           if ($LASTEXITCODE -ne 0) { throw 'Could not grant test data access to standard user' }
           Write-Output "::add-mask::$password"
@@ -143,6 +147,14 @@ jobs:
           foreach ($path in $required) {
             if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Missing packaged resource: $path" }
           }
+      - name: Permit standard Windows user PostgreSQL executable mode checks
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          $nativeBin = 'output/installers/win-unpacked/resources/app/node_modules/@embedded-postgres/windows-x64/native/bin'
+          $principal = "$env:COMPUTERNAME\$env:SQUABBLE_CI_USER"
+          & icacls.exe $nativeBin /grant "${principal}:(OI)(CI)M" /T /Q | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'Could not grant packaged PostgreSQL executable access to standard user' }
       - name: Start packaged application against fresh data
         if: matrix.platform == 'mac'
         shell: pwsh
@@ -181,6 +193,7 @@ jobs:
           if-no-files-found: error
       - name: Remove standard Windows test account
         if: always() && matrix.platform == 'windows'
+        continue-on-error: true
         shell: pwsh
         run: |
           $account = Get-LocalUser -Name 'squabbleci' -ErrorAction SilentlyContinue
