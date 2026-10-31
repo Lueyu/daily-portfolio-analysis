@@ -36,6 +36,12 @@ and opens the installer download for your system when you choose. Quit Squabble
 before installing it manually. This check does not download or install updates
 in the background, and it does not change the local data directory.
 
+The Windows setup wizard lets you choose Simplified Chinese or English when it
+opens. Extracting the bundled database and app files can make the progress bar
+pause. If it remains unchanged for a long time, check whether the installer is
+still writing to disk and retry after closing any running Squabble app.
+Reinstalling does not automatically remove the application data directory.
+
 On first launch, create your account and save the one-time recovery code
 offline. The desktop app starts with no demo account or sample holdings. Add
 holdings manually or [import a CSV](import.md). Account recovery uses the

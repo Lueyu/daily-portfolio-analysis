@@ -9,6 +9,11 @@ files:
   - LICENSE
   - package.json
   - node_modules/**/*
+  - '!node_modules/**/*.map'
+  - '!node_modules/**/*.d.ts'
+  - '!node_modules/**/test/**'
+  - '!node_modules/**/tests/**'
+  - '!node_modules/**/__tests__/**'
 extraResources:
   - from: desktop/notices/PostgreSQL-COPYRIGHT
     to: notices/PostgreSQL-COPYRIGHT
@@ -28,6 +33,11 @@ nsis:
   oneClick: false
   perMachine: false
   allowToChangeInstallationDirectory: false
+  multiLanguageInstaller: true
+  installerLanguages:
+    - en_US
+    - zh_CN
+  displayLanguageSelector: true
 mac:
   target: dmg
   icon: client/public/logo.svg
