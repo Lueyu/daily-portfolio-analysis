@@ -30,6 +30,12 @@ On Windows, launch Squabble normally rather than choosing **Run as administrator
 The bundled PostgreSQL server refuses to run under an elevated administrator
 process.
 
+Use **Help → Check for Updates** in the desktop app to query the latest stable
+GitHub release. If one is available, the app shows its version and release notes
+and opens the installer download for your system when you choose. Quit Squabble
+before installing it manually. This check does not download or install updates
+in the background, and it does not change the local data directory.
+
 The Windows setup wizard lets you choose Simplified Chinese or English when it
 opens. Extracting the bundled database and app files can make the progress bar
 pause. If it remains unchanged for a long time, check whether the installer is
