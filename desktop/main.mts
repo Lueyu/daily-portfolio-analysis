@@ -1,7 +1,6 @@
 import { appendFileSync, createWriteStream } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
-import { autoUpdater } from 'electron-updater';
 import { app, BrowserWindow, dialog, Menu, session, shell, utilityProcess } from 'electron';
 import type { MenuItemConstructorOptions, UtilityProcess } from 'electron';
 import {
@@ -25,6 +24,8 @@ let quitAllowed = false;
 let checkingForUpdate = false;
 
 async function showWindowsUpdateCheck(chinese: boolean, silent: boolean): Promise<void> {
+  // Eager loading electron-updater stalls packaged startup before the app is ready.
+  const { autoUpdater } = await import('electron-updater');
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = false;
   const result = await autoUpdater.checkForUpdates();
