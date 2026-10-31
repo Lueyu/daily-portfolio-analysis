@@ -26,6 +26,10 @@ block opening them. Check the source of any installer before choosing to open
 it. No automatic update service is provided; install a newer release manually
 when you choose to upgrade.
 
+On Windows, launch Squabble normally rather than choosing **Run as administrator**.
+The bundled PostgreSQL server refuses to run under an elevated administrator
+process.
+
 On first launch, create your account and save the one-time recovery code
 offline. The desktop app starts with no demo account or sample holdings. Add
 holdings manually or [import a CSV](import.md). Account recovery uses the
@@ -51,8 +55,9 @@ backup; retain a copy of the current directory until you have checked the
 restored installation. The desktop installation does not synchronize data with
 the Docker installation or another computer.
 
-If the app does not open, confirm you installed the build for your system and
-check available disk space. A newly installed copy with an old application
+If the app does not open, confirm you installed the build for your system,
+did not launch it as administrator on Windows, and have available disk space.
+A newly installed copy with an old application
 data directory will use that existing data; keep a backup before replacing
 the app or troubleshooting startup.
 
